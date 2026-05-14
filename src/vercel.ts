@@ -1,6 +1,6 @@
 import { streamText } from 'ai';
 
-const { textStream } = streamText({
+const { textStream, reasoning } = streamText({
   model: 'gpt-3.5-turbo',
   messages: [
     {
