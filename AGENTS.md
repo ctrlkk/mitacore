@@ -1,13 +1,3 @@
-To install dependencies:
-
-```bash
-bun install
-```
-
-To run:
-
-```bash
-bun run index.ts
-```
-
-This project was created using `bun init` in bun v1.3.13. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+这个项目是在bun中创建的，通过bun命令来管理项目而不是npm。
+当编写代码的时候始终保持最小案例的模式，不要编写复杂的代码。
+如果需要编写复杂的代码，需要先编写最小案例的代码，然后根据需要添加功能。

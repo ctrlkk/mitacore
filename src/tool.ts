@@ -14,7 +14,7 @@ export type ToolExecuteFunction<INPUT, OUTPUT> = (
 
 export interface ToolDefinition<INPUT, OUTPUT> {
   description?: string;
-  inputSchema: z.ZodSchema<INPUT>;
+  inputSchema: z.ZodType<INPUT, any, any>;
   execute: ToolExecuteFunction<INPUT, OUTPUT>;
   strict?: boolean;
 }

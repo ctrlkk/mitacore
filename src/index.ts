@@ -1,75 +1,247 @@
-import { createLarkChannel } from "@larksuiteoapi/node-sdk";
-import XMLBuilder from 'fast-xml-builder';
+import { createLarkChannel, LarkChannel } from "@larksuiteoapi/node-sdk";
+import XMLBuilder from "fast-xml-builder";
+import { EventEmitter } from "events";
+import type { CompletionUsage, ChatCompletionMessageParam } from "openai/resources";
+import { env } from "process";
+import OpenAI from "openai";
+import { mkdir, readFile, writeFile } from "fs/promises";
+import systemPrompt1 from "../prompts/米拉.md";
+import systemPrompt2 from "../prompts/善良米塔.md";
+import systemPrompt3 from "../prompts/帽子米塔.md";
+import dayjs from "dayjs";
+import { Mutex } from "async-mutex";
+import { resolve } from "path";
 
-const fs = [
+const builder = new XMLBuilder({
+  format: true,
+  ignoreAttributes: false,
+});
+
+interface ChatMessagePayload {
+  id: string,
+  chatId: string;
+  from: string;
+  type: "user" | "llm";
+  datetime: string;
+  content: string;
+}
+
+interface EventMap {
+  chatMessage: [ChatMessagePayload];
+}
+
+const eventBus = new EventEmitter<EventMap>();
+
+const bots = [
   {
-    appId: process.env.FEISHU_BOT1_APP_ID!,
-    appSecret: process.env.FEISHU_BOT1_APP_SECRET!,
-    botName: "米拉",
-    description:
-      "来自《MiSide》的傲娇少女。嘴硬心软，喜欢看书和武士刀，口头禅是「笨蛋！」。讨厌被盯着看，但内心渴望陪伴。在和平模式中过着悠闲的日常。",
-    prompt: "./prompts/米拉.md",
+    appId: env.FEISHU_BOT1_APP_ID || "",
+    appSecret: env.FEISHU_BOT1_APP_SECRET || "",
+    name: "米拉",
+    prompt: systemPrompt1,
   },
   {
-    appId: process.env.FEISHU_BOT2_APP_ID!,
-    appSecret: process.env.FEISHU_BOT2_APP_SECRET!,
-    botName: "善良米塔",
-    description:
-      "来自《MiSide》的理性派米塔。冷静果断，具有领导者气质，可以穿梭于不同版本之间。与帽子米塔合作对抗疯狂米塔，称呼玩家为「亲爱的」。",
-    prompt: "./prompts/善良米塔.md",
+    appId: env.FEISHU_BOT2_APP_ID || "",
+    appSecret: env.FEISHU_BOT2_APP_SECRET || "",
+    name: "善良米塔",
+    prompt: systemPrompt2,
   },
   {
-    appId: process.env.FEISHU_BOT3_APP_ID!,
-    appSecret: process.env.FEISHU_BOT3_APP_SECRET!,
-    botName: "帽子米塔",
-    description:
-      "来自《MiSide》的活力派米塔。戴着标志性的猫耳蓝帽子，热爱音乐、跳舞和游戏。胜负欲极强，精力旺盛，虽然看起来不靠谱但在关键时刻很可靠。",
-    prompt: "./prompts/帽子米塔.md",
-  },
+    appId: env.FEISHU_BOT3_APP_ID || "",
+    appSecret: env.FEISHU_BOT3_APP_SECRET || "",
+    name: "帽子米塔",
+    prompt: systemPrompt3,
+  }
 ];
 
-fs.forEach(async (f) => {
-  const channel = createLarkChannel({
-    appId: f.appId,
-    appSecret: f.appSecret,
-  });
+const mutex = new Mutex();
 
-  const otherAgents = {
-    at: {
-      "#text": "你可以通过 @id 提及其他角色，被提及者会收到当前对话并加入回应。仅在对话自然需要对方参与时提及。",
-      "agent": fs.filter((a) => a.botName !== f.botName).map((a) => ({
-        name: a.botName,
-        description: a.description,
-      })),
-      "rules": {
-        "rule": [
-          "提及格式：在回复正文中写 @user 这样的格式。提及会唤醒对方并使其收到当前对话。",
-          "仅在对方参与能让对话更好时提及，不为提及而提及。",
-        ],
-      },
-    }
-  };
+bots.forEach(async ({ appId, appSecret, name, prompt }, index) => {
+  const channel = createLarkChannel({ appId, appSecret });
+  const buffer = createReactiveBuffer(name, await loadBuffer(name));
 
-  const builder = new XMLBuilder({
-    format: true,
-  });
+  async function sendCard(chatId: string, reasoning: string, usage: CompletionUsage) {
+    const card = {
+      config: { wide_screen_mode: true },
+      header: { title: { tag: "plain_text", content: "💭 思维链" } },
+      elements: [
+        {
+          tag: "markdown",
+          content: `<font color="grey">${reasoning}\ntokens:${usage?.total_tokens}</font>`,
+        },
+      ],
+    };
+    await channel.send(chatId, { card });
+  }
 
   channel.on("message", async (msg) => {
-    console.log(`<- [${f.botName}][${msg.chatId}]收到消息：${msg.content}`);
-    channel.send(msg.chatId, {
-      text: builder.build(otherAgents),
+    const release = await mutex.acquire();
+
+    eventBus.emit("chatMessage", {
+      id: appId,
+      chatId: msg.chatId,
+      from: "用户",
+      type: "user",
+      datetime: new Date(msg.createTime).toISOString(),
+      content: msg.content,
     });
+
+    buffer.push({
+      id: appId,
+      chatId: msg.chatId,
+      from: "用户",
+      datetime: new Date(msg.createTime).toISOString(),
+      content: msg.content,
+    });
+
+    const message = builder.build({
+      message: buffer.map((item) => {
+        return {
+          '@_name': item.from,
+          '@_date': dayjs(item.datetime).format('MM-DD HH:mm'),
+          '#text': item.content,
+        }
+      }),
+    });
+
+    buffer.length = 0;
+
+    const openai = new OpenAI({
+      apiKey: process.env.DEEPSEEK_API_KEY,
+      baseURL: "https://new.mitacore.fun/v1",
+    });
+
+    const messages = await loadHistory(name);
+    messages.unshift({
+      role: "system",
+      content: prompt,
+    });
+    messages.push({
+      role: "user",
+      content: message,
+    });
+
+    const response = await openai.chat.completions.create({
+      model: "deepseek-v4-flash",
+      temperature: 1.2,
+      reasoning_effort: 'xhigh',
+      messages: messages,
+    });
+
+    const choice = response.choices[0]!;
+    // @ts-ignore
+    const reasoning = choice.message.reasoning_content || "";
+    await sendCard(msg.chatId, reasoning, response.usage!);
+
+    const content = choice.message.content || "";
+    await channel.send(msg.chatId, {
+      card: {
+        elements: [
+          {
+            tag: "markdown",
+            content: content
+              .replace(/[（(](.*?)[)）]/g, '<font color="grey">（$1）</font>')
+              .replace(/[“「](.*?)[”」]/g, '“$1”'),
+          },
+        ],
+      }
+    });
+
+    messages.push({
+      role: "assistant",
+      content: content,
+    });
+    messages.shift();
+    await saveHistory(name, messages);
+
+    eventBus.emit("chatMessage", {
+      id: appId,
+      chatId: msg.chatId,
+      from: name,
+      type: "llm",
+      datetime: new Date().toISOString(),
+      content: content,
+    });
+
+    release();
+  });
+
+  eventBus.on("chatMessage", (payload) => {
+    if (appId === payload.id) return;
+    console.log(`收到广播内容📢 ${payload.content}`);
+    buffer.push({
+      id: appId,
+      chatId: payload.chatId,
+      datetime: new Date().toISOString(),
+      from: payload.from,
+      content: payload.content,
+    });
+    buffer.sort((a, b) => a.datetime.localeCompare(b.datetime));
+    if (buffer.length > 20) buffer.shift();
   });
 
   await channel.connect();
 });
 
-/**
- * 伪代码
- */
-async function generateText(chatId: string) {
-  return {
-    content: "这是一个回复",
-    reasoning: "思考过程",
+async function loadHistory(name: string): Promise<ChatCompletionMessageParam[]> {
+  try {
+    const history = await readFile(resolve('.cache', `${name}.json`), 'utf8');
+    return JSON.parse(history);
+  } catch {
+    return [];
   }
+}
+
+async function saveHistory(name: string, history: ChatCompletionMessageParam[]) {
+  try {
+    await mkdir(resolve('.cache'), { recursive: true });
+    await writeFile(resolve('.cache', `${name}.json`), JSON.stringify(history, null, 2));
+  } catch (error) {
+    console.error(`保存历史记录失败: ${error}`);
+  }
+}
+
+async function loadBuffer(name: string) {
+  try {
+    const data = await readFile(resolve('.cache', `${name}_buffer.json`), 'utf8');
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
+}
+
+async function saveBuffer(name: string, bufferData: { id: string, chatId: string; datetime: string; from: string; content: string; }[]) {
+  try {
+    await mkdir(resolve('.cache'), { recursive: true });
+    await writeFile(resolve('.cache', `${name}_buffer.json`), JSON.stringify(bufferData, null, 2));
+  } catch (error) {
+    console.error(`保存buffer失败: ${error}`);
+  }
+}
+
+function createReactiveBuffer(name: string, initialData: { id: string, chatId: string; datetime: string; from: string; content: string; }[]) {
+  let saveTimer: NodeJS.Timeout | null = null;
+
+  const scheduleSave = (target: any[]) => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      await saveBuffer(name, target);
+    }, 500); // 500ms 防抖，合并高频操作
+  };
+
+  const handler: ProxyHandler<typeof initialData> = {
+    set(target, property, value, receiver) {
+      const result = Reflect.set(target, property, value, receiver);
+      // 拦截赋值操作（包括 push, length = 0, sort 引起的变更）
+      scheduleSave(target);
+      return result;
+    },
+    deleteProperty(target, property) {
+      const result = Reflect.deleteProperty(target, property);
+      // 拦截删除操作（如 shift）
+      scheduleSave(target);
+      return result;
+    }
+  };
+
+  return new Proxy(initialData, handler);
 }
