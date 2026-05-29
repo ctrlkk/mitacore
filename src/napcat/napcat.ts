@@ -8,10 +8,12 @@ import {
 } from "./napcat-sdk";
 import type { InboundMessage, UniversalMessage } from "./message";
 import { extractText } from "./message";
-import { Agent } from "./agent";
+import { Agent } from "../agent";
 import type { ChatCompletionMessageParam } from "openai/resources";
 import { readFile, mkdir, writeFile } from "fs/promises";
 import { resolve } from "path";
+import systemPrompt from "../prompts/贤惠幼妻仙狐小姐.md"
+import summaryPrompt from "../prompts/summary.md";
 import OpenAI from "openai";
 
 /**
@@ -220,45 +222,7 @@ async function main() {
     token: "your_token",
   });
 
-  const client = new OpenAI({
-    apiKey: process.env.DEEPSEEK_API_KEY,
-    baseURL: "https://new.mitacore.fun/v1",
-  });
-
   bot.on("message", async (msg: MessageEvent) => {
-    const message = fromNapCatMessage(msg);
-    console.log(`[${message.platform}] ${message.senderId} in ${message.chatId}: ${message.text}`);
-
-    if (message.isGroup) {
-      const atBot = Array.isArray(msg.message) && msg.message.some(
-        (seg) => seg.type === "at" && seg.data?.qq === String(msg.self_id),
-      );
-      if (!atBot) return;
-    }
-
-    const to = msg.group_id ?? msg.user_id;
-
-    const messages = await loadHistory("chat");
-    messages.push({ role: "user", content: message.text });
-
-    const agent = new Agent({
-      client,
-      model: "deepseek-v4-flash",
-      systemPrompt: "你是一个友好的 QQ 群助手，回复简洁有趣。",
-      temperature: 1.2,
-      messages,
-      tools: {},
-      context: {},
-      maxSteps: 5,
-    });
-
-    const history = await agent.run(async ({ choice }) => {
-      if (typeof choice.message.content === "string") {
-        await bot.send(to, { text: choice.message.content });
-      }
-    });
-
-    await saveHistory("chat", history);
   });
 
   bot.on("notice", (notice) => {

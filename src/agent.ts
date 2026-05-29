@@ -74,13 +74,18 @@ export class Agent<TContext> {
    */
   async run(
     onStep?: (result: { choice: OpenAI.Chat.ChatCompletion.Choice; usage?: OpenAI.CompletionUsage }) => Promise<void>
-  ): Promise<OpenAI.Chat.ChatCompletionMessageParam[]> {
+  ) {
+    let usage: OpenAI.CompletionUsage | undefined = undefined
     while (!this.done()) {
       for await (const result of this.step()) {
         await onStep?.(result)
+        usage = result.usage
       }
     }
-    return this.fullMessages
+    return {
+      fullMessages: this.fullMessages,
+      usage,
+    }
   }
 
   /**
