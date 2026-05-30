@@ -13,7 +13,7 @@
         "ai": "^6.0.170",
         "async-mutex": "^0.5.0",
         "cache-manager": "^7.2.8",
-        "dayjs": "^1.11.20",
+        "dayjs": "^1.11.21",
         "drizzle-orm": "^0.45.2",
         "fast-xml-builder": "^1.2.0",
         "fast-xml-parser": "^5.8.0",
@@ -182,7 +182,7 @@
 
     "combined-stream": ["combined-stream@1.0.8", "https://registry.npmmirror.com/combined-stream/-/combined-stream-1.0.8.tgz", { "dependencies": { "delayed-stream": "~1.0.0" } }, "sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg=="],
 
-    "dayjs": ["dayjs@1.11.20", "https://registry.npmmirror.com/dayjs/-/dayjs-1.11.20.tgz", {}, "sha512-YbwwqR/uYpeoP4pu043q+LTDLFBLApUP6VxRihdfNTqu4ubqMlGDLd6ErXhEgsyvY0K6nCs7nggYumAN+9uEuQ=="],
+    "dayjs": ["dayjs@1.11.21", "https://registry.npmmirror.com/dayjs/-/dayjs-1.11.21.tgz", {}, "sha512-98IT+HOahAisibz/yjKbzuOBwYcjJ7BCLPzARyHiyEBmRz4fatF+KPJszEHXsGYjUG234aH/cOjW1wwTbKUZlA=="],
 
     "delayed-stream": ["delayed-stream@1.0.0", "https://registry.npmmirror.com/delayed-stream/-/delayed-stream-1.0.0.tgz", {}, "sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ=="],
 
