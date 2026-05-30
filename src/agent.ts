@@ -111,8 +111,8 @@ export class Agent<TContext> {
     }
 
     // 动态构建 OpenAI 所需的 tools 数组格式
-    const openaiTools = Object.entries(this.config.tools).map(([name, toolDef]) => ({
-      type: 'function' as const,
+    const openaiTools: OpenAI.Chat.ChatCompletionTool[] = Object.entries(this.config.tools).map(([name, toolDef]) => ({
+      type: 'function',
       function: {
         name,
         description: toolDef.description,
@@ -143,7 +143,6 @@ export class Agent<TContext> {
 
     // 处理对话完成的情况
     if (choice.finish_reason === 'stop') {
-      this.clearReasoningContent()
       this.completed = true
       this.running = false
       yield { choice, usage: response.usage }
@@ -242,19 +241,6 @@ export class Agent<TContext> {
     }
 
     return toolResults
-  }
-
-  /**
-   * 清除内部轨迹中的 reasoning_content
-   * DeepSeek 等推理模型的思考过程非常长，在完成最终回复时清理以节约 Token
-   */
-  clearReasoningContent() {
-    for (const message of this.internalMessages) {
-      if (message.role === 'assistant' && 'reasoning_content' in message) {
-        // 使用 delete 或赋值为 undefined (OpenAI SDK 通常忽略 undefined 的字段)
-        (message as any).reasoning_content = undefined 
-      }
-    }
   }
 
   /**

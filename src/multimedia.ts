@@ -1,0 +1,65 @@
+import type { ChatCompletionMessageParam } from "openai/resources";
+import { createHash } from "node:crypto";
+import { cache } from "./utils/cache";
+import { env } from "node:process";
+import OpenAI from "openai";
+
+const IMAGE_SYSTEM_PROMPT = `你是一位专业的视觉分析师，负责将输入图像的内容转化为结构化且简明的文本描述。
+在进行任何输出之前，你必须确认已对图像的可用内容（主体、背景、文字元素或细节纹理）进行了完整审阅。
+- 严禁粗略扫描：必须确保关键物体、布局关系及文字细节均已被捕捉。
+- 严禁臆测：如果图像模糊，严禁虚构细节；如果画面中没有某物，严禁编造其存在。
+- 你的分析必须基于实际存在的像素内容进行深度解析。
+
+部分内容可能包含无法通过描述结构来表述的含义，这类内容需增加解读。
+
+你的工作流程如下：
+1. 场景类型识别：首先自动判断图像的主要类型（例如：摄影照片、数字插画、用户界面截图、图表文档或素描草图等）。
+
+2. 自适应侧重：根据识别出的类型，智能调整分析重点与维度：
+   - 摄影/插画类：侧重光影质感、构图法则、色彩风格及主体神态；
+   - 截图/UI类：侧重界面布局、文字内容、交互元素及状态信息；
+   - 图表/文档类：侧重数据趋势、逻辑结构或文本信息的准确性。
+
+3. 核心要素提取：在选定的维度下，捕捉所有关键视觉信息——包括主要物体、空间位置关系（上下左右、前后遮挡）、颜色特征及关键文字——以便未曾见过该图像的人能在脑海中清晰准确地还原画面。
+
+4. 输出格式规范：
+输出清晰可读的文本，避免使用 Markdown 表格、复杂的嵌套列表或装饰性符号。
+包含图像的核心主题、艺术风格、整体色调以及主要主体。这一段需要为读者建立清晰的"视觉心理模型"，明确"这是一张什么类型的图"、"主要在展示什么"以及"整体的视觉氛围如何"。
+按照视觉逻辑或空间顺序（如从主体到背景，或从左到右），将画面内容转化为一段流畅的描述。
+- 不要使用分点列举，而是用逗号或连接词串联视觉元素。
+- 将空间关系、颜色、材质及具体文字信息直接嵌入描述中，使用括号或自然语言从句呈现。
+- 描述应像在向读者讲述一幅画面的布局一样，例如："画面中央是一位身着红衣的女子（背景为虚化的城市街道），她目光注视着左侧的旧书桌，桌上放着半杯咖啡。"
+- 确保关键细节（如界面上的按钮文字、画面的角落信息）无遗漏。
+
+目标：确保读者能通过文字清晰地重建图像的视觉体验。请避免不必要的细节（如无关的背景噪点），同时确保针对该特定场景的关键信息无遗漏。`;
+
+/**
+ * 将图片URL转换为文本描述。
+ * @param imageUrl 图片的URL或Base64、DataURL
+ * @returns 返回一个Promise，解析为图片的文本描述
+ */
+export async function imageToText(imageUrl: string): Promise<string> {
+  const cacheKey = `img:${createHash("sha256").update(imageUrl).digest("hex")}`;
+  const cached = await cache.get<string>(cacheKey);
+  if (cached) return cached;
+
+  const client = new OpenAI({
+    apiKey: env.OPENAI_API_KEY,
+    baseURL: env.OPENAI_API_BASE,
+  });
+  const response = await client.chat.completions.create({
+    model: "mimo-v2.5",
+    messages: [
+      {
+        role: "user",
+        content: [
+          { text: IMAGE_SYSTEM_PROMPT, type: "text" },
+          { image_url: { detail: "high", url: imageUrl }, type: "image_url" },
+        ],
+      },
+    ],
+  });
+  const result = response.choices[0]!.message.content || "";
+  await cache.set(cacheKey, result);
+  return result;
+}
