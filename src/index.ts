@@ -2,7 +2,7 @@ import type { ChatCompletionMessageParam } from 'openai/resources';
 import { raw, SnowLumaWebSocketClient } from '@snowluma/sdk';
 import { marked, type Token, type Tokens } from 'marked';
 import { readFile, mkdir, writeFile, readdir } from 'node:fs/promises';
-import { resolve, parse } from 'node:path';
+import { resolve, parse, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { extension } from 'mime-types';
 import { download } from './utils/blob';
@@ -105,7 +105,7 @@ export async function renderStickers(stickersDir: string): Promise<string> {
 
     return builder.build({
         stickers: {
-            instructions: `你可以在回复中插入贴纸来增强情感表达。贴纸格式为标准的Markdown图片语法：![sticker](id)，id从下方列表中选取（包含扩展名，例如 ![sticker](smile.png)）。
+            instructions: `你可以在回复中插入贴纸来增强情感表达。贴纸格式为标准的Markdown图片语法：![alt](sticker:id)，id从下方列表中选取（包含扩展名，例如 ![开心](sticker:smile.png)）。
 使用原则:
 自然融入：贴纸应配合文字情绪，不要强行插入。
 先匹配：如果多个关键词都合适，选择最贴切当下情绪的一个。
@@ -154,26 +154,54 @@ async function parseStickers(content: string): Promise<MessagePart[]> {
         for (const node of nodes) {
             if ('type' in node) {
                 if (node.type === 'image') {
-                    if (currentText.trim()) {
-                        parts.push(currentText.trim());
-                        currentText = "";
-                    }
+                    if (node.href.startsWith('sticker:')) {
+                        if (currentText.trim()) {
+                            parts.push(currentText.trim());
+                            currentText = "";
+                        }
 
-                    let stickerId = node.href;
-                    const ext = parse(stickerId).ext;
-                    if (!ext) {
-                        stickerId += '.png';
-                    }
-                    const stickerPath = resolve('stickers', stickerId);
-                    try {
-                        const buffer = await readFile(stickerPath);
-                        const finalExt = parse(stickerId).ext.slice(1);
-                        parts.push(raw("image", {
-                            url: `data:image/${finalExt === 'jpg' ? 'jpeg' : finalExt};base64,${buffer.toString('base64')}`,
-                            sub_type: 1
-                        }));
-                    } catch (e) {
-                        currentText += node.raw;
+                        let stickerId = node.href.slice('sticker:'.length);
+                        const ext = parse(stickerId).ext;
+                        if (!ext) {
+                            stickerId += '.png';
+                        }
+                        const stickerPath = resolve('stickers', stickerId);
+                        try {
+                            const buffer = await readFile(stickerPath);
+                            const finalExt = parse(stickerId).ext.slice(1);
+                            parts.push(raw("image", {
+                                url: `data:image/${finalExt === 'jpg' ? 'jpeg' : finalExt};base64,${buffer.toString('base64')}`,
+                                sub_type: 1
+                            }));
+                        } catch (e) {
+                            currentText += node.raw;
+                        }
+                    } else {
+                        if (currentText.trim()) {
+                            parts.push(currentText.trim());
+                            currentText = "";
+                        }
+
+                        if (/^https?:\/\//i.test(node.href)) {
+                            parts.push(raw("image", { url: node.href }));
+                        } else {
+                            const match = node.href.match(/^\/images\/(.+)$/);
+                            if (match) {
+                                const filename = match[1];
+                                const imagePath = resolve('.cache', 'images', filename);
+                                try {
+                                    const buffer = await readFile(imagePath);
+                                    const finalExt = parse(filename).ext.slice(1);
+                                    parts.push(raw("image", {
+                                        url: `data:image/${finalExt === 'jpg' ? 'jpeg' : finalExt};base64,${buffer.toString('base64')}`,
+                                    }));
+                                } catch (e) {
+                                    currentText += node.raw;
+                                }
+                            } else {
+                                currentText += node.raw;
+                            }
+                        }
                     }
                 } else if (hasImage(node)) {
                     // 包含图片，递归处理子节点
@@ -248,11 +276,9 @@ async function main() {
     bot.onMessage(async (event, ctx) => {
         if (event.message_type === "group") return;
         if (event.user_id !== 2870245624) return;
-
         const segments = event.message as unknown as MessageSegment[];
-        console.log(segments);
 
-        const images: { "@_filename": string, "#text": string }[] = [];
+        const images: { "@_path": string, "#text": string }[] = [];
         const parts: string[] = [];
         for (const seg of segments) {
             if (seg.type === "text") {
@@ -269,24 +295,25 @@ async function main() {
                 await mkdir(dir, { recursive: true });
                 await writeFile(resolve(dir, filename), buffer);
                 const description = await imageToText(url);
-                images.push({ "@_filename": filename, "#text": description });
-                parts.push(`\`${filename}\``);
+                images.push({ "@_path": `/images/${filename}`, "#text": description });
+                parts.push(`\`/images/${filename}\``);
             }
         }
 
         let prompt = parts.join("").trim();
         if (!prompt) return;
 
-        prompt = `<user_input>${prompt}</user_input>`
-        prompt = [
-            builder.build({
+        prompt = `<user_input>\n${prompt}\n</user_input>`
+
+        if (images.length > 0) {
+            const reminder = builder.build({
                 "system_reminder": {
                     "#text": "由于模型不支持图像输入，下面是对话中对应图像的文字描述。\n",
                     "image": images
                 }
-            }).trim(),
-            prompt.trim(),
-        ].join("\n\n");
+            }).trim();
+            prompt = [reminder, prompt].join("\n\n");
+        }
 
         console.log(`收到消息: ${prompt}`);
 
