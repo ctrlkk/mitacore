@@ -128,6 +128,7 @@ export class Agent<TContext> {
         ...this.fullMessages,
       ],
       tools: openaiTools.length > 0 ? openaiTools : undefined,
+      reasoning_effort: "xhigh",
     })
 
     const choice = response.choices[0]

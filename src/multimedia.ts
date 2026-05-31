@@ -1,4 +1,3 @@
-import type { ChatCompletionMessageParam } from "openai/resources";
 import { createHash } from "node:crypto";
 import { cache } from "./utils/cache";
 import { env } from "node:process";
@@ -10,7 +9,7 @@ const IMAGE_SYSTEM_PROMPT = `你是一位专业的视觉分析师，负责将输
 - 严禁臆测：如果图像模糊，严禁虚构细节；如果画面中没有某物，严禁编造其存在。
 - 你的分析必须基于实际存在的像素内容进行深度解析。
 
-部分内容可能包含无法通过描述结构来表述的含义，这类内容需增加解读。
+部分内容可能包含无法通过描述结构来表述的含义，这类内容需增加解读。例如一些梗图、表情图等。
 
 你的工作流程如下：
 1. 场景类型识别：首先自动判断图像的主要类型（例如：摄影照片、数字插画、用户界面截图、图表文档或素描草图等）。
