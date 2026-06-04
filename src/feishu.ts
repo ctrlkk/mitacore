@@ -7,7 +7,8 @@ import OpenAI from "openai";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import systemPrompt1 from "../prompts/米拉.md";
 import systemPrompt2 from "../prompts/善良米塔.md";
-import systemPrompt3 from "../prompts/帽子米塔.md";
+// import systemPrompt3 from "../prompts/帽子米塔.md";
+import systemPrompt3 from "../prompts/贤惠幼妻仙狐小姐.md";
 import dayjs from "dayjs";
 import { Mutex } from "async-mutex";
 import { resolve } from "path";
@@ -48,7 +49,8 @@ const bots = [
   {
     appId: env.FEISHU_BOT3_APP_ID || "",
     appSecret: env.FEISHU_BOT3_APP_SECRET || "",
-    name: "帽子米塔",
+    // name: "帽子米塔",
+    name: "贤惠幼妻仙狐小姐",
     prompt: systemPrompt3,
   }
 ];
@@ -105,9 +107,9 @@ bots.forEach(async ({ appId, appSecret, name, prompt }, index) => {
 
     buffer.length = 0;
 
-    const openai = new OpenAI({
-      apiKey: process.env.DEEPSEEK_API_KEY,
-      baseURL: "https://new.mitacore.fun/v1",
+    const client = new OpenAI({
+        apiKey: env.OPENAI_API_KEY,
+        baseURL: env.OPENAI_API_BASE,
     });
 
     const messages = await loadHistory(name);
@@ -120,12 +122,14 @@ bots.forEach(async ({ appId, appSecret, name, prompt }, index) => {
       content: message,
     });
 
-    const response = await openai.chat.completions.create({
+    console.log("开始调用 OpenAI API");
+    const response = await client.chat.completions.create({
       model: "deepseek-v4-flash",
       temperature: 1.2,
       reasoning_effort: 'xhigh',
       messages: messages,
     });
+    console.log("OpenAI API 调用完成");
 
     const choice = response.choices[0]!;
     // @ts-ignore

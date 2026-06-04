@@ -176,6 +176,7 @@ async function summary(fullMessages: ChatCompletionMessageParam[]) {
         ],
     });
     const summaryText = completion.choices[0]?.message.content || "";
+    console.log("摘要:", summaryText);
     await saveHistory("chat", [{ role: "user", content: `<summary>${summaryText}</summary>` }]);
 }
 
@@ -215,6 +216,31 @@ async function main() {
                 return;
             }
         }
+
+        const rawText = segments
+            .filter(seg => seg.type === "text")
+            .map(seg => seg.data.text)
+            .join("")
+            .trim();
+
+        if (rawText === "/summary" && event.sender.user_id === 2870245624) {
+            const release = await mutex.acquire();
+            try {
+                await ctx.reply("正在摘要...");
+                const messages = await loadHistory("chat");
+                await summary(messages);
+                await ctx.reply("摘要完成");
+            }
+            catch (error) {
+                console.error(`主动摘要失败: ${error}`);
+                await ctx.reply(`摘要失败: ${error}`);
+            }
+            finally {
+                release();
+            }
+            return;
+        }
+
         const unified = await convertOneBotToUnified(
             segments,
             async (qq) => {
@@ -266,7 +292,7 @@ async function main() {
 
             const agent = new Agent({
                 client,
-                model: "deepseek-v4-pro",
+                model: "deepseek-v4-flash",
                 systemPrompt: [systemPrompt.trim(), stickerPrompt.trim()].join("\n\n"),
                 messages,
                 temperature: 2,
@@ -275,10 +301,10 @@ async function main() {
                 maxSteps: 5,
             });
 
-            const { fullMessages, usage } = await agent.run(async ({ choice }) => {
-                console.log(choice.message.reasoning_content);
-                console.log(choice.message.content);
-                console.log(usage);
+            const { fullMessages, usage } = await agent.run(async ({ choice, usage }) => {
+                console.log("推理内容:", choice.message.reasoning_content);
+                console.log("助手响应:", choice.message.content);
+                console.log("usage:", usage);
                 if (choice.message.content) {
                     const parts = await parseMarkdown(choice.message.content);
                     for (const part of parts) {
@@ -295,6 +321,7 @@ async function main() {
                         }
                     }
                 }
+                console.log("对话完成");
             });
 
             await saveHistory("chat", fullMessages);

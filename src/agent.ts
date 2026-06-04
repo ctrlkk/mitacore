@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import OpenAI from 'openai'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import { type Tool, type ToolExecutionOptions } from './tool.js'
@@ -27,9 +26,6 @@ interface AgentConfig<TContext> {
 }
 
 export class Agent<TContext> {
-  /** Agent 唯一标识符 */
-  readonly id = randomUUID()
-  
   /** Agent 是否已完成执行 */
   private completed = false
   
@@ -143,7 +139,7 @@ export class Agent<TContext> {
     this.internalMessages.push(message)
 
     // 处理对话完成的情况
-    if (choice.finish_reason === 'stop') {
+    if (choice.finish_reason !== 'tool_calls') {
       this.completed = true
       this.running = false
       yield { choice, usage: response.usage }

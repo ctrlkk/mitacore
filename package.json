@@ -3,6 +3,9 @@
   "module": "src/index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "mimo:tts": "bun run examples/mimo-tts-voiceclone.ts"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/ws": "^8.18.1",

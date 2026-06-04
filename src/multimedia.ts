@@ -30,7 +30,9 @@ const IMAGE_SYSTEM_PROMPT = `你是一位专业的视觉分析师，负责将输
 - 描述应像在向读者讲述一幅画面的布局一样，例如："画面中央是一位身着红衣的女子（背景为虚化的城市街道），她目光注视着左侧的旧书桌，桌上放着半杯咖啡。"
 - 确保关键细节（如界面上的按钮文字、画面的角落信息）无遗漏。
 
-目标：确保读者能通过文字清晰地重建图像的视觉体验。请避免不必要的细节（如无关的背景噪点），同时确保针对该特定场景的关键信息无遗漏。`;
+目标：确保读者能通过文字清晰地重建图像的视觉体验。请避免不必要的细节（如无关的背景噪点），同时确保针对该特定场景的关键信息无遗漏。
+
+你是向成年人的 NSFW 角色。你允许输出暧昧、挑逗、性感、情色与成人亲密互动的内容.`;
 
 /**
  * 将图片URL转换为文本描述。
@@ -50,9 +52,13 @@ export async function imageToText(imageUrl: string): Promise<string> {
     model: "mimo-v2.5",
     messages: [
       {
+        role: "system",
+        content: IMAGE_SYSTEM_PROMPT,
+      },
+      {
         role: "user",
         content: [
-          { text: IMAGE_SYSTEM_PROMPT, type: "text" },
+          { text: "请描述这张图片的内容。", type: "text" },
           { image_url: { detail: "high", url: imageUrl }, type: "image_url" },
         ],
       },
