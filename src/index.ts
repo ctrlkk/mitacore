@@ -212,7 +212,7 @@ const imageGenerationTool = tool({
     description: "根据输入的描述生成图像，当需要视觉内容创作时使用。",
     inputSchema: z.object({
         prompt: z.string().describe("用于生成图像的提示词内容"),
-        images: z.array(z.string()).describe("可选的用于图像生成的参考图，允许是已知的图片路径或URL"),
+        images: z.array(z.string()).describe("可选的用于图像生成的参考图，可以是已知的图片路径（必须是绝对文件系统路径）或URL"),
     }),
     execute: async ({ prompt, images }) => {
         const form = new FormData();
