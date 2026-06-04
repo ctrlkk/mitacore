@@ -16,6 +16,8 @@ import summaryPrompt from "../prompts/summary.md";
 import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
 import { Mutex } from 'async-mutex';
+import { tool } from './tool';
+import z from 'zod';
 
 dayjs.locale('zh-cn');
 
@@ -193,6 +195,56 @@ async function cacheImage(url: string) {
     return { path: `/images/${filename}`, description };
 }
 
+async function loadImageBlob(ref: string): Promise<{ blob: Blob; filename: string }> {
+    if (ref.startsWith("/images/")) {
+        const name = ref.slice("/images/".length);
+        const buffer = await readFile(resolve(".cache", "images", name));
+        const ext = parse(name).ext.slice(1);
+        const mime = ext === "jpg" ? "jpeg" : ext;
+        return { blob: new Blob([buffer], { type: `image/${mime}` }), filename: name };
+    }
+    const blob = await download(ref);
+    const filename = parse(new URL(ref).pathname).base || "ref";
+    return { blob, filename };
+}
+
+const imageGenerationTool = tool({
+    description: "根据输入的描述生成图像，当需要视觉内容创作时使用。",
+    inputSchema: z.object({
+        prompt: z.string().describe("用于生成图像的提示词内容"),
+        images: z.array(z.string()).describe("可选的用于图像生成的参考图，允许是已知的图片路径或URL"),
+    }),
+    execute: async ({ prompt, images }) => {
+        const form = new FormData();
+        form.append("prompt", prompt);
+        for (const ref of images) {
+            const { blob, filename } = await loadImageBlob(ref);
+            form.append("images", blob, filename);
+        }
+        const response = await fetch("http://localhost:3000/generate", {
+            method: "POST",
+            body: form,
+        });
+        if (!response.ok) {
+            throw new Error(`图像生成失败: ${response.status} ${await response.text()}`);
+        }
+        const { urls } = await response.json() as { urls: string[] };
+        const dir = resolve(".cache", "images");
+        await mkdir(dir, { recursive: true });
+        const paths: string[] = [];
+        for (const url of urls) {
+            const blob = await download(url);
+            const buffer = Buffer.from(await blob.bytes());
+            const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 5);
+            const ext = extension(blob.type) || "png";
+            const filename = `${hash}.${ext}`;
+            await writeFile(resolve(dir, filename), buffer);
+            paths.push(`/images/${filename}`);
+        }
+        return `已生成 ${paths.length} 张图像，路径如下，可使用 Markdown 图片语法 \`![](path)\` 引用：\n${paths.join("\n")}`;
+    }
+});
+
 async function main() {
     const bot = new SnowLumaWebSocketClient({
         url: 'ws://127.0.0.1:3001/',
@@ -296,7 +348,9 @@ async function main() {
                 systemPrompt: [systemPrompt.trim(), stickerPrompt.trim()].join("\n\n"),
                 messages,
                 temperature: 2,
-                tools: {},
+                tools: {
+                    ImageGeneration: imageGenerationTool,
+                },
                 context: null,
                 maxSteps: 5,
             });
