@@ -9,15 +9,15 @@ import { env } from 'node:process';
 import { Agent } from './agent';
 import { imageToText } from './multimedia';
 import { parseMarkdown, renderStickers } from './images';
+import { Mutex } from 'async-mutex';
+import { tool } from './tool';
+import { z } from 'zod';
 import OpenAI from 'openai';
 import XMLBuilder from 'fast-xml-builder';
 import systemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
 import summaryPrompt from "../prompts/summary.md";
 import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
-import { Mutex } from 'async-mutex';
-import { tool } from './tool';
-import z from 'zod';
 
 dayjs.locale('zh-cn');
 
@@ -257,7 +257,7 @@ async function main() {
     bot.onMessage(async (event, ctx) => {
         const segments = event.message as unknown as MessageSegment[];
         if (event.message_type === "group") {
-            if (event.group_id !== 761178785) {
+            if (event.group_id !== 761178785 && event.group_id !== 976782057) {
                 return;
             }
             const isAtBot = segments.some(seg => seg.type === "at" && seg.data.qq === "2790285434");
