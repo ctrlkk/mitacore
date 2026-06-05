@@ -1,5 +1,5 @@
 import type { ChatCompletionMessageParam } from 'openai/resources';
-import { raw, SnowLumaWebSocketClient } from '@snowluma/sdk';
+import { OneBotClient } from './onebot/onebot-client';
 import { readFile, mkdir, writeFile, readdir } from 'node:fs/promises';
 import { resolve, parse, join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -18,50 +18,9 @@ import systemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
 import summaryPrompt from "../prompts/summary.md";
 import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
+import type { OneBotMessageSegment } from './onebot/websocket-client';
 
 dayjs.locale('zh-cn');
-
-interface TextSegment {
-    type: "text";
-    data: { text: string };
-}
-
-interface ImageSegment {
-    type: "image";
-    data: { file: string; file_size?: number | string; url: string };
-}
-
-interface VideoSegment {
-    type: "video";
-    data: { file: string; file_size?: number | string; url: string };
-}
-
-interface RecordSegment {
-    type: "record";
-    data: { file: string; file_size?: number | string; url: string };
-}
-
-interface AtSegment {
-    type: "at";
-    data: { qq: string };
-}
-
-interface FaceSegment {
-    type: "face";
-    data: Record<string, unknown>;
-}
-
-interface ReplySegment {
-    type: "reply";
-    data: { id: string };
-}
-
-interface FileSegment {
-    type: "file";
-    data: { file: string; file_name?: string; file_size?: number | string; url?: string };
-}
-
-type MessageSegment = TextSegment | ImageSegment | VideoSegment | RecordSegment | AtSegment | FaceSegment | ReplySegment | FileSegment;
 
 interface UnifiedTextMessage {
     type: "text";
@@ -86,9 +45,9 @@ interface UnifiedReplyMessage {
 type UnifiedInboundMessage = UnifiedTextMessage | UnifiedAtMessage | UnifiedImageMessage | UnifiedReplyMessage;
 
 async function convertOneBotToUnified(
-    segments: MessageSegment[],
+    segments: OneBotMessageSegment[],
     getNickname: (qq: number) => Promise<string | null | undefined>,
-    getMessage: (id: number) => Promise<{ userId: number; message: MessageSegment[] } | null>,
+    getMessage: (id: number) => Promise<{ userId: number; message: OneBotMessageSegment[] } | null>,
 ): Promise<UnifiedInboundMessage[]> {
     const messages: UnifiedInboundMessage[] = [];
     for (const seg of segments) {
@@ -246,7 +205,7 @@ const imageGenerationTool = tool({
 });
 
 async function main() {
-    const bot = new SnowLumaWebSocketClient({
+    const bot = new OneBotClient({
         url: 'ws://127.0.0.1:3001/',
         accessToken: 'your_token',
         reconnect: true,
@@ -255,7 +214,9 @@ async function main() {
     const mutex = new Mutex();
 
     bot.onMessage(async (event, ctx) => {
-        const segments = event.message as unknown as MessageSegment[];
+        const segments = event.message;
+        if (typeof segments === "string") return;
+
         if (event.message_type === "group") {
             if (event.group_id !== 761178785 && event.group_id !== 976782057) {
                 return;
@@ -298,14 +259,14 @@ async function main() {
             async (qq) => {
                 if (event.message_type === "group") {
                     const { nickname } = await ctx.client.getGroupMemberInfo(Number(event.group_id), qq);
-                    return nickname as string;
+                    return nickname;
                 }
                 const { nickname } = await ctx.client.getStrangerInfo(qq);
-                return nickname as string;
+                return nickname;
             },
             async (id) => {
                 const { user_id, message } = await ctx.client.getMessage(Number(id));
-                return { userId: user_id as number, message: message as unknown as MessageSegment[] };
+                return { userId: user_id, message: message };
             },
         );
         const { parts, images } = await convertUnifiedToLlm(unified);
