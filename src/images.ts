@@ -1,11 +1,21 @@
 import { readFile } from 'node:fs/promises';
 import { resolve, parse } from 'node:path';
 import { marked, type Token } from 'marked';
-import { raw } from '@snowluma/sdk';
 import { readdir } from 'node:fs/promises';
 import XMLBuilder from 'fast-xml-builder';
 
-type MessagePart = string | ReturnType<typeof raw>;
+interface ImagePart {
+    type: 'image';
+    data: {
+        file: string;
+        url: string;
+        sub_type?: number;
+        summary?: string;
+        [key: string]: unknown;
+    };
+}
+
+type MessagePart = string | ImagePart;
 
 // 定义极简的中间数据结构
 interface SimpleNode {
@@ -40,7 +50,7 @@ function flattenTokens(tokens: Token[]): SimpleNode[] {
 /**
  * 辅助函数：处理单个图片的解析与读取
  */
-async function resolveImage(href: string, alt?: string): Promise<ReturnType<typeof raw> | null> {
+async function resolveImage(href: string, alt?: string): Promise<ImagePart | null> {
     // 1. 处理贴纸
     if (href.startsWith('sticker:')) {
         let stickerId = href.slice('sticker:'.length);
@@ -50,22 +60,22 @@ async function resolveImage(href: string, alt?: string): Promise<ReturnType<type
             const buffer = await readFile(stickerPath);
             const ext = parse(stickerId).ext.slice(1);
             const mime = ext === 'jpg' ? 'jpeg' : ext;
+            const url = `data:image/${mime};base64,${buffer.toString('base64')}`;
             const summary = alt ? `[${alt.slice(0, 20)}]` : undefined;
-            return raw("image", {
-                url: `data:image/${mime};base64,${buffer.toString('base64')}`,
-                sub_type: 1,
-                summary: summary,
-            });
+            return {
+                type: 'image',
+                data: { file: url, url, sub_type: 1, summary },
+            };
         } catch {
             return null;
         }
-    } 
-    
+    }
+
     // 2. 处理网络图片
     if (/^https?:\/\//i.test(href)) {
-        return raw("image", { url: href });
-    } 
-    
+        return { type: 'image', data: { file: href, url: href } };
+    }
+
     // 3. 处理本地缓存图片
     if (href.startsWith('/images/')) {
         const filename = href.slice('/images/'.length);
@@ -74,14 +84,13 @@ async function resolveImage(href: string, alt?: string): Promise<ReturnType<type
             const buffer = await readFile(imagePath);
             const ext = parse(filename).ext.slice(1);
             const mime = ext === 'jpg' ? 'jpeg' : ext;
-            return raw("image", {
-                url: `data:image/${mime};base64,${buffer.toString('base64')}`,
-            });
+            const url = `data:image/${mime};base64,${buffer.toString('base64')}`;
+            return { type: 'image', data: { file: url, url } };
         } catch {
             return null;
         }
     }
-    
+
     return null;
 }
 
