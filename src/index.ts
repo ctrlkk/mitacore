@@ -406,7 +406,15 @@ async function main() {
             .join("")
             .trim();
 
-        if (rawText === "/summary" && event.sender.user_id === 2870245624) {
+        const isMaster = event.sender.user_id === 2870245624;
+
+        if (rawText === "/ping" && isMaster) {
+            const latency = Date.now() - event.time * 1000;
+            await ctx.reply(`pong (${latency}ms)`);
+            return;
+        }
+
+        if (rawText === "/summary" && isMaster) {
             const release = await mutex.acquire();
             try {
                 await ctx.reply("正在摘要...");
@@ -445,7 +453,7 @@ async function main() {
             nickname: event.sender.nickname,
             date: dayjs(event.time * 1000).format('YYYY-MM-DD dddd HH:mm'),
             ctx,
-            isMaster: event.sender.user_id === 2870245624,
+            isMaster,
         });
         
         worker();
