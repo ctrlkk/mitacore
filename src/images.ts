@@ -15,7 +15,7 @@ interface ImagePart {
     };
 }
 
-type MessagePart = string | ImagePart;
+export type MessagePart = string | ImagePart;
 
 // 定义极简的中间数据结构
 interface SimpleNode {
