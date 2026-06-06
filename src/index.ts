@@ -4,7 +4,7 @@ import { OneBotClient, type OneBotEventContext } from './onebot/onebot-client';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, parse } from 'node:path';
 import { createHash } from 'node:crypto';
-import { extension } from 'mime-types';
+import { extension, lookup } from 'mime-types';
 import { download } from './utils/blob';
 import { env } from 'node:process';
 import { Agent } from './agent';
@@ -224,31 +224,29 @@ async function summary(fullMessages: ChatCompletionMessageParam[]) {
     await saveHistory("chat", [{ role: "user", content: `<summary>${summaryText}</summary>` }]);
 }
 
-async function loadImageBlob(ref: string): Promise<{ blob: Blob; filename: string }> {
-    if (ref.startsWith("/images/")) {
-        const name = ref.slice("/images/".length);
-        const buffer = await readFile(resolve(".cache", "images", name));
-        const ext = parse(name).ext.slice(1);
-        const mime = ext === "jpg" ? "jpeg" : ext;
-        return { blob: new Blob([buffer], { type: `image/${mime}` }), filename: name };
-    }
-    const blob = await download(ref);
-    const filename = parse(new URL(ref).pathname).base || "ref";
-    return { blob, filename };
-}
-
 const imageGenerationTool = tool({
     description: "根据输入的描述生成图像，当需要视觉内容创作时使用。",
     inputSchema: z.object({
         prompt: z.string().describe("用于生成图像的提示词内容"),
-        images: z.array(z.string()).describe("可选的用于图像生成的参考图，可以是已知的图片路径（必须是绝对文件系统路径）或URL"),
+        images: z.array(z.string()).describe("可选的用于图像生成的参考图，必须是绝对文件系统路径"),
     }),
     execute: async ({ prompt, images }) => {
         const form = new FormData();
         form.append("prompt", prompt);
         for (const ref of images) {
-            const { blob, filename } = await loadImageBlob(ref);
-            form.append("images", blob, filename);
+            const mime = lookup(ref);
+            const mimes = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp"]);
+            if (!mime || !mimes.has(mime)) {
+                return `不支持该类型的图像文件：${ref}`;
+            }
+            let buffer: Buffer;
+            try {
+                buffer = await readFile(ref);
+            } catch {
+                return `图片文件未找到: "${ref}"，可能不存在或已过期，请使用绝对文件系统路径或检查文件是否存在。`;
+            }
+            const filename = parse(ref).base;
+            form.append("images", new Blob([buffer], { type: mime }), filename);
         }
         const response = await fetch("http://localhost:3000/generate", {
             method: "POST",
@@ -279,15 +277,15 @@ async function runAgent(
     onReply: (chunk: MessagePart) => Promise<void> | void
 ): Promise<{ fullMessages: ChatCompletionMessageParam[]; usage: any }> {
     const messages = await loadHistory("chat");
-    const stickerPrompt = await renderStickers('stickers');
+    // const stickerPrompt = await renderStickers();
     messages.push({ role: "user", content: prompt });
 
     const agent = new Agent({
         client,
         model: "deepseek-v4-flash",
-        systemPrompt: [systemPrompt.trim(), stickerPrompt.trim()].join("\n\n"),
+        systemPrompt: [systemPrompt.trim()].join("\n\n"),
         messages,
-        temperature: 2,
+        temperature: 1.2,
         tools: { ImageGeneration: imageGenerationTool },
         context: null,
         maxSteps: 5,

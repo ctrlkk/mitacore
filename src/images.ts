@@ -130,7 +130,9 @@ async function convertToMessageParts(nodes: SimpleNode[]): Promise<MessagePart[]
 }
 
 /**
- * 主入口
+ * 解析 Markdown 内容为平台需要的消息数组
+ * @param content Markdown 内容
+ * @returns 平台需要的消息数组
  */
 export async function parseMarkdown(content: string): Promise<MessagePart[]> {
     const tokens = marked.lexer(content);
@@ -138,41 +140,42 @@ export async function parseMarkdown(content: string): Promise<MessagePart[]> {
     return convertToMessageParts(simpleNodes);
 }
 
-export async function renderStickers(stickersDir: string): Promise<string> {
+async function loadStickers(stickersDir: string): Promise<{ id: string; description: string }[]> {
     const files = await readdir(stickersDir);
     const pngFiles = files.filter(f => f.endsWith('.png')).sort();
-    const stickerList: Record<string, unknown>[] = [];
+    const stickers: { id: string; description: string }[] = [];
 
     for (const pngFile of pngFiles) {
         const baseName = parse(pngFile).name;
-        const txtFile = `${baseName}.txt`;
-        const txtPath = resolve(stickersDir, txtFile);
-
         try {
-            const description = (await readFile(txtPath, 'utf8')).trim();
-            stickerList.push({
-                '@_id': baseName,
-                '#text': description,
-            });
+            const description = (await readFile(resolve(stickersDir, `${baseName}.txt`), 'utf8')).trim();
+            stickers.push({ id: baseName, description });
         } catch { }
     }
 
-    const builder = new XMLBuilder({
-        format: true,
-        ignoreAttributes: false,
-    });
+    return stickers;
+}
 
+export async function renderStickers() {
+    const prompt = `你可以在回复中插入贴纸来增强情感表达，格式为标准 Markdown 图片语法：![alt](sticker:id)。
+- id 从工具返回的列表中选取，例如 ![开心](sticker:01)
+- alt 用简短的文字描述情绪
+
+使用原则：
+- 自然融入：贴纸应配合文字情绪，不要强行插入。
+- 先匹配：如果多个关键词都合适，选择最贴切当下情绪的一个。
+- 避免重复：连续多条回复中不要使用同一个 id。
+- 不滥用：只有当情绪有明显起伏（开心、害羞、疲惫、困惑等）时才使用。平淡的陈述或事实回答中不要加贴纸。
+- 频率控制：贴纸在对话中出现的概率需要控制在 20% 以下。
+
+贴纸是情绪的放大器，不是必填项。当文字本身已经足够表达时，不加贴纸。\n`
+    const stickers = await loadStickers('stickers');
+    const builder = new XMLBuilder({ format: true, ignoreAttributes: false });
     return builder.build({
         stickers: {
-            instructions: `你可以在回复中插入贴纸来增强情感表达。贴纸格式为标准的Markdown图片语法：![alt](sticker:id)，id从下方列表中选取（不包含扩展名，例如 ![开心](sticker:smile)）。
-使用原则:
-自然融入：贴纸应配合文字情绪，不要强行插入。
-先匹配：如果多个关键词都合适，选择最贴切当下情绪的一个。
-避免重复：连续多条回复中不要使用同一个关键词。
-不滥用：只有当情绪有明显起伏（开心、害羞、疲惫、困惑等）时才使用。平淡的陈述或事实回答中不要加贴纸。
-频率控制：贴纸在对话中出现的概率需要控制在20%以下。
-使用时只需记住：贴纸是情绪的放大器，不是必填项。 当文字本身已经足够表达时，不加贴纸。`,
-            sticker: stickerList
+            "#text": prompt,
+            "sticker": stickers.map(s => ({ '@_id': s.id, '#text': s.description })),
         }
     });
 }
+console.log(await renderStickers());
