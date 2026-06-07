@@ -1,4 +1,4 @@
-import type { ChatCompletionMessageParam } from 'openai/resources';
+import type { ModelMessage } from 'ai';
 import type { OneBotMessageEvent, OneBotMessageSegment } from './onebot/websocket-client';
 import { OneBotClient, type OneBotEventContext } from './onebot/onebot-client';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
@@ -7,13 +7,12 @@ import { createHash } from 'node:crypto';
 import { extension, lookup } from 'mime-types';
 import { download } from './utils/blob';
 import { env } from 'node:process';
-import { Agent } from './agent';
+import { Agent, toolDef } from './agent2';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { imageToText } from './multimedia';
 import { parseMarkdown, renderStickers, type MessagePart } from './images';
 import { Mutex } from 'async-mutex';
-import { tool } from './tool';
 import { z } from 'zod';
-import OpenAI from 'openai';
 import XMLBuilder from 'fast-xml-builder';
 import systemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
 import summaryPrompt from "../prompts/summary.md";
@@ -191,40 +190,41 @@ function renderBatchToPrompt(
     return finalPrompt;
 }
 
-async function loadHistory(name: string): Promise<ChatCompletionMessageParam[]> {
+async function loadHistory(name: string): Promise<ModelMessage[]> {
     try {
         const history = await readFile(resolve('.cache', `${name}.json`), 'utf8');
         return JSON.parse(history);
     } catch { return []; }
 }
 
-async function saveHistory(name: string, history: ChatCompletionMessageParam[]) {
+async function saveHistory(name: string, history: ModelMessage[]) {
     try {
         await mkdir(resolve('.cache'), { recursive: true });
         await writeFile(resolve('.cache', `${name}.json`), JSON.stringify(history, null, 2));
     } catch (error) { console.error(`保存历史记录失败: ${error}`); }
 }
 
-const client = new OpenAI({
-    apiKey: env.OPENAI_API_KEY,
-    baseURL: env.OPENAI_API_BASE,
+const provider = createAnthropic({
+    apiKey: env.ANTHROPIC_API_KEY,
+    baseURL: env.ANTHROPIC_API_BASE,
 });
+const model = provider('deepseek-v4-flash');
 
-async function summary(fullMessages: ChatCompletionMessageParam[]) {
-    const completion = await client.chat.completions.create({
-        model: "deepseek-v4-flash",
+async function summary(fullMessages: ModelMessage[]) {
+    const { generateText } = await import('ai');
+    const { text } = await generateText({
+        model,
+        system: systemPrompt,
         messages: [
-            { role: "system", content: systemPrompt },
             ...fullMessages,
-            { role: "user", name: "summary", content: `<system>${summaryPrompt}</system>` },
+            { role: "user", content: `<system>${summaryPrompt}</system>` },
         ],
     });
-    const summaryText = completion.choices[0]?.message.content || "";
-    console.log("摘要:", summaryText);
-    await saveHistory("chat", [{ role: "user", content: `<summary>${summaryText}</summary>` }]);
+    console.log("摘要:", text);
+    await saveHistory("chat", [{ role: "user", content: `<summary>${text}</summary>` }]);
 }
 
-const imageGenerationTool = tool({
+const imageGenerationTool = toolDef({
     description: "根据输入的描述生成图像，当需要视觉内容创作时使用。",
     inputSchema: z.object({
         prompt: z.string().describe("用于生成图像的提示词内容"),
@@ -273,30 +273,31 @@ const imageGenerationTool = tool({
 });
 
 async function runAgent(
-    prompt: string, 
+    prompt: string,
     onReply: (chunk: MessagePart) => Promise<void> | void
-): Promise<{ fullMessages: ChatCompletionMessageParam[]; usage: any }> {
+) {
     const messages = await loadHistory("chat");
-    // const stickerPrompt = await renderStickers();
-    messages.push({ role: "user", content: prompt });
 
     const agent = new Agent({
-        client,
-        model: "deepseek-v4-flash",
+        model,
         systemPrompt: [systemPrompt.trim()].join("\n\n"),
         messages,
-        temperature: 1.2,
         tools: { ImageGeneration: imageGenerationTool },
         context: null,
         maxSteps: 5,
+        params: {
+            temperature: 1.2,
+        },
     });
 
-    const { fullMessages, usage } = await agent.run(async ({ choice }) => {
-        console.log("推理内容: ", choice.message.reasoning_content);
-        console.log("助手响应: ", choice.message.content);
-        
-        if (choice.message.content) {
-            const parts = await parseMarkdown(choice.message.content);
+    const { messages: fullMessages, usage } = await agent.run(prompt, async (result) => {
+        if (result.reasoning) {
+            console.log("思维链: ", result.reasoning);
+        }
+        console.log("助手响应: ", result.text);
+
+        if (result.text) {
+            const parts = await parseMarkdown(result.text);
             for (const part of parts) {
                 if (typeof part === 'string') {
                     for (const line of part.split('\n')) {
@@ -308,10 +309,12 @@ async function runAgent(
                 }
             }
         }
-        console.log("对话完成");
+        if (!result.hasToolCalls) {
+            console.log("对话完成");
+        }
     });
 
-    return { fullMessages, usage };
+    return { messages: fullMessages, usage };
 }
 
 const queue: PendingMessage[] = [];
@@ -349,7 +352,7 @@ async function worker() {
                 
                 console.log(`处理批次 (共 ${batch.length} 条消息):\n${prompt}`);
                 
-                const { fullMessages, usage } = await runAgent(prompt, async (chunk) => {
+                const { messages: fullMessages, usage } = await runAgent(prompt, async (chunk) => {
                     await replyCtx.reply(chunk);
                     if (typeof chunk === 'string') {
                         await Bun.sleep(500);
@@ -357,9 +360,9 @@ async function worker() {
                         await Bun.sleep(1000);
                     }
                 });
-                
+
                 await saveHistory("chat", fullMessages);
-                if ((usage?.total_tokens || 0) >= 64000) {
+                if ((usage?.totalTokens || 0) >= 64000) {
                     await summary(fullMessages);
                 }
                 

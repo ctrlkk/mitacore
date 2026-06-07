@@ -178,4 +178,3 @@ export async function renderStickers() {
         }
     });
 }
-console.log(await renderStickers());
