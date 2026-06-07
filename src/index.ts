@@ -1,4 +1,4 @@
-import type { ModelMessage } from 'ai';
+import type { LanguageModelUsage, ModelMessage } from 'ai';
 import type { OneBotMessageEvent, OneBotMessageSegment } from './onebot/websocket-client';
 import { OneBotClient, type OneBotEventContext } from './onebot/onebot-client';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
@@ -6,11 +6,12 @@ import { resolve, parse } from 'node:path';
 import { createHash } from 'node:crypto';
 import { extension, lookup } from 'mime-types';
 import { download } from './utils/blob';
+import { cache } from './utils/cache';
 import { env } from 'node:process';
 import { Agent, toolDef } from './agent2';
-import { createAnthropic } from '@ai-sdk/anthropic';
+import { createDeepSeek } from '@ai-sdk/deepseek';
 import { imageToText } from './multimedia';
-import { parseMarkdown, renderStickers, type MessagePart } from './images';
+import { parseMarkdown, type MessagePart } from './images';
 import { Mutex } from 'async-mutex';
 import { z } from 'zod';
 import XMLBuilder from 'fast-xml-builder';
@@ -204,9 +205,9 @@ async function saveHistory(name: string, history: ModelMessage[]) {
     } catch (error) { console.error(`保存历史记录失败: ${error}`); }
 }
 
-const provider = createAnthropic({
-    apiKey: env.ANTHROPIC_API_KEY,
-    baseURL: env.ANTHROPIC_API_BASE,
+const provider = createDeepSeek({
+    apiKey: env.OPENAI_API_KEY,
+    baseURL: env.OPENAI_API_BASE,
 });
 const model = provider('deepseek-v4-flash');
 
@@ -228,7 +229,7 @@ const imageGenerationTool = toolDef({
     description: "根据输入的描述生成图像，当需要视觉内容创作时使用。",
     inputSchema: z.object({
         prompt: z.string().describe("用于生成图像的提示词内容"),
-        images: z.array(z.string()).describe("可选的用于图像生成的参考图，必须是绝对文件系统路径"),
+        images: z.array(z.string()).describe("可选的用于图像生成的参考图，必须是绝对文件系统路径").default([]),
     }),
     execute: async ({ prompt, images }) => {
         const form = new FormData();
@@ -272,27 +273,29 @@ const imageGenerationTool = toolDef({
     }
 });
 
-async function runAgent(
-    prompt: string,
-    onReply: (chunk: MessagePart) => Promise<void> | void
-) {
+async function runAgent(prompt: string, onReply: (chunk: MessagePart) => Promise<void>) {
     const messages = await loadHistory("chat");
 
     const agent = new Agent({
         model,
-        systemPrompt: [systemPrompt.trim()].join("\n\n"),
+        systemPrompt: systemPrompt.trim(),
         messages,
         tools: { ImageGeneration: imageGenerationTool },
         context: null,
         maxSteps: 5,
         params: {
-            temperature: 1.2,
+            temperature: 1,
         },
     });
 
     const { messages: fullMessages, usage } = await agent.run(prompt, async (result) => {
         if (result.reasoning) {
             console.log("思维链: ", result.reasoning);
+        }
+        if (result.hasToolCalls) {
+            for (const tc of result.toolCalls) {
+                console.log("调用工具: ", tc.toolName, JSON.stringify(tc.input));
+            }
         }
         console.log("助手响应: ", result.text);
 
@@ -362,6 +365,7 @@ async function worker() {
                 });
 
                 await saveHistory("chat", fullMessages);
+                await cache.set("usage", usage);
                 if ((usage?.totalTokens || 0) >= 64000) {
                     await summary(fullMessages);
                 }
@@ -430,6 +434,20 @@ async function main() {
             finally {
                 release();
             }
+            return;
+        }
+
+        if (rawText === "/usage") {
+            const u = await cache.get<LanguageModelUsage>("usage");
+            const fmt = (v: number | undefined) => (v ?? 0).toLocaleString();
+            await ctx.reply([
+                `┌ 输入 ${fmt(u?.inputTokens)}`,
+                `│  ├ 缓存读 ${fmt(u?.inputTokenDetails?.cacheReadTokens)}`,
+                `│  └ 缓存写 ${fmt(u?.inputTokenDetails?.cacheWriteTokens)}`,
+                `├ 输出 ${fmt(u?.outputTokens)}`,
+                `│  └ 推理 ${fmt(u?.outputTokenDetails?.reasoningTokens)}`,
+                `└ 总计 ${fmt(u?.totalTokens)}`,
+            ].join('\n'));
             return;
         }
 

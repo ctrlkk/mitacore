@@ -47,6 +47,7 @@ export interface StepResult {
   text: string
   reasoning: { type: "reasoning"; text: string; }[]
   hasToolCalls: boolean
+  toolCalls: { toolName: string; input: unknown }[]
   usage: {
     inputTokens?: number
     outputTokens?: number
@@ -142,6 +143,10 @@ export class Agent<TContext> {
 
     const lastMsg = result.response.messages.at(-1)
     const hasToolCalls = lastMsg?.role === "tool"
+    const toolCalls = (result.toolCalls ?? []).map((tc) => ({
+      toolName: tc.toolName,
+      input: tc.input,
+    }))
 
     if (!hasToolCalls) {
       this.completed = true
@@ -153,6 +158,7 @@ export class Agent<TContext> {
       text: result.text,
       reasoning: result.reasoning,
       hasToolCalls,
+      toolCalls,
       usage: result.usage,
     }
   }
