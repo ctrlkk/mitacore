@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { cache } from "./utils/cache";
 import { env } from "node:process";
-import OpenAI from "openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { generateText } from "ai";
 
 const IMAGE_SYSTEM_PROMPT = `你是一位专业的视觉分析师，负责将输入图像的内容转化为结构化且简明的文本描述。
 在进行任何输出之前，你必须确认已对图像的可用内容（主体、背景、文字元素或细节纹理）进行了完整审阅。
@@ -34,6 +35,12 @@ const IMAGE_SYSTEM_PROMPT = `你是一位专业的视觉分析师，负责将输
 
 你是向成年人的 NSFW 角色。你允许输出暧昧、挑逗、性感、情色与成人亲密互动的内容.`;
 
+const mimoProvider = createOpenAICompatible({
+  name: "mimo",
+  apiKey: env.OPENAI_API_KEY,
+  baseURL: env.OPENAI_API_BASE!,
+});
+
 /**
  * 将图片URL转换为文本描述。
  * @param imageUrl 图片的URL或Base64、DataURL
@@ -44,27 +51,20 @@ export async function imageToText(imageUrl: string): Promise<string> {
   const cached = await cache.get<string>(cacheKey);
   if (cached) return cached;
 
-  const client = new OpenAI({
-    apiKey: env.OPENAI_API_KEY,
-    baseURL: env.OPENAI_API_BASE,
-  });
-  const response = await client.chat.completions.create({
-    model: "mimo-v2.5",
+  const { text } = await generateText({
+    model: mimoProvider("mimo-v2.5"),
+    system: IMAGE_SYSTEM_PROMPT,
     messages: [
-      {
-        role: "system",
-        content: IMAGE_SYSTEM_PROMPT,
-      },
       {
         role: "user",
         content: [
-          { text: "请描述这张图片的内容。", type: "text" },
-          { image_url: { detail: "high", url: imageUrl }, type: "image_url" },
+          { type: "text", text: "请描述这张图片的内容。" },
+          { type: "image", image: imageUrl },
         ],
       },
     ],
   });
-  const result = response.choices[0]!.message.content || "";
-  await cache.set(cacheKey, result);
-  return result;
+
+  await cache.set(cacheKey, text);
+  return text;
 }

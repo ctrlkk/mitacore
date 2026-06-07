@@ -17,6 +17,7 @@
     "@ai-sdk/anthropic": "^3.0.81",
     "@ai-sdk/deepseek": "^2.0.35",
     "@ai-sdk/openai": "^3.0.68",
+    "@ai-sdk/openai-compatible": "^2.0.48",
     "@anthropic-ai/sdk": "^0.100.1",
     "@larksuiteoapi/node-sdk": "^1.62.1",
     "@types/mime-types": "^3.0.1",

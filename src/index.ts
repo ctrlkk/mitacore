@@ -1,4 +1,4 @@
-import type { LanguageModelUsage, ModelMessage } from 'ai';
+import { generateText, type LanguageModel, type LanguageModelUsage, type ModelMessage } from 'ai';
 import type { OneBotMessageEvent, OneBotMessageSegment } from './onebot/websocket-client';
 import { OneBotClient, type OneBotEventContext } from './onebot/onebot-client';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
@@ -8,7 +8,8 @@ import { extension, lookup } from 'mime-types';
 import { download } from './utils/blob';
 import { cache } from './utils/cache';
 import { env } from 'node:process';
-import { Agent, toolDef } from './agent2';
+import { Agent } from './agent2';
+import { tool } from './tool';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { imageToText } from './multimedia';
 import { parseMarkdown, type MessagePart } from './images';
@@ -211,21 +212,23 @@ const provider = createDeepSeek({
 });
 const model = provider('deepseek-v4-flash');
 
-async function summary(fullMessages: ModelMessage[]) {
-    const { generateText } = await import('ai');
-    const { text } = await generateText({
+async function summary(model: LanguageModel, systemPrompt: string, fullMessages: ModelMessage[], tools: Record<string, any>) {
+    const { text, usage } = await generateText({
         model,
         system: systemPrompt,
+        temperature: 1,
+        tools,
         messages: [
             ...fullMessages,
             { role: "user", content: `<system>${summaryPrompt}</system>` },
         ],
     });
     console.log("摘要:", text);
+    console.log("usage:", usage);
     await saveHistory("chat", [{ role: "user", content: `<summary>${text}</summary>` }]);
 }
 
-const imageGenerationTool = toolDef({
+const imageGenerationTool = tool({
     description: "根据输入的描述生成图像，当需要视觉内容创作时使用。",
     inputSchema: z.object({
         prompt: z.string().describe("用于生成图像的提示词内容"),
@@ -278,7 +281,7 @@ async function runAgent(prompt: string, onReply: (chunk: MessagePart) => Promise
 
     const agent = new Agent({
         model,
-        systemPrompt: systemPrompt.trim(),
+        systemPrompt,
         messages,
         tools: { ImageGeneration: imageGenerationTool },
         context: null,
@@ -367,7 +370,7 @@ async function worker() {
                 await saveHistory("chat", fullMessages);
                 await cache.set("usage", usage);
                 if ((usage?.totalTokens || 0) >= 64000) {
-                    await summary(fullMessages);
+                    await summary(model, systemPrompt, fullMessages, { ImageGeneration: imageGenerationTool });
                 }
                 
             } catch (error) {
@@ -424,7 +427,7 @@ async function main() {
             try {
                 await ctx.reply("正在摘要...");
                 const messages = await loadHistory("chat");
-                await summary(messages);
+                await summary(model, systemPrompt, messages, { ImageGeneration: imageGenerationTool });
                 await ctx.reply("摘要完成");
             }
             catch (error) {
@@ -445,7 +448,8 @@ async function main() {
                 `│  ├ 缓存读 ${fmt(u?.inputTokenDetails?.cacheReadTokens)}`,
                 `│  └ 缓存写 ${fmt(u?.inputTokenDetails?.cacheWriteTokens)}`,
                 `├ 输出 ${fmt(u?.outputTokens)}`,
-                `│  └ 推理 ${fmt(u?.outputTokenDetails?.reasoningTokens)}`,
+                `│  ├ 推理 ${fmt(u?.outputTokenDetails?.reasoningTokens)}`,
+                `│  └ 正文 ${fmt(u?.outputTokenDetails?.textTokens)}`,
                 `└ 总计 ${fmt(u?.totalTokens)}`,
             ].join('\n'));
             return;
