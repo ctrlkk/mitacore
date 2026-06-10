@@ -292,17 +292,16 @@ async function runAgent(prompt: string, onReply: (chunk: MessagePart) => Promise
     });
 
     const { messages: fullMessages, usage } = await agent.run(prompt, async (result) => {
-        if (result.reasoning) {
-            console.log("思维链: ", result.reasoning);
-        }
         if (result.hasToolCalls) {
             for (const tc of result.toolCalls) {
                 console.log("调用工具: ", tc.toolName, JSON.stringify(tc.input));
             }
         }
-        console.log("助手响应: ", result.text);
+        if (result.reasoning) console.log("内部思考:", result.reasoning);
+        if (result.text) console.log("助手响应: ", result.text);
 
         if (result.text) {
+            // const text = result.text.replace(/<inner>[\s\S]*?<\/inner>/g, '').trim();
             const parts = await parseMarkdown(result.text);
             for (const part of parts) {
                 if (typeof part === 'string') {
@@ -474,7 +473,7 @@ async function main() {
         queue.push({
             unifiedMessages: unified,
             nickname: event.sender.nickname,
-            date: dayjs(event.time * 1000).format('YYYY-MM-DD dddd HH:mm'),
+            date: dayjs(event.time * 1000).format('MM-DD dddd HH:mm'),
             ctx,
             isMaster,
         });

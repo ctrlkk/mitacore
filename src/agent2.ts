@@ -25,6 +25,7 @@ export interface GenerateParams {
   maxOutputTokens?: number
   presencePenalty?: number
   frequencyPenalty?: number
+  providerOptions?: Record<string, any>
 }
 
 /**
@@ -137,6 +138,7 @@ export class Agent<TContext> {
       maxOutputTokens: params.maxOutputTokens,
       presencePenalty: params.presencePenalty,
       frequencyPenalty: params.frequencyPenalty,
+      providerOptions: params.providerOptions,
     })
 
     this.internalMessages.push(...result.response.messages)
