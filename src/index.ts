@@ -8,7 +8,7 @@ import { extension, lookup } from 'mime-types';
 import { download } from './utils/blob';
 import { cache } from './utils/cache';
 import { env } from 'node:process';
-import { Agent } from './agent2';
+import { Agent } from './agent';
 import { tool } from './tool';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { imageToText } from './multimedia';

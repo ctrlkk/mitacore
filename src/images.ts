@@ -140,15 +140,15 @@ export async function parseMarkdown(content: string): Promise<MessagePart[]> {
     return convertToMessageParts(simpleNodes);
 }
 
-async function loadStickers(stickersDir: string): Promise<{ id: string; description: string }[]> {
-    const files = await readdir(stickersDir);
+async function loadStickers(): Promise<{ id: string; description: string }[]> {
+    const files = await readdir(resolve('references', 'stickers'));
     const pngFiles = files.filter(f => f.endsWith('.png')).sort();
     const stickers: { id: string; description: string }[] = [];
 
     for (const pngFile of pngFiles) {
         const baseName = parse(pngFile).name;
         try {
-            const description = (await readFile(resolve(stickersDir, `${baseName}.txt`), 'utf8')).trim();
+            const description = (await readFile(resolve('references', 'stickers', `${baseName}.txt`), 'utf8')).trim();
             stickers.push({ id: baseName, description });
         } catch { }
     }
@@ -169,7 +169,7 @@ export async function renderStickers() {
 - 频率控制：贴纸在对话中出现的概率需要控制在 20% 以下。
 
 贴纸是情绪的放大器，不是必填项。当文字本身已经足够表达时，不加贴纸。\n`
-    const stickers = await loadStickers('stickers');
+    const stickers = await loadStickers();
     const builder = new XMLBuilder({ format: true, ignoreAttributes: false });
     return builder.build({
         stickers: {
