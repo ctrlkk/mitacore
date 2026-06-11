@@ -33,7 +33,7 @@ export interface GenerateParams {
  */
 export interface AgentConfig<TContext> {
   model: LanguageModel
-  systemPrompt: string
+  systemPrompt?: string
   messages?: ModelMessage[]
   tools?: Record<string, ToolDef<any, TContext>>
   context: TContext
