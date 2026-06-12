@@ -79,41 +79,6 @@ export interface OneBotSender {
     [key: string]: unknown;
 }
 
-export interface OneBotStrangerInfo {
-    user_id: number;
-    nickname: string;
-    sex: 'male' | 'female' | 'unknown' | string;
-    age: number;
-    qid?: string;
-    level?: number;
-    login_days?: number;
-    [key: string]: unknown;
-}
-
-export interface OneBotLoginInfo {
-    user_id: number;
-    nickname: string;
-}
-
-export interface OneBotGroupMemberInfo {
-    group_id: number;
-    user_id: number;
-    nickname: string;
-    card: string;
-    sex: 'male' | 'female' | 'unknown' | string;
-    age: number;
-    area: string;
-    join_time: number;
-    last_sent_time: number;
-    level: string;
-    role: 'owner' | 'admin' | 'member' | string;
-    unfriendly: boolean;
-    title: string;
-    title_expire_time: number;
-    card_changeable: boolean;
-    [key: string]: unknown;
-}
-
 export interface OneBotPrivateMessageEvent extends OneBotBaseEvent {
     post_type: 'message' | 'message_sent';
     message_type: 'private';
@@ -137,18 +102,6 @@ export interface OneBotGroupMessageEvent extends OneBotBaseEvent {
     raw_message: string;
     font: number;
     sender: OneBotSender;
-}
-
-export interface OneBotMessageInfo {
-    time: number;
-    message_type: 'private' | 'group' | string;
-    message_id: number;
-    user_id: number;
-    real_id?: number;
-    sender: OneBotSender;
-    message: OneBotMessageSegment[];
-    raw_message?: string;
-    [key: string]: unknown;
 }
 
 export type OneBotMessageEvent = OneBotPrivateMessageEvent | OneBotGroupMessageEvent;

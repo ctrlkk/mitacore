@@ -5,18 +5,16 @@ import {
     type OneBotApiParams,
     type OneBotEvent,
     type OneBotGroupMessageEvent,
-    type OneBotGroupMemberInfo,
     type OneBotMessage,
     type OneBotMessageEvent,
-    type OneBotMessageInfo,
+    type OneBotMessageSegment,
     type OneBotMetaEvent,
     type OneBotNoticeEvent,
     type OneBotPrivateMessageEvent,
     type OneBotRequestEvent,
-    type OneBotStrangerInfo,
+    type OneBotSender,
     type OneBotWebSocketClientOptions,
     type RequestOptions,
-    type OneBotLoginInfo,
 } from './websocket-client';
 
 type MessageInput = OneBotMessage;
@@ -31,6 +29,70 @@ export type EventPredicate<TEvent extends OneBotEvent = OneBotEvent> = (event: O
 export type EventHandler<TEvent extends OneBotEvent = OneBotEvent> = (event: TEvent, ctx: OneBotEventContext<TEvent>) => MaybePromise;
 /** 事件中间件，调用 next 将事件传递给下一个中间件 */
 export type EventMiddleware = (event: OneBotEvent, ctx: OneBotEventContext, next: EventNext) => MaybePromise;
+
+/** AI 角色信息 */
+export interface AiCharacterInfo {
+    character_id: string;
+    character_name: string;
+    preview_url: string;
+}
+
+/** AI 角色分组 */
+export interface AiCharacterGroup {
+    type: string;
+    characters: AiCharacterInfo[];
+}
+
+/** 陌生人信息 */
+export interface OneBotStrangerInfo {
+    user_id: number;
+    nickname: string;
+    sex: 'male' | 'female' | 'unknown' | string;
+    age: number;
+    qid?: string;
+    level?: number;
+    login_days?: number;
+    [key: string]: unknown;
+}
+
+/** 登录号信息 */
+export interface OneBotLoginInfo {
+    user_id: number;
+    nickname: string;
+}
+
+/** 群成员信息 */
+export interface OneBotGroupMemberInfo {
+    group_id: number;
+    user_id: number;
+    nickname: string;
+    card: string;
+    sex: 'male' | 'female' | 'unknown' | string;
+    age: number;
+    area: string;
+    join_time: number;
+    last_sent_time: number;
+    level: string;
+    role: 'owner' | 'admin' | 'member' | string;
+    unfriendly: boolean;
+    title: string;
+    title_expire_time: number;
+    card_changeable: boolean;
+    [key: string]: unknown;
+}
+
+/** 历史消息信息 */
+export interface OneBotMessageInfo {
+    time: number;
+    message_type: 'private' | 'group' | string;
+    message_id: number;
+    user_id: number;
+    real_id?: number;
+    sender: OneBotSender;
+    message: OneBotMessageSegment[];
+    raw_message?: string;
+    [key: string]: unknown;
+}
 
 /** 请求处理选项（审批/拒绝） */
 export interface RequestDecisionOptions extends RequestOptions {
@@ -175,6 +237,16 @@ export class OneBotClient {
             approve: options.approve,
             reason: options.reason,
         }, options as RequestOptions);
+    }
+
+    /** 获取 AI 角色列表 */
+    getAiCharacters(params: { group_id: string; chat_type?: string | number }, options?: RequestOptions): Promise<AiCharacterGroup[]> {
+        return this.call<AiCharacterGroup[]>('get_ai_characters', params, options);
+    }
+
+    /** 调用 AI 语音引擎获取指定文本的语音 URL */
+    getAiRecord(params: { character: string; group_id: string; text: string }, options?: RequestOptions): Promise<string> {
+        return this.call<string>('get_ai_record', params, options);
     }
 
     /** 注册事件中间件，返回取消注册的函数 */
