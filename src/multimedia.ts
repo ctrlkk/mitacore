@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-import { cache } from "./utils/cache";
 import { env } from "node:process";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText } from "ai";
@@ -47,10 +45,6 @@ const mimoProvider = createOpenAICompatible({
  * @returns 返回一个Promise，解析为图片的文本描述
  */
 export async function imageToText(imageUrl: string): Promise<string> {
-  const cacheKey = `img:${createHash("sha256").update(imageUrl).digest("hex")}`;
-  const cached = await cache.get<string>(cacheKey);
-  if (cached) return cached;
-
   const { text } = await generateText({
     model: mimoProvider("mimo-v2.5"),
     system: IMAGE_SYSTEM_PROMPT,
@@ -64,7 +58,5 @@ export async function imageToText(imageUrl: string): Promise<string> {
       },
     ],
   });
-
-  await cache.set(cacheKey, text);
   return text;
 }

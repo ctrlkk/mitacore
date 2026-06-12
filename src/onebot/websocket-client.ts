@@ -90,6 +90,11 @@ export interface OneBotStrangerInfo {
     [key: string]: unknown;
 }
 
+export interface OneBotLoginInfo {
+    user_id: number;
+    nickname: string;
+}
+
 export interface OneBotGroupMemberInfo {
     group_id: number;
     user_id: number;
@@ -384,6 +389,10 @@ export class OneBotWebSocketClient {
         return this.call<OneBotMessageInfo>('get_msg', {
             message_id: messageId,
         }, options);
+    }
+
+    getLoginInfo(options?: RequestOptions) {
+        return this.call<OneBotLoginInfo>('get_login_info', {}, options);
     }
 
     private async handleMessage(event: MessageEvent) {

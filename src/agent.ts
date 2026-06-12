@@ -1,4 +1,4 @@
-import { generateText, tool, type ModelMessage, type LanguageModel, type ToolExecutionOptions } from "ai"
+import { generateText, tool, type ModelMessage, type LanguageModel, type ToolExecutionOptions, type LanguageModelUsage } from "ai"
 import { z, type ZodType } from "zod"
 
 /**
@@ -49,16 +49,7 @@ export interface StepResult {
   reasoning: { type: "reasoning"; text: string; }[]
   hasToolCalls: boolean
   toolCalls: { toolName: string; input: unknown }[]
-  usage: {
-    inputTokens?: number
-    outputTokens?: number
-    totalTokens?: number,
-    inputTokenDetails?: {
-      noCacheTokens?: number;
-      cacheReadTokens?: number;
-      cacheWriteTokens?: number;
-    },
-  }
+  usage?: LanguageModelUsage,
 }
 
 /**
@@ -99,7 +90,7 @@ export class Agent<TContext> {
       this.internalMessages.push({ role: "user", content: userMessage })
     }
 
-    let lastUsage: StepResult["usage"] = {}
+    let lastUsage: StepResult["usage"] = undefined
     while (!this.done()) {
       const result = await this.step()
       await onStep?.(result)

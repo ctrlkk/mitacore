@@ -14,6 +14,7 @@ import {
     type OneBotStrangerInfo,
     type OneBotWebSocketClientOptions,
     type RequestOptions,
+    type OneBotLoginInfo,
 } from './websocket-client';
 
 type MessageInput = Parameters<OneBotWebSocketClient['sendPrivateMessage']>[1];
@@ -110,6 +111,10 @@ export class OneBotClient {
 
     getStrangerInfo(userId: number, options?: RequestOptions & { noCache?: boolean }): Promise<OneBotStrangerInfo> {
         return this.ws.getStrangerInfo(userId, options);
+    }
+
+    getLoginInfo(options?: RequestOptions): Promise<OneBotLoginInfo> {
+        return this.ws.getLoginInfo(options);
     }
 
     getMessage(messageId: number, options?: RequestOptions): Promise<OneBotMessageInfo> {
