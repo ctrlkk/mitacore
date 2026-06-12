@@ -1,10 +1,12 @@
 import {
     OneBotWebSocketClient,
+    normalizeMessage,
     type ApiResponse,
     type OneBotApiParams,
     type OneBotEvent,
     type OneBotGroupMessageEvent,
     type OneBotGroupMemberInfo,
+    type OneBotMessage,
     type OneBotMessageEvent,
     type OneBotMessageInfo,
     type OneBotMetaEvent,
@@ -17,20 +19,27 @@ import {
     type OneBotLoginInfo,
 } from './websocket-client';
 
-type MessageInput = Parameters<OneBotWebSocketClient['sendPrivateMessage']>[1];
+type MessageInput = OneBotMessage;
 
+/** 可能为 Promise 的联合类型 */
 export type MaybePromise<T = void> = T | Promise<T>;
+/** 中间件 next 函数 */
 export type EventNext = () => Promise<void>;
+/** 事件类型谓词 */
 export type EventPredicate<TEvent extends OneBotEvent = OneBotEvent> = (event: OneBotEvent) => event is TEvent;
+/** 事件处理器，接收事件和上下文 */
 export type EventHandler<TEvent extends OneBotEvent = OneBotEvent> = (event: TEvent, ctx: OneBotEventContext<TEvent>) => MaybePromise;
+/** 事件中间件，调用 next 将事件传递给下一个中间件 */
 export type EventMiddleware = (event: OneBotEvent, ctx: OneBotEventContext, next: EventNext) => MaybePromise;
 
+/** 请求处理选项（审批/拒绝） */
 export interface RequestDecisionOptions extends RequestOptions {
     approve?: boolean;
     reason?: string;
     subType?: string;
 }
 
+/** 事件上下文，在事件处理器中通过 ctx 访问 */
 export interface OneBotEventContext<TEvent extends OneBotEvent = OneBotEvent> {
     readonly event: TEvent;
     readonly client: OneBotClient;
@@ -42,6 +51,7 @@ export interface OneBotEventContext<TEvent extends OneBotEvent = OneBotEvent> {
     quickOperation(operation: OneBotApiParams, options?: RequestOptions): Promise<unknown>;
 }
 
+/** OneBot v11 业务客户端，基于 {@link OneBotWebSocketClient} 提供中间件事件系统和业务级 API */
 export class OneBotClient {
     readonly ws: OneBotWebSocketClient;
     private middlewares: EventMiddleware[] = [];
@@ -81,46 +91,74 @@ export class OneBotClient {
         return this.ws.onRaw(handler);
     }
 
+    /** 原始 API 调用（不检查 status/retcode），同 websocket request */
     request<TData = unknown>(action: string, params?: OneBotApiParams, options?: RequestOptions): Promise<ApiResponse<TData>> {
         return this.ws.request(action, params, options);
     }
 
+    /** API 调用（自动检查 status/retcode，失败抛 OneBotApiError） */
     call<TData = unknown>(action: string, params?: OneBotApiParams, options?: RequestOptions): Promise<TData> {
         return this.ws.call(action, params, options);
     }
 
+    /** 调用任意 OneBot action（同 call） */
     raw<TData = unknown>(action: string, params?: OneBotApiParams, options?: RequestOptions): Promise<TData> {
         return this.call(action, params, options);
     }
 
+    /** 调用任意 OneBot action，返回原始响应（同 request） */
     rawResponse<TData = unknown>(action: string, params?: OneBotApiParams, options?: RequestOptions): Promise<ApiResponse<TData>> {
         return this.request(action, params, options);
     }
 
+    /** 发送私聊消息，返回 message_id */
     sendPrivateMessage(userId: number, message: MessageInput, options?: RequestOptions & { autoEscape?: boolean }) {
-        return this.ws.sendPrivateMessage(userId, message, options);
+        return this.call<{ message_id: number }>('send_private_msg', {
+            user_id: userId,
+            message: normalizeMessage(message),
+            auto_escape: options?.autoEscape,
+        }, options);
     }
 
+    /** 发送群聊消息，返回 message_id */
     sendGroupMessage(groupId: number, message: MessageInput, options?: RequestOptions & { autoEscape?: boolean }) {
-        return this.ws.sendGroupMessage(groupId, message, options);
+        return this.call<{ message_id: number }>('send_group_msg', {
+            group_id: groupId,
+            message: normalizeMessage(message),
+            auto_escape: options?.autoEscape,
+        }, options);
     }
 
+    /** 获取群成员信息 */
     getGroupMemberInfo(groupId: number, userId: number, options?: RequestOptions & { noCache?: boolean }): Promise<OneBotGroupMemberInfo> {
-        return this.ws.getGroupMemberInfo(groupId, userId, options);
+        return this.call<OneBotGroupMemberInfo>('get_group_member_info', {
+            group_id: groupId,
+            user_id: userId,
+            no_cache: options?.noCache,
+        }, options);
     }
 
+    /** 获取陌生人信息 */
     getStrangerInfo(userId: number, options?: RequestOptions & { noCache?: boolean }): Promise<OneBotStrangerInfo> {
-        return this.ws.getStrangerInfo(userId, options);
+        return this.call<OneBotStrangerInfo>('get_stranger_info', {
+            user_id: userId,
+            no_cache: options?.noCache,
+        }, options);
     }
 
+    /** 获取当前登录号信息 */
     getLoginInfo(options?: RequestOptions): Promise<OneBotLoginInfo> {
-        return this.ws.getLoginInfo(options);
+        return this.call<OneBotLoginInfo>('get_login_info', {}, options);
     }
 
+    /** 获取历史消息 */
     getMessage(messageId: number, options?: RequestOptions): Promise<OneBotMessageInfo> {
-        return this.ws.getMessage(messageId, options);
+        return this.call<OneBotMessageInfo>('get_msg', {
+            message_id: messageId,
+        }, options);
     }
 
+    /** 处理好友请求 */
     setFriendAddRequest(flag: string, approve = true, options?: RequestOptions & { remark?: string }) {
         return this.call<null>('set_friend_add_request', {
             flag,
@@ -129,6 +167,7 @@ export class OneBotClient {
         }, options);
     }
 
+    /** 处理群请求 */
     setGroupAddRequest(flag: string, options: RequestDecisionOptions = {}) {
         return this.call<null>('set_group_add_request', {
             flag,
@@ -138,6 +177,7 @@ export class OneBotClient {
         }, options as RequestOptions);
     }
 
+    /** 注册事件中间件，返回取消注册的函数 */
     use(middleware: EventMiddleware) {
         this.middlewares.push(middleware);
         return () => {
@@ -146,6 +186,7 @@ export class OneBotClient {
         };
     }
 
+    /** 按条件注册事件处理器 */
     when<TEvent extends OneBotEvent>(predicate: EventPredicate<TEvent>, handler: EventHandler<TEvent>) {
         return this.use(async (event, ctx, next) => {
             if (predicate(event)) await handler(event, ctx as OneBotEventContext<TEvent>);
@@ -153,22 +194,27 @@ export class OneBotClient {
         });
     }
 
+    /** 注册所有事件处理器 */
     onEvent(handler: EventHandler<OneBotEvent>) {
         return this.when(isAnyEvent, handler);
     }
 
+    /** 注册消息事件处理器（私聊 + 群聊） */
     onMessage(handler: EventHandler<OneBotMessageEvent>) {
         return this.when(isMessageEvent, handler);
     }
 
+    /** 注册私聊消息处理器 */
     onPrivateMessage(handler: EventHandler<OneBotPrivateMessageEvent>) {
         return this.when(isPrivateMessageEvent, handler);
     }
 
+    /** 注册群聊消息处理器 */
     onGroupMessage(handler: EventHandler<OneBotGroupMessageEvent>) {
         return this.when(isGroupMessageEvent, handler);
     }
 
+    /** 注册通知事件处理器，可指定 notice_type 过滤 */
     onNotice(handler: EventHandler<OneBotNoticeEvent>): () => void;
     onNotice(type: string, handler: EventHandler<OneBotNoticeEvent>): () => void;
     onNotice(typeOrHandler: string | EventHandler<OneBotNoticeEvent>, handler?: EventHandler<OneBotNoticeEvent>) {
@@ -180,6 +226,7 @@ export class OneBotClient {
         return this.when(isNoticeEvent, typeOrHandler);
     }
 
+    /** 注册请求事件处理器，可指定 request_type 过滤 */
     onRequest(handler: EventHandler<OneBotRequestEvent>): () => void;
     onRequest(type: string, handler: EventHandler<OneBotRequestEvent>): () => void;
     onRequest(typeOrHandler: string | EventHandler<OneBotRequestEvent>, handler?: EventHandler<OneBotRequestEvent>) {
@@ -191,6 +238,7 @@ export class OneBotClient {
         return this.when(isRequestEvent, typeOrHandler);
     }
 
+    /** 注册 meta_event 处理器 */
     onMetaEvent(handler: EventHandler<OneBotMetaEvent>) {
         return this.when(isMetaEvent, handler);
     }

@@ -201,12 +201,18 @@ interface PendingRequest {
     timer: ReturnType<typeof setTimeout> | null;
 }
 
+/** OneBot API 调用返回非 ok/retcode!=0 时抛出的错误 */
 export class OneBotApiError extends Error {
     constructor(public response: ApiResponse) {
         super(response.wording || `OneBot API 调用失败：${response.retcode}`);
     }
 }
 
+/**
+ * OneBot v11 WebSocket 传输层客户端。
+ * 仅负责连接、收发原始数据、请求/响应匹配和事件分发。
+ * 业务级 API（如 sendPrivateMessage）请使用 {@link OneBotClient}。
+ */
 export class OneBotWebSocketClient {
     private url: string;
     private accessToken?: string;
@@ -237,36 +243,44 @@ export class OneBotWebSocketClient {
         return this.socket?.readyState === WebSocket.OPEN;
     }
 
+    /** 注册连接成功回调，返回取消注册的函数 */
     onOpen(handler: Handler<void>) {
         return addHandler(this.openHandlers, handler);
     }
 
+    /** 注册连接关闭回调 */
     onClose(handler: Handler<{ code: number; reason: string }>) {
         return addHandler(this.closeHandlers, handler);
     }
 
+    /** 注册异常回调 */
     onError(handler: Handler<unknown>) {
         return addHandler(this.errorHandlers, handler);
     }
 
+    /** 手动触发异常回调 */
     emitError(error: unknown) {
         emit(this.errorHandlers, error);
     }
 
+    /** 注册原始消息回调（JSON 字符串） */
     onRaw(handler: Handler<unknown>) {
         return addHandler(this.rawHandlers, handler);
     }
 
+    /** 注册 OneBot 事件回调 */
     onEvent(handler: Handler<OneBotEvent>) {
         return addHandler(this.eventHandlers, handler);
     }
 
+    /** 注册消息事件回调（私聊 + 群聊） */
     onMessage(handler: Handler<OneBotMessageEvent>) {
         return this.onEvent((event) => {
             if (isMessageEvent(event)) return handler(event);
         });
     }
 
+    /** 注册私聊消息回调 */
     onPrivateMessage(handler: Handler<OneBotPrivateMessageEvent>) {
         return this.onMessage((event) => {
             if (event.message_type === 'private') return handler(event);
@@ -279,6 +293,7 @@ export class OneBotWebSocketClient {
         });
     }
 
+    /** 构建 WebSocket 连接，可重复调用 */
     async connect() {
         if (this.isConnected) return;
         if (this.connectPromise) return this.connectPromise;
@@ -310,6 +325,7 @@ export class OneBotWebSocketClient {
         return this.connectPromise;
     }
 
+    /** 关闭连接，停止重连，拒绝所有未完成的请求 */
     close(code = 1000, reason = 'normal') {
         this.closedByUser = true;
         if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
@@ -320,6 +336,10 @@ export class OneBotWebSocketClient {
         this.connectPromise = null;
     }
 
+    /**
+     * 发送 OneBot API 请求，返回原始 ApiResponse（不检查 status/retcode）。
+     * 自动确保已连接。
+     */
     async request<TData = unknown>(action: string, params: OneBotApiParams = {}, options: RequestOptions = {}) {
         await this.connect();
 
@@ -348,51 +368,14 @@ export class OneBotWebSocketClient {
         return response;
     }
 
+    /**
+     * 发送 OneBot API 请求，返回 data 字段。
+     * status 不为 ok 或 retcode 不为 0 时抛出 {@link OneBotApiError}。
+     */
     async call<TData = unknown>(action: string, params: OneBotApiParams = {}, options?: RequestOptions) {
         const response = await this.request<TData>(action, params, options);
         if (response.status !== 'ok' || response.retcode !== 0) throw new OneBotApiError(response);
         return response.data;
-    }
-
-    sendPrivateMessage(userId: number, message: OneBotMessage, options?: RequestOptions & { autoEscape?: boolean }) {
-        return this.call<{ message_id: number }>('send_private_msg', {
-            user_id: userId,
-            message: normalizeMessage(message),
-            auto_escape: options?.autoEscape,
-        }, options);
-    }
-
-    sendGroupMessage(groupId: number, message: OneBotMessage, options?: RequestOptions & { autoEscape?: boolean }) {
-        return this.call<{ message_id: number }>('send_group_msg', {
-            group_id: groupId,
-            message: normalizeMessage(message),
-            auto_escape: options?.autoEscape,
-        }, options);
-    }
-
-    getGroupMemberInfo(groupId: number, userId: number, options?: RequestOptions & { noCache?: boolean }) {
-        return this.call<OneBotGroupMemberInfo>('get_group_member_info', {
-            group_id: groupId,
-            user_id: userId,
-            no_cache: options?.noCache,
-        }, options);
-    }
-
-    getStrangerInfo(userId: number, options?: RequestOptions & { noCache?: boolean }) {
-        return this.call<OneBotStrangerInfo>('get_stranger_info', {
-            user_id: userId,
-            no_cache: options?.noCache,
-        }, options);
-    }
-
-    getMessage(messageId: number, options?: RequestOptions) {
-        return this.call<OneBotMessageInfo>('get_msg', {
-            message_id: messageId,
-        }, options);
-    }
-
-    getLoginInfo(options?: RequestOptions) {
-        return this.call<OneBotLoginInfo>('get_login_info', {}, options);
     }
 
     private async handleMessage(event: MessageEvent) {
@@ -497,7 +480,8 @@ async function messageDataToString(data: unknown) {
     return String(data);
 }
 
-function normalizeMessage(message: OneBotMessage) {
+/** 将 OneBotMessage 统一转换为片段数组，供 API 调用时使用 */
+export function normalizeMessage(message: OneBotMessage) {
     if (typeof message === 'string') return message;
     if (isMessageChainLike(message)) return message.toSegments();
     return Array.isArray(message) ? message : [message];
