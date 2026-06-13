@@ -1,8 +1,9 @@
 import { generateText, type LanguageModel, type LanguageModelUsage, type ModelMessage } from 'ai';
 import type { OneBotMessageEvent, OneBotMessageSegment } from './onebot/websocket-client';
 import { OneBotClient, type OneBotEventContext } from './onebot/onebot-client';
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile, stat } from 'node:fs/promises';
 import { resolve, parse } from 'node:path';
+import { extractVideoId, resolveShortUrl, getVideoInfo, downloadBilibiliVideo } from './bilibili';
 import { createHash } from 'node:crypto';
 import { extension, lookup } from 'mime-types';
 import { download } from './utils/blob';
@@ -95,9 +96,14 @@ async function processImageAssets(urls: string[]) {
     try {
       const blob = await download(url);
       const buffer = Buffer.from(await blob.bytes());
-      const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 8);
+      const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 12);
+      const b58 = BigInt("0x" + hash);
+      const chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+      let encoded = "";
+      let n = b58;
+      while (n > 0n) { encoded = chars[Number(n % 58n)] + encoded; n /= 58n; }
       const ext = extension(blob.type) || "jpg";
-      const filename = `${hash}.${ext}`;
+      const filename = `${encoded.padStart(9, "0")}.${ext}`;
       const path = `/images/${filename}`;
       
       const dir = resolve(".cache", "images");
@@ -376,7 +382,67 @@ async function handleCommand(rawText: string, ctx: OneBotEventContext<OneBotMess
     return true;
   }
 
+  const biliMatch = rawText.match(/^\/bili\s+(.+)$/);
+  if (biliMatch && biliMatch[1]) {
+    await handleBiliLink(biliMatch[1].trim(), ctx);
+    return true;
+  }
+
   return false;
+}
+
+async function handleBiliLink(input: string, ctx: OneBotEventContext<OneBotMessageEvent>) {
+  try {
+    let resolvedInput = input;
+    if (input.includes("b23.tv") || input.includes("b23.wtf")) {
+      const realUrl = await resolveShortUrl(input);
+      if (!realUrl) {
+        await ctx.reply("无法解析b23.tv短链接");
+        return;
+      }
+      resolvedInput = realUrl;
+    }
+
+    const videoId = extractVideoId(resolvedInput);
+    if (!videoId) {
+      await ctx.reply("无法识别B站视频，请提供有效的BV号、AV号或B站视频链接");
+      return;
+    }
+
+    const info = await getVideoInfo(videoId.bvid);
+    const mins = Math.floor(info.duration / 60);
+    const secs = info.duration % 60;
+    await ctx.reply([
+      { type: "image", data: { file: info.pic, url: info.pic } },
+      { type: "text", data: { text: [
+        info.title,
+        `UP主: ${info.owner.name}`,
+        `时长: ${mins}:${secs.toString().padStart(2, '0')}`,
+        `分P: ${info.pages.length}`,
+        `正在下载...`,
+      ].join('\n') } },
+    ]);
+
+    const cacheDir = resolve(".cache", "bilibili");
+    await mkdir(cacheDir, { recursive: true });
+    const outputPath = resolve(cacheDir, `${videoId.bvid}.mp4`);
+
+    if (info.pages.length === 0) {
+      await ctx.reply("该视频没有可下载的分P");
+      return;
+    }
+
+    const exists = await stat(outputPath).then(() => true).catch(() => false);
+    if (!exists) {
+      await downloadBilibiliVideo(videoId.bvid, info.pages[0]!.cid, outputPath);
+    }
+
+    await ctx.reply({ type: "video", data: { file: outputPath, url: "", thumb: info.pic } });
+  }
+  catch (error: unknown) {
+    console.error("B站视频处理失败:", error);
+    await ctx.reply("B站视频处理失败");
+  }
 }
 
 async function main() {

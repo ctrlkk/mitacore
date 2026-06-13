@@ -25,7 +25,7 @@ interface SimpleNode {
 }
 
 /**
- * 职责一：将复杂的 AST 扁平化为简单的 text/image 数组
+ * 将复杂的 AST 扁平化为简单的 text/image 数组
  */
 function flattenTokens(tokens: Token[]): SimpleNode[] {
     const nodes: SimpleNode[] = [];
@@ -51,11 +51,11 @@ function flattenTokens(tokens: Token[]): SimpleNode[] {
  * 辅助函数：处理单个图片的解析与读取
  */
 async function resolveImage(href: string, alt?: string): Promise<ImagePart | null> {
-    // 1. 处理贴纸
+    // 处理贴纸
     if (href.startsWith('sticker:')) {
         let stickerId = href.slice('sticker:'.length);
         if (!parse(stickerId).ext) stickerId += '.png';
-        const stickerPath = resolve('stickers', stickerId);
+        const stickerPath = resolve('references', 'stickers', stickerId);
         try {
             const buffer = await readFile(stickerPath);
             const ext = parse(stickerId).ext.slice(1);
@@ -71,12 +71,12 @@ async function resolveImage(href: string, alt?: string): Promise<ImagePart | nul
         }
     }
 
-    // 2. 处理网络图片
+    // 处理网络图片
     if (/^https?:\/\//i.test(href)) {
         return { type: 'image', data: { file: href, url: href } };
     }
 
-    // 3. 处理本地缓存图片
+    // 处理本地缓存图片
     if (href.startsWith('/images/')) {
         const filename = href.slice('/images/'.length);
         const imagePath = resolve('.cache', 'images', filename);
@@ -95,7 +95,7 @@ async function resolveImage(href: string, alt?: string): Promise<ImagePart | nul
 }
 
 /**
- * 职责二：将简单数组转化为平台需要的消息数组
+ * 将简单数组转化为平台需要的消息数组
  */
 async function convertToMessageParts(nodes: SimpleNode[]): Promise<MessagePart[]> {
     const parts: MessagePart[] = [];
