@@ -26,10 +26,14 @@ const DATA = "FcwAPNKTMug3GV5Lj7EJnHpWsx4tb8haYeviqBz6rkCy12mSDQX9RdoZf";
  */
 export function bvid2aid(bvid: string): number {
   const chars = [...bvid];
-  const c3 = chars[3]!, c9 = chars[9]!;
-  chars[3] = c9; chars[9] = c3;
-  const c4 = chars[4]!, c7 = chars[7]!;
-  chars[4] = c7; chars[7] = c4;
+  const c3 = chars[3]!,
+    c9 = chars[9]!;
+  chars[3] = c9;
+  chars[9] = c3;
+  const c4 = chars[4]!,
+    c7 = chars[7]!;
+  chars[4] = c7;
+  chars[7] = c4;
   const trimmed = chars.slice(3);
   let tmp = 0n;
   for (const c of trimmed) {
@@ -53,9 +57,13 @@ export function aid2bvid(aid: number): string {
     tmp /= BigInt(BASE);
     bvIdx--;
   }
-  const c3 = bytes[3]!, c9 = bytes[9]!;
-  bytes[3] = c9; bytes[9] = c3;
-  const c4 = bytes[4]!, c7 = bytes[7]!;
-  bytes[4] = c7; bytes[7] = c4;
+  const c3 = bytes[3]!,
+    c9 = bytes[9]!;
+  bytes[3] = c9;
+  bytes[9] = c3;
+  const c4 = bytes[4]!,
+    c7 = bytes[7]!;
+  bytes[4] = c7;
+  bytes[7] = c4;
   return bytes.join("");
 }

@@ -26,20 +26,21 @@ function isAlnum(char: string): boolean {
 }
 
 function isEnglishLetter(char: string): boolean {
-  return char.toLowerCase() >= 'a' && char.toLowerCase() <= 'z';
+  return char.toLowerCase() >= "a" && char.toLowerCase() <= "z";
 }
 
 function getWesternRatio(paragraph: string): number {
   const chars = [...paragraph];
-  const alnumChars = chars.filter(c => isAlnum(c));
+  const alnumChars = chars.filter((c) => isAlnum(c));
   if (alnumChars.length === 0) return 0;
-  return alnumChars.filter(c => isEnglishLetter(c)).length / alnumChars.length;
+  return alnumChars.filter((c) => isEnglishLetter(c)).length / alnumChars.length;
 }
 
 // ── 颜文字保护 ────────────────────────────────────────────────
 
 function protectKaomoji(sentence: string): { text: string; mapping: Map<string, string> } {
-  const pattern = /([(\[（【][^()\[\]（）【】]*?[^\u4e00-\u9fa5a-zA-Z0-9\s][^()\[\]（）【】]*?[)\]）】])|([▼▽・ᴥω･﹏^><≧≦￣｀´∀ヮДд︿﹀へ｡ﾟ╥╯╰︶︹•⁄]{2,15})/g;
+  const pattern =
+    /([(\[（【][^()\[\]（）【】]*?[^\u4e00-\u9fa5a-zA-Z0-9\s][^()\[\]（）【】]*?[)\]）】])|([▼▽・ᴥω･﹏^><≧≦￣｀´∀ヮДд︿﹀へ｡ﾟ╥╯╰︶︹•⁄]{2,15})/g;
   const mapping = new Map<string, string>();
   let idx = 0;
   const text = sentence.replace(pattern, (match) => {
@@ -52,7 +53,7 @@ function protectKaomoji(sentence: string): { text: string; mapping: Map<string, 
 }
 
 function recoverKaomoji(sentences: string[], mapping: Map<string, string>): string[] {
-  return sentences.map(s => {
+  return sentences.map((s) => {
     for (const [placeholder, kaomoji] of mapping) {
       s = s.replaceAll(placeholder, kaomoji);
     }
@@ -63,9 +64,9 @@ function recoverKaomoji(sentences: string[], mapping: Map<string, string>): stri
 // ── 句子分割 ──────────────────────────────────────────────────
 
 function splitIntoSentences(text: string): string[] {
-  text = text.replace(/\n\s*\n+/g, '\n');
-  text = text.replace(/\n\s*([，,。;\s])/g, '\n$1');
-  text = text.replace(/([，,。;\s])\s*\n/g, '$1\n');
+  text = text.replace(/\n\s*\n+/g, "\n");
+  text = text.replace(/\n\s*([，,。;\s])/g, "\n$1");
+  text = text.replace(/([，,。;\s])\s*\n/g, "$1\n");
 
   const lenText = text.length;
   if (lenText < 3) {
@@ -73,19 +74,33 @@ function splitIntoSentences(text: string): string[] {
   }
 
   // 引号追踪
-  const quoteChars = new Set(['"', "'", '\u201c', '\u201d', '\u2018', '\u2019', '\u300c', '\u300d', '\u300e', '\u300f']);
+  const quoteChars = new Set([
+    '"',
+    "'",
+    "\u201c",
+    "\u201d",
+    "\u2018",
+    "\u2019",
+    "\u300c",
+    "\u300d",
+    "\u300e",
+    "\u300f",
+  ]);
   const insideQuote = new Array<boolean>(lenText).fill(false);
   let inQuote = false;
-  let currentQuoteChar = '';
+  let currentQuoteChar = "";
   for (let i = 0; i < lenText; i++) {
     const ch = text.charAt(i);
     if (quoteChars.has(ch)) {
       if (!inQuote) {
         inQuote = true;
         currentQuoteChar = ch;
-      } else if (ch === currentQuoteChar || ((ch === '"' || ch === "'") && (currentQuoteChar === '"' || currentQuoteChar === "'"))) {
+      } else if (
+        ch === currentQuoteChar ||
+        ((ch === '"' || ch === "'") && (currentQuoteChar === '"' || currentQuoteChar === "'"))
+      ) {
         inQuote = false;
-        currentQuoteChar = '';
+        currentQuoteChar = "";
       }
       insideQuote[i] = false;
     } else {
@@ -93,22 +108,22 @@ function splitIntoSentences(text: string): string[] {
     }
   }
 
-  const separators = new Set(['，', ',', ' ', '。', ';', '\n']);
+  const separators = new Set(["，", ",", " ", "。", ";", "\n"]);
   const segments: Array<{ content: string; sep: string }> = [];
-  let currentSegment = '';
+  let currentSegment = "";
 
   for (let i = 0; i < lenText; i++) {
     const char = text.charAt(i);
     if (separators.has(char)) {
       let canSplit = !insideQuote[i];
 
-      if (canSplit && char !== '\n') {
-        const prev = i > 0 ? text.charAt(i - 1) : '';
-        const next = i < lenText - 1 ? text.charAt(i + 1) : '';
-        if (prev === ':' || prev === '：') canSplit = false;
-        if (next === ':' || next === '：') canSplit = false;
-        if (canSplit && char === ' ' && i > 0 && i < lenText - 1) {
-          if (prev === '-' || prev === '—' || next === '-' || next === '—') {
+      if (canSplit && char !== "\n") {
+        const prev = i > 0 ? text.charAt(i - 1) : "";
+        const next = i < lenText - 1 ? text.charAt(i + 1) : "";
+        if (prev === ":" || prev === "：") canSplit = false;
+        if (next === ":" || next === "：") canSplit = false;
+        if (canSplit && char === " " && i > 0 && i < lenText - 1) {
+          if (prev === "-" || prev === "—" || next === "-" || next === "—") {
             canSplit = false;
           } else if (isAlnum(prev) && isAlnum(next)) {
             canSplit = false;
@@ -119,10 +134,10 @@ function splitIntoSentences(text: string): string[] {
       if (canSplit) {
         if (currentSegment) {
           segments.push({ content: currentSegment, sep: char });
-        } else if (char === ' ' || char === '\n') {
-          segments.push({ content: '', sep: char });
+        } else if (char === " " || char === "\n") {
+          segments.push({ content: "", sep: char });
         }
-        currentSegment = '';
+        currentSegment = "";
       } else {
         currentSegment += char;
       }
@@ -132,10 +147,10 @@ function splitIntoSentences(text: string): string[] {
   }
 
   if (currentSegment) {
-    segments.push({ content: currentSegment, sep: '' });
+    segments.push({ content: currentSegment, sep: "" });
   }
 
-  const filtered = segments.filter(s => s.content || s.sep);
+  const filtered = segments.filter((s) => s.content || s.sep);
   if (filtered.length === 0) return text ? [text] : [];
 
   // 根据长度计算合并概率
@@ -146,7 +161,7 @@ function splitIntoSentences(text: string): string[] {
   let idx = 0;
   while (idx < filtered.length) {
     const cur = filtered[idx]!;
-    if (idx + 1 < filtered.length && cur.content && cur.sep !== '\n' && Math.random() < mergeProbability) {
+    if (idx + 1 < filtered.length && cur.content && cur.sep !== "\n" && Math.random() < mergeProbability) {
       const next = filtered[idx + 1]!;
       if (next.content) {
         merged.push({ content: cur.content + cur.sep + next.content, sep: next.sep });
@@ -161,9 +176,9 @@ function splitIntoSentences(text: string): string[] {
   }
 
   return merged
-    .map(s => s.content)
-    .filter(s => s.trim())
-    .map(s => s.replace(/[^\S\r\n]*[\r\n]+[^\S\r\n]*/g, ' ').trim());
+    .map((s) => s.content)
+    .filter((s) => s.trim())
+    .map((s) => s.replace(/[^\S\r\n]*[\r\n]+[^\S\r\n]*/g, " ").trim());
 }
 
 // ── 合并 ──────────────────────────────────────────────────────
@@ -177,7 +192,7 @@ function mergeSentencesToMaxCount(sentences: string[], maxCount: number): string
     const remaining = total - start;
     const remainingGroups = maxCount - groupIdx;
     const groupSize = Math.ceil(remaining / remainingGroups);
-    result.push(sentences.slice(start, start + groupSize).join(''));
+    result.push(sentences.slice(start, start + groupSize).join(""));
     start += groupSize;
   }
   return result;
@@ -185,7 +200,7 @@ function mergeSentencesToMaxCount(sentences: string[], maxCount: number): string
 
 // ── 主入口 ────────────────────────────────────────────────────
 
-const DEFAULT_REPLIES = ['不知道哦', '不知道', '不晓得', '懒得说', '()'];
+const DEFAULT_REPLIES = ["不知道哦", "不知道", "不晓得", "懒得说", "()"];
 
 function getRandomDefaultReply(): string {
   return DEFAULT_REPLIES[Math.floor(Math.random() * DEFAULT_REPLIES.length)]!;
@@ -207,8 +222,8 @@ export function splitMessage(text: string, config: Partial<SplitterConfig> = {})
 
   // 2. 去除括号包裹的辅助信息（含中文的括号内容）
   const bracketPattern = /[(\[（](?=.*[\u4e00-\u9fff]).*?[)\]）]/g;
-  const cleanedText = protectedText.replace(bracketPattern, '');
-  if (!cleanedText.trim()) return ['呃呃'];
+  const cleanedText = protectedText.replace(bracketPattern, "");
+  if (!cleanedText.trim()) return ["呃呃"];
 
   // 3. 中文文本长度检查
   const maxLength = cfg.maxLength * 2;

@@ -1,15 +1,15 @@
-import { createCache } from 'cache-manager';
-import { Keyv } from 'keyv';
-import { existsSync, mkdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { Database as DatabaseSync } from 'bun:sqlite';
+import { createCache } from "cache-manager";
+import { Keyv } from "keyv";
+import { existsSync, mkdirSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { Database as DatabaseSync } from "bun:sqlite";
 
 class KeyvSqliteStore {
   private db: DatabaseSync;
   private initialized = false;
   private tableName: string;
 
-  constructor(db: DatabaseSync, tableName = 'keyv_cache') {
+  constructor(db: DatabaseSync, tableName = "keyv_cache") {
     this.db = db;
     this.tableName = tableName;
   }
@@ -22,9 +22,7 @@ class KeyvSqliteStore {
 
   delete(key: string) {
     this.init();
-    const stmt = this.db.prepare(
-      `DELETE FROM ${this.tableName} WHERE key = ?`,
-    );
+    const stmt = this.db.prepare(`DELETE FROM ${this.tableName} WHERE key = ?`);
     const result = stmt.run(key);
     return result.changes > 0;
   }
@@ -43,9 +41,7 @@ class KeyvSqliteStore {
   set(key: string, value: string, ttl?: number) {
     this.init();
     const expiresAt = ttl ? Date.now() + ttl : null;
-    const stmt = this.db.prepare(
-      `INSERT OR REPLACE INTO ${this.tableName} (key, value, expires_at) VALUES (?, ?, ?)`,
-    );
+    const stmt = this.db.prepare(`INSERT OR REPLACE INTO ${this.tableName} (key, value, expires_at) VALUES (?, ?, ?)`);
     stmt.run(key, value, expiresAt);
     return true;
   }
@@ -63,13 +59,13 @@ class KeyvSqliteStore {
   }
 }
 
-const dir = resolve('.cache', 'db');
+const dir = resolve(".cache", "db");
 if (!existsSync(dir)) {
   mkdirSync(dir, { recursive: true });
 }
 
-const kvDb = new DatabaseSync(join(dir, 'cache.db'));
-kvDb.exec('PRAGMA journal_mode = WAL');
+const kvDb = new DatabaseSync(join(dir, "cache.db"));
+kvDb.exec("PRAGMA journal_mode = WAL");
 
 const kv = new Keyv({
   store: new KeyvSqliteStore(kvDb),

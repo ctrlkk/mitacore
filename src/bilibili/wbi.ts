@@ -17,10 +17,9 @@ import { createHash } from "node:crypto";
  * 从 img_key + sub_key 的拼接字符串中，按此数组下标取字符
  */
 const MIXIN_KEY_ORDER = [
-  46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
-  27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 37, 12, 52, 56, 31,
-  7, 59, 59, 1, 51, 45, 29, 14, 4, 55, 29, 51, 50, 35, 24, 19,
-  26, 44, 22, 58, 5, 11, 36, 33, 48, 30, 35, 42, 45, 20, 54, 43,
+  46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 37, 12, 52, 56,
+  31, 7, 59, 59, 1, 51, 45, 29, 14, 4, 55, 29, 51, 50, 35, 24, 19, 26, 44, 22, 58, 5, 11, 36, 33, 48, 30, 35, 42, 45,
+  20, 54, 43,
 ];
 
 let cachedMixinKey: string | null = null;
@@ -35,7 +34,7 @@ async function getNav(credential?: string): Promise<any> {
     headers.Cookie = credential;
   }
   const resp = await fetch("https://api.bilibili.com/x/web-interface/nav", { headers });
-  const json = await resp.json() as any;
+  const json = (await resp.json()) as any;
   return json.data;
 }
 

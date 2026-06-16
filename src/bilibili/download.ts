@@ -59,7 +59,9 @@ function ffmpegMerge(videoPath: string, audioPath: string | null, outputPath: st
 
     const proc = spawn("ffmpeg", args, { stdio: "pipe" });
     let stderr = "";
-    proc.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
     proc.on("close", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-500)}`));
@@ -124,9 +126,7 @@ export async function downloadBilibiliVideo(
   if (videos.length === 0) throw new Error("No video stream available");
 
   const bestVideo = videos.reduce((a, b) => (a.quality > b.quality ? a : b));
-  const bestAudio = audios.length > 0
-    ? audios.reduce((a, b) => (a.quality > b.quality ? a : b))
-    : null;
+  const bestAudio = audios.length > 0 ? audios.reduce((a, b) => (a.quality > b.quality ? a : b)) : null;
 
   const videoTemp = getTempPath(".m4s");
   const audioTemp = bestAudio ? getTempPath(".m4s") : null;

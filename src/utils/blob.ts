@@ -1,4 +1,4 @@
-import { Buffer } from 'node:buffer';
+import { Buffer } from "node:buffer";
 
 /**
  * 将Base64字符串转换为Blob对象
@@ -6,7 +6,7 @@ import { Buffer } from 'node:buffer';
  * @param mimeType MIME类型，默认为 'application/octet-stream'
  * @returns 返回转换后的Blob对象
  */
-export function base64ToBlob(base64: string, mimeType: string = 'application/octet-stream'): Blob {
+export function base64ToBlob(base64: string, mimeType: string = "application/octet-stream"): Blob {
   // 解码Base64字符串
   const byteCharacters = atob(base64);
   const byteNumbers: number[] = Array.from({ length: byteCharacters.length });
@@ -27,7 +27,7 @@ export function base64ToBlob(base64: string, mimeType: string = 'application/oct
  */
 export async function blobToDataURL(blob: Blob): Promise<string> {
   const buffer = Buffer.from(await blob.bytes());
-  return `data:${blob.type};base64,${buffer.toString('base64')}`;
+  return `data:${blob.type};base64,${buffer.toString("base64")}`;
 }
 
 /**
@@ -36,9 +36,9 @@ export async function blobToDataURL(blob: Blob): Promise<string> {
  * @returns 返回转换后的Blob对象
  */
 export function dataURLToBlob(dataURL: string): Blob {
-  const arr = dataURL.split(',');
+  const arr = dataURL.split(",");
   const mime = arr[0]?.match(/:(.*?);/)![1];
-  const bstr = atob(arr[1] || '');
+  const bstr = atob(arr[1] || "");
   let n = bstr.length;
   const u8arr = new Uint8Array(n);
 
@@ -54,10 +54,7 @@ export function dataURLToBlob(dataURL: string): Blob {
  * @param url 链接
  * @returns 一个Blob对象
  */
-export async function download(
-  url: string,
-  option: { limit?: number } = {},
-): Promise<Blob> {
+export async function download(url: string, option: { limit?: number } = {}): Promise<Blob> {
   const limit = option.limit ?? 20 * 1024 * 1024;
 
   const response = await fetch(url);
@@ -65,10 +62,10 @@ export async function download(
     throw new Error(`HTTP error! status: ${response.status}`);
   }
   if (!response.body) {
-    throw new Error('空的响应体');
+    throw new Error("空的响应体");
   }
 
-  const contentType = response.headers.get('content-type') || undefined;
+  const contentType = response.headers.get("content-type") || undefined;
 
   const reader = response.body.getReader();
   const chunks: Uint8Array<ArrayBuffer>[] = [];
@@ -83,7 +80,7 @@ export async function download(
     receivedLength += value.length;
     if (receivedLength > limit) {
       await reader.cancel();
-      throw new Error('size limit');
+      throw new Error("size limit");
     }
   }
   return new Blob(chunks, { type: contentType });

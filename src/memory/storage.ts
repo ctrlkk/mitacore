@@ -1,6 +1,6 @@
-import { mkdir, readFile, writeFile, rm, readdir, stat } from 'node:fs/promises';
-import { resolve, dirname, relative, normalize } from 'node:path';
-import { glob } from 'glob';
+import { mkdir, readFile, writeFile, rm, readdir, stat } from "node:fs/promises";
+import { resolve, dirname, relative, normalize } from "node:path";
+import { glob } from "glob";
 
 export interface IMemoryStorage {
   read(path: string, offset: number, limit: number): Promise<string>;
@@ -11,9 +11,9 @@ export interface IMemoryStorage {
   grep(pattern: string, path: string | undefined, include: string | undefined, ignoreCase: boolean): Promise<string>;
 }
 
-const BASE_DIR = resolve(process.cwd(), '.cache/memory');
+const BASE_DIR = resolve(process.cwd(), ".cache/memory");
 const MAX_LINE_LENGTH = 2000;
-const MAX_LINE_SUFFIX = '...';
+const MAX_LINE_SUFFIX = "...";
 const MAX_MATCHES = 100;
 
 export class FsMemoryStorage implements IMemoryStorage {
@@ -22,10 +22,10 @@ export class FsMemoryStorage implements IMemoryStorage {
   }
 
   private getSafePath(path: string): string {
-    const normalized = normalize(path).replace(/\\/g, '/');
-    const fullPath = resolve(BASE_DIR, normalized.replace(/^\/+/, ''));
+    const normalized = normalize(path).replace(/\\/g, "/");
+    const fullPath = resolve(BASE_DIR, normalized.replace(/^\/+/, ""));
     if (!fullPath.startsWith(BASE_DIR)) {
-      throw new Error('非法路径：禁止目录穿越');
+      throw new Error("非法路径：禁止目录穿越");
     }
     return fullPath;
   }
@@ -38,72 +38,70 @@ export class FsMemoryStorage implements IMemoryStorage {
       if (s.isDirectory()) {
         const entries = await readdir(fullPath, { withFileTypes: true });
         if (entries.length === 0) return `目录 "${path}" 为空。`;
-        const items = entries.map(f => f.isDirectory() ? `${f.name}/` : f.name);
+        const items = entries.map((f) => (f.isDirectory() ? `${f.name}/` : f.name));
         const sliced = items.slice(offset, offset + limit);
         const truncated = offset + sliced.length < items.length;
         return [
           `<path>${path}</path>`,
           `<type>directory</type>`,
           `<entries>`,
-          sliced.join('\n'),
+          sliced.join("\n"),
           truncated
             ? `\n(结果截断：显示 ${sliced.length}/${items.length} 条，使用 offset 查看更多)`
             : `\n(${items.length} 条)`,
           `</entries>`,
-        ].join('\n');
+        ].join("\n");
       }
 
-      const content = await readFile(fullPath, 'utf-8');
-      const lines = content.split('\n');
+      const content = await readFile(fullPath, "utf-8");
+      const lines = content.split("\n");
       const sliced = lines.slice(offset, offset + limit);
-      if (sliced.length === 0) return '文件为空或超出范围。';
+      if (sliced.length === 0) return "文件为空或超出范围。";
 
-      const linePrefix = sliced.map((line, i) => {
-        const truncated = line.length > MAX_LINE_LENGTH
-          ? line.slice(0, MAX_LINE_LENGTH) + MAX_LINE_SUFFIX
-          : line;
-        return `${offset + i + 1}: ${truncated}`;
-      }).join('\n');
-      const endNote = offset + sliced.length >= lines.length
-        ? `\n(文件结束 - 共 ${lines.length} 行)`
-        : `\n(显示第 ${offset + 1}-${offset + sliced.length} 行，共 ${lines.length} 行)`;
-      return [
-        `<path>${path}</path>`,
-        `<type>file</type>`,
-        `<content>`,
-        linePrefix + endNote,
-        `</content>`,
-      ].join('\n');
+      const linePrefix = sliced
+        .map((line, i) => {
+          const truncated = line.length > MAX_LINE_LENGTH ? line.slice(0, MAX_LINE_LENGTH) + MAX_LINE_SUFFIX : line;
+          return `${offset + i + 1}: ${truncated}`;
+        })
+        .join("\n");
+      const endNote =
+        offset + sliced.length >= lines.length
+          ? `\n(文件结束 - 共 ${lines.length} 行)`
+          : `\n(显示第 ${offset + 1}-${offset + sliced.length} 行，共 ${lines.length} 行)`;
+      return [`<path>${path}</path>`, `<type>file</type>`, `<content>`, linePrefix + endNote, `</content>`].join("\n");
     } catch (e: any) {
-      if (e.code === 'ENOENT') return `错误：文件 "${path}" 不存在。`;
+      if (e.code === "ENOENT") return `错误：文件 "${path}" 不存在。`;
       throw e;
     }
   }
 
   async write(path: string, content: string, overwrite: boolean): Promise<string> {
     const fullPath = this.getSafePath(path);
-    const exists = await stat(fullPath).then(() => true).catch(() => false);
+    const exists = await stat(fullPath)
+      .then(() => true)
+      .catch(() => false);
     if (exists && !overwrite) {
       return `错误：文件 "${path}" 已存在。若要覆写，请设置 overwrite=true。`;
     }
     await mkdir(dirname(fullPath), { recursive: true });
-    await writeFile(fullPath, content, 'utf-8');
-    return '文件写入成功。';
+    await writeFile(fullPath, content, "utf-8");
+    return "文件写入成功。";
   }
 
   async edit(path: string, oldString: string, newString: string): Promise<string> {
     const fullPath = this.getSafePath(path);
     try {
-      const content = await readFile(fullPath, 'utf-8');
+      const content = await readFile(fullPath, "utf-8");
       const occurrences = content.split(oldString).length - 1;
       if (occurrences === 0) return `错误：在 "${path}" 中未找到 old_string。`;
-      if (occurrences > 1) return `错误：old_string 在 "${path}" 中匹配到 ${occurrences} 处，必须唯一。请提供更多上下文。`;
+      if (occurrences > 1)
+        return `错误：old_string 在 "${path}" 中匹配到 ${occurrences} 处，必须唯一。请提供更多上下文。`;
 
       const newContent = content.replace(oldString, newString);
-      await writeFile(fullPath, newContent, 'utf-8');
-      return '编辑成功。';
+      await writeFile(fullPath, newContent, "utf-8");
+      return "编辑成功。";
     } catch (e: any) {
-      if (e.code === 'ENOENT') return `错误：文件 "${path}" 不存在。`;
+      if (e.code === "ENOENT") return `错误：文件 "${path}" 不存在。`;
       throw e;
     }
   }
@@ -126,13 +124,13 @@ export class FsMemoryStorage implements IMemoryStorage {
     // 过滤越界路径，收集 mtime
     const entries: { path: string; mtime: number }[] = [];
     for (const file of files) {
-      const normalized = file.replace(/\\/g, '/');
-      const baseNormalized = BASE_DIR.replace(/\\/g, '/');
+      const normalized = file.replace(/\\/g, "/");
+      const baseNormalized = BASE_DIR.replace(/\\/g, "/");
       if (!normalized.startsWith(baseNormalized)) continue;
 
       try {
         const s = await stat(file);
-        const relPath = '/' + relative(BASE_DIR, file).replace(/\\/g, '/');
+        const relPath = "/" + relative(BASE_DIR, file).replace(/\\/g, "/");
         entries.push({ path: relPath, mtime: s.mtimeMs });
       } catch {}
     }
@@ -143,10 +141,10 @@ export class FsMemoryStorage implements IMemoryStorage {
     const truncated = entries.length > limit;
     const sliced = entries.slice(0, limit);
 
-    if (sliced.length === 0) return '未找到匹配的文件。';
+    if (sliced.length === 0) return "未找到匹配的文件。";
 
-    const output = sliced.map(e => e.path).join('\n');
-    return output + (truncated ? `\n(结果截断：显示前 ${limit} 条)` : '');
+    const output = sliced.map((e) => e.path).join("\n");
+    return output + (truncated ? `\n(结果截断：显示前 ${limit} 条)` : "");
   }
 
   async grep(
@@ -156,15 +154,15 @@ export class FsMemoryStorage implements IMemoryStorage {
     ignoreCase: boolean,
   ): Promise<string> {
     const searchDir = searchPath ? this.getSafePath(searchPath) : BASE_DIR;
-    const globPattern = include || '**/*';
+    const globPattern = include || "**/*";
     const files = await glob(globPattern, { cwd: searchDir, nodir: true, absolute: true });
 
     let regex: RegExp;
     try {
-      regex = new RegExp(pattern, ignoreCase ? 'gi' : 'g');
+      regex = new RegExp(pattern, ignoreCase ? "gi" : "g");
     } catch {
-      const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      regex = new RegExp(escaped, ignoreCase ? 'gi' : 'g');
+      const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      regex = new RegExp(escaped, ignoreCase ? "gi" : "g");
     }
 
     const fileMatches: { path: string; mtime: number; lines: { line: number; text: string }[] }[] = [];
@@ -173,14 +171,14 @@ export class FsMemoryStorage implements IMemoryStorage {
     for (const file of files) {
       if (totalCount >= MAX_MATCHES) break;
       // 越界检查
-      const normalized = file.replace(/\\/g, '/');
-      const baseNormalized = BASE_DIR.replace(/\\/g, '/');
+      const normalized = file.replace(/\\/g, "/");
+      const baseNormalized = BASE_DIR.replace(/\\/g, "/");
       if (!normalized.startsWith(baseNormalized)) continue;
 
       try {
-        const content = await readFile(file, 'utf-8');
-        const lines = content.split('\n');
-        const relPath = '/' + relative(BASE_DIR, file).replace(/\\/g, '/');
+        const content = await readFile(file, "utf-8");
+        const lines = content.split("\n");
+        const relPath = "/" + relative(BASE_DIR, file).replace(/\\/g, "/");
         const matched: { line: number; text: string }[] = [];
 
         for (let i = 0; i < lines.length; i++) {
@@ -206,7 +204,7 @@ export class FsMemoryStorage implements IMemoryStorage {
     // 按修改时间降序
     fileMatches.sort((a, b) => b.mtime - a.mtime);
 
-    if (fileMatches.length === 0) return '未找到匹配的内容。';
+    if (fileMatches.length === 0) return "未找到匹配的内容。";
 
     const output = [`找到 ${totalCount} 处匹配`];
     for (const fm of fileMatches) {
@@ -218,6 +216,6 @@ export class FsMemoryStorage implements IMemoryStorage {
     if (totalCount >= MAX_MATCHES) {
       output.push(`\n(结果截断：显示前 ${MAX_MATCHES} 条)`);
     }
-    return output.join('\n');
+    return output.join("\n");
   }
 }

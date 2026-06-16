@@ -19,7 +19,7 @@ async function apiGet(url: string, params: Record<string, any>, cookie?: string)
   const headers: Record<string, string> = { ...HEADERS };
   if (cookie) headers.Cookie = cookie;
   const resp = await fetch(`${url}?${qs}`, { headers });
-  const json = await resp.json() as any;
+  const json = (await resp.json()) as any;
   if (json.code !== 0) {
     throw new Error(`Bilibili API error: ${json.code} ${json.message}`);
   }
