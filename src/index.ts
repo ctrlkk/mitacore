@@ -2,23 +2,25 @@ import { generateText, type LanguageModel, type LanguageModelUsage, type ModelMe
 import type { OneBotMessageEvent, OneBotMessageSegment } from './onebot/websocket-client';
 import { OneBotClient, type OneBotEventContext } from './onebot/onebot-client';
 import { readFile, mkdir, writeFile, stat } from 'node:fs/promises';
-import { resolve, parse } from 'node:path';
+import { resolve } from 'node:path';
 import { extractVideoId, resolveShortUrl, getVideoInfo, downloadBilibiliVideo } from './bilibili';
 import { createHash } from 'node:crypto';
-import { extension, lookup } from 'mime-types';
+import { extension } from 'mime-types';
 import { download } from './utils/blob';
 import { cache } from './utils/cache';
 import { env } from 'node:process';
-import { Agent } from './agent';
+
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { imageToText } from './multimedia';
 import { parseMarkdown, type MessagePart } from './images';
-import { Mutex } from 'async-mutex';
-import { z } from 'zod';
+import { splitMessage } from './utils/message-splitter';
+import tools from './tool';
+
 import XMLBuilder from 'fast-xml-builder';
 import systemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
 import summaryPrompt from "../prompts/summary.md";
 import dayjs from 'dayjs';
+import bs58 from 'bs58';
 import 'dayjs/locale/zh-cn';
 
 dayjs.locale('zh-cn');
@@ -97,13 +99,9 @@ async function processImageAssets(urls: string[]) {
       const blob = await download(url);
       const buffer = Buffer.from(await blob.bytes());
       const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 12);
-      const b58 = BigInt("0x" + hash);
-      const chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-      let encoded = "";
-      let n = b58;
-      while (n > 0n) { encoded = chars[Number(n % 58n)] + encoded; n /= 58n; }
+      const encoded = bs58.encode(Buffer.from(hash, "hex"));
       const ext = extension(blob.type) || "jpg";
-      const filename = `${encoded.padStart(9, "0")}.${ext}`;
+      const filename = `${encoded}.${ext}`;
       const path = `/images/${filename}`;
       
       const dir = resolve(".cache", "images");
@@ -264,19 +262,22 @@ async function generateSummary(model: LanguageModel, sysPrompt: string, fullMess
 
 async function executeAgent(prompt: string, onReply: (chunk: MessagePart) => Promise<void>) {
   console.log("prompt: ", prompt);
-  const messages = await loadChatHistory("chat");
-  const agent = new Agent({
-    model,
-    systemPrompt,
-    messages,
-    tools: {},
-    context: null,
-    maxSteps: 5,
-    params: { temperature: 1 },
-  });
+  const history = await loadChatHistory("chat");
 
-  const { messages: fullMessages, usage } = await agent.run(prompt, async (result) => {
-    if (result.hasToolCalls) {
+  let messages: ModelMessage[] = [...history, { role: "user", content: prompt }];
+  let usage: LanguageModelUsage | undefined;
+
+  const maxSteps = 20;
+  for (let step = 0; step < maxSteps; step++) {
+    const result = await generateText({
+      model,
+      system: systemPrompt,
+      messages,
+      temperature: 1,
+      tools: { ...tools },
+    });
+
+    if (result.toolCalls.length > 0) {
       for (const tc of result.toolCalls) console.log("调用工具: ", tc.toolName, JSON.stringify(tc.input));
     }
     if (result.reasoning) console.log("内部思考: ", result.reasoning);
@@ -286,21 +287,26 @@ async function executeAgent(prompt: string, onReply: (chunk: MessagePart) => Pro
       const parts = await parseMarkdown(result.text);
       for (const part of parts) {
         if (typeof part === 'string') {
-          for (const line of part.split('\n')) {
-            if (!line.trim()) continue;
-            await onReply(line);
+          const segments = splitMessage(part);
+          for (const seg of segments) {
+            if (!seg.trim()) continue;
+            await onReply(seg);
+            await Bun.sleep(500);
           }
         }
         else {
           await onReply(part);
+          await Bun.sleep(1000);
         }
-        await Bun.sleep(typeof part === 'string' ? 500 : 1000);
       }
     }
-    if (!result.hasToolCalls) console.log("对话完成");
-  });
+    usage = result.usage;
+    messages = [...messages, ...result.response.messages];
 
-  return { messages: fullMessages, usage };
+    if (result.toolCalls.length === 0) break;
+  }
+
+  return { messages, usage };
 }
 
 const messageQueue: PendingMessage[] = [];
