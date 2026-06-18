@@ -1,12 +1,11 @@
 import { z } from "zod";
 import { tool } from "ai";
-import { parse, resolve } from "node:path";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
-import { lookup, extension } from "mime-types";
+import { parse } from "node:path";
+import { readFile } from "node:fs/promises";
+import { lookup } from "mime-types";
 import { download } from "./utils/blob";
 import { imageToText } from "./multimedia";
-import bs58 from "bs58";
+import { saveBufferToCache, isVirtualImagePath, virtualToRealPath } from "./utils/image-cache";
 
 const SUPPORTS_MULTIMODAL = false;
 
@@ -27,7 +26,7 @@ export default {
       const form = new FormData();
       form.append("prompt", prompt);
       for (const ref of images) {
-        const filePath = ref.startsWith("/images/") ? resolve(".cache", ref.slice(1)) : ref;
+        const filePath = isVirtualImagePath(ref) ? virtualToRealPath(ref) : ref;
         const mime = lookup(filePath);
         const mimes = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp"]);
         if (!mime || !mimes.has(mime)) {
@@ -50,19 +49,13 @@ export default {
         throw new Error(`图像生成失败: ${response.status} ${await response.text()}`);
       }
       const { urls } = (await response.json()) as { urls: string[] };
-      const dir = resolve(".cache", "images");
-      await mkdir(dir, { recursive: true });
       const results: GeneratedImage[] = [];
       for (const url of urls) {
         const blob = await download(url);
         const buffer = Buffer.from(await blob.bytes());
-        const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 12);
-        const encoded = bs58.encode(Buffer.from(hash, "hex"));
-        const ext = extension(blob.type) || "png";
-        const filename = `${encoded}.${ext}`;
-        await writeFile(resolve(dir, filename), buffer);
+        const path = await saveBufferToCache(buffer, blob.type);
         results.push({
-          path: `/images/${filename}`,
+          path,
           base64: buffer.toString("base64"),
           mediaType: blob.type || "image/png",
         });
@@ -120,7 +113,7 @@ export default {
       path: z.string().describe("图片的路径，可以是绝对文件系统路径或 /images/ 开头的缓存路径"),
     }),
     execute: async ({ path: imagePath }) => {
-      const filePath = imagePath.startsWith("/images/") ? resolve(".cache", imagePath.slice(1)) : imagePath;
+      const filePath = isVirtualImagePath(imagePath) ? virtualToRealPath(imagePath) : imagePath;
       const mime = lookup(filePath);
       const mimes = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp", "image/gif"]);
       if (!mime || !mimes.has(mime)) {

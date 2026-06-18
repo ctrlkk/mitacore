@@ -4,9 +4,9 @@ import { OneBotClient, type OneBotEventContext } from "./onebot/onebot-client";
 import { readFile, mkdir, writeFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { extractVideoId, resolveShortUrl, getVideoInfo, downloadBilibiliVideo } from "./bilibili";
-import { createHash } from "node:crypto";
-import { extension } from "mime-types";
+
 import { download } from "./utils/blob";
+import { saveBufferToCache } from "./utils/image-cache";
 import { cache } from "./utils/cache";
 import { env } from "node:process";
 
@@ -20,7 +20,6 @@ import XMLBuilder from "fast-xml-builder";
 import systemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
 import summaryPrompt from "../prompts/summary.md";
 import dayjs from "dayjs";
-import bs58 from "bs58";
 import "dayjs/locale/zh-cn";
 
 dayjs.locale("zh-cn");
@@ -107,16 +106,7 @@ async function processImageAssets(urls: string[]) {
     try {
       const blob = await download(url);
       const buffer = Buffer.from(await blob.bytes());
-      const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 12);
-      const encoded = bs58.encode(Buffer.from(hash, "hex"));
-      const ext = extension(blob.type) || "jpg";
-      const filename = `${encoded}.${ext}`;
-      const path = `/images/${filename}`;
-
-      const dir = resolve(".cache", "images");
-      await mkdir(dir, { recursive: true });
-      await writeFile(resolve(dir, filename), buffer);
-
+      const path = await saveBufferToCache(buffer, blob.type);
       return { url, path, success: true as const };
     } catch (error) {
       console.error(`下载图片失败: ${url}`, error);

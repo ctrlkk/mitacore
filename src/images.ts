@@ -3,6 +3,7 @@ import { resolve, parse } from "node:path";
 import { marked, type Token } from "marked";
 import { readdir } from "node:fs/promises";
 import XMLBuilder from "fast-xml-builder";
+import { isVirtualImagePath, readCachedImageAsDataUrl } from "./utils/image-cache";
 
 interface ImagePart {
   type: "image";
@@ -77,18 +78,12 @@ async function resolveImage(href: string, alt?: string): Promise<ImagePart | nul
   }
 
   // 处理本地缓存图片
-  if (href.startsWith("/images/")) {
-    const filename = href.slice("/images/".length);
-    const imagePath = resolve(".cache", "images", filename);
-    try {
-      const buffer = await readFile(imagePath);
-      const ext = parse(filename).ext.slice(1);
-      const mime = ext === "jpg" ? "jpeg" : ext;
-      const url = `data:image/${mime};base64,${buffer.toString("base64")}`;
-      return { type: "image", data: { file: url, url } };
-    } catch {
-      return null;
+  if (isVirtualImagePath(href)) {
+    const dataUrl = await readCachedImageAsDataUrl(href);
+    if (dataUrl) {
+      return { type: "image", data: { file: dataUrl, url: dataUrl } };
     }
+    return null;
   }
 
   return null;
