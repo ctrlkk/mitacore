@@ -219,7 +219,7 @@ const provider = createDeepSeek({
   apiKey: CONFIG.ai.apiKey,
   baseURL: CONFIG.ai.baseURL,
 });
-const model = provider(CONFIG.ai.modelName) as LanguageModel;
+const model = provider(CONFIG.ai.modelName);
 
 async function loadChatHistory(name: string): Promise<ModelMessage[]> {
   try {
@@ -244,6 +244,7 @@ async function generateSummary(
   sysPrompt: string,
   fullMessages: ModelMessage[],
   tools: Record<string, any>,
+  historyFile: string = "chat",
 ) {
   const { text, usage } = await generateText({
     model,
@@ -254,7 +255,7 @@ async function generateSummary(
   });
   console.log("摘要: ", text);
   console.log("usage: ", usage);
-  await saveChatHistory("chat", [{ role: "user", content: `<summary>${text}</summary>` }]);
+  await saveChatHistory(historyFile, [{ role: "user", content: `<summary>${text}</summary>` }]);
 }
 
 async function executeAgent(prompt: string, onReply: (chunk: MessagePart) => Promise<void>) {
@@ -305,50 +306,100 @@ async function executeAgent(prompt: string, onReply: (chunk: MessagePart) => Pro
   return { messages, usage };
 }
 
-const messageQueue: PendingMessage[] = [];
-let isWorkerRunning = false;
+// ── 消息调度器（拉模型 + debounce，与业务逻辑隔离） ───
 
-async function processMessageQueue(ctx: OneBotEventContext<OneBotMessageEvent>) {
-  if (isWorkerRunning) return;
-  isWorkerRunning = true;
+function extractImageUrls(segments: UnifiedInboundMessage[], urls: Set<string>) {
+  for (const seg of segments) {
+    if (seg.type === "image") urls.add(seg.data.url);
+    else if (seg.type === "reply") extractImageUrls(seg.data.segments, urls);
+  }
+}
 
-  function extractImageUrls(segments: UnifiedInboundMessage[], urls: Set<string>) {
-    for (const seg of segments) {
-      if (seg.type === "image") urls.add(seg.data.url);
-      else if (seg.type === "reply") extractImageUrls(seg.data.segments, urls);
-    }
+/**
+ * 创建一个消息调度器，负责攒批、debounce 和唤醒，不关心消息体结构。
+ * @param process 处理函数，接收一批消息和对应的上下文
+ * @param debounceMs 静默期时长（毫秒），默认 1000
+ */
+function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, debounceMs = 1000) {
+  const cache: T[] = [];
+  let wake: (() => void) | null = null;
+  let lastMsgAt = 0;
+  let currentCtx: C | null = null;
+
+  function enqueue(item: T, ctx: C) {
+    if (!currentCtx) currentCtx = ctx;
+    cache.push(item);
+    lastMsgAt = Date.now();
+    if (wake) { wake(); wake = null; }
   }
 
-  try {
-    while (messageQueue.length > 0) {
-      if (messageQueue.length === 0) break;
-      const batch = messageQueue.splice(0, messageQueue.length);
-      const urls = new Set<string>();
-      for (const msg of batch) {
-        extractImageUrls(msg.unifiedMessages, urls);
+  async function run() {
+    while (true) {
+      if (cache.length === 0) {
+        await new Promise<void>((r) => { wake = r });
       }
-
-      const imageMap = await processImageAssets(Array.from(urls));
-      const prompt = buildPrompt(batch, imageMap);
-
-      const { messages: fullMessages, usage } = await executeAgent(prompt, async (chunk) => {
-        await ctx.reply(chunk);
-      });
-
-      await saveChatHistory("chat", fullMessages);
-      await cache.set("usage", usage);
+      while (Date.now() - lastMsgAt < debounceMs) {
+        await Bun.sleep(100);
+      }
+      const batch = cache.splice(0);
+      const ctx = currentCtx;
+      currentCtx = null;
+      if (batch.length === 0 || !ctx) continue;
+      try {
+        await process(batch, ctx);
+      } catch (error) {
+        console.error("处理批次出错:", error);
+      }
     }
-  } catch (error) {
-    console.error("队列处理出错: ", error);
-  } finally {
-    isWorkerRunning = false;
   }
+
+  return { enqueue, run };
+}
+
+// ── 执行层：创建单个会话的 Bot ─────────────────────────
+
+function createBot(sessionId: string) {
+  const historyFile = `chat_${sessionId}`;
+
+  async function processBatch(
+    batch: PendingMessage[],
+    ctx: OneBotEventContext<OneBotMessageEvent>,
+  ) {
+    const urls = new Set<string>();
+    for (const msg of batch) {
+      extractImageUrls(msg.unifiedMessages, urls);
+    }
+    const imageMap = await processImageAssets(Array.from(urls));
+    const prompt = buildPrompt(batch, imageMap);
+    const { messages: fullMessages, usage } = await executeAgent(prompt, async (chunk) => {
+      await ctx.reply(chunk);
+    });
+    await saveChatHistory(historyFile, fullMessages);
+    await cache.set("usage", usage);
+  }
+
+  const scheduler = createScheduler(processBatch);
+  scheduler.run().catch(console.error);
+
+  return { enqueue: scheduler.enqueue };
+}
+
+const botMap = new Map<string, ReturnType<typeof createBot>>();
+
+function getBot(sessionId: string) {
+  let bot = botMap.get(sessionId);
+  if (!bot) {
+    bot = createBot(sessionId);
+    botMap.set(sessionId, bot);
+  }
+  return bot;
 }
 
 async function handleCommand(
   rawText: string,
   ctx: OneBotEventContext<OneBotMessageEvent>,
   isMaster: boolean,
+  sessionId: string,
 ): Promise<boolean> {
   if (rawText === "/ping" && isMaster) {
     const event = ctx.event as OneBotMessageEvent;
@@ -377,8 +428,9 @@ async function handleCommand(
   if (rawText === "/summary" && isMaster) {
     try {
       await ctx.reply("正在摘要...");
-      const messages = await loadChatHistory("chat");
-      await generateSummary(model, systemPrompt, messages, {});
+      const historyFile = `chat_${sessionId}`;
+      const messages = await loadChatHistory(historyFile);
+      await generateSummary(model, systemPrompt, messages, {}, historyFile);
       await ctx.reply("摘要完成");
     } catch (error) {
       console.error(`主动摘要失败: ${error}`);
@@ -489,7 +541,11 @@ async function main() {
       .join(" ")
       .trim();
 
-    const isCommandHandled = await handleCommand(rawText, ctx, isMaster);
+    const sessionId = event.message_type === "group"
+      ? `group:${event.group_id}`
+      : `private:${event.user_id}`;
+
+    const isCommandHandled = await handleCommand(rawText, ctx, isMaster, sessionId);
     if (isCommandHandled) return;
 
     try {
@@ -509,13 +565,12 @@ async function main() {
         },
       );
 
-      messageQueue.push({
+      getBot(sessionId).enqueue({
         unifiedMessages: unified,
         nickname: event.sender.nickname,
         date: new Date(event.time * 1000),
         isMaster,
-      });
-      processMessageQueue(ctx);
+      }, ctx);
     } catch (error) {
       console.error("消息解析或入队失败:", error);
     }
