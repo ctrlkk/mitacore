@@ -239,25 +239,6 @@ async function saveChatHistory(name: string, history: ModelMessage[]) {
   }
 }
 
-async function generateSummary(
-  model: LanguageModel,
-  sysPrompt: string,
-  fullMessages: ModelMessage[],
-  tools: Record<string, any>,
-  historyFile: string = "chat",
-) {
-  const { text, usage } = await generateText({
-    model,
-    system: sysPrompt,
-    temperature: 1,
-    tools,
-    messages: [...fullMessages, { role: "user", content: `<system>${summaryPrompt}</system>` }],
-  });
-  console.log("摘要: ", text);
-  console.log("usage: ", usage);
-  await saveChatHistory(historyFile, [{ role: "user", content: `<summary>${text}</summary>` }]);
-}
-
 async function executeAgent(prompt: string, onReply: (chunk: MessagePart) => Promise<void>) {
   console.log("prompt: ", prompt);
   const history = await loadChatHistory("chat");
@@ -265,19 +246,14 @@ async function executeAgent(prompt: string, onReply: (chunk: MessagePart) => Pro
   let messages: ModelMessage[] = [...history, { role: "user", content: prompt }];
   let usage: LanguageModelUsage | undefined;
 
-  const maxSteps = 20;
-  for (let step = 0; step < maxSteps; step++) {
+  for (let step = 0; step < 20; step++) {
     const result = await generateText({
       model,
       system: systemPrompt,
       messages,
-      temperature: 1,
-      tools: { ...tools },
+      tools,
     });
 
-    if (result.toolCalls.length > 0) {
-      for (const tc of result.toolCalls) console.log("调用工具: ", tc.toolName, JSON.stringify(tc.input));
-    }
     if (result.reasoning) console.log("内部思考: ", result.reasoning);
     if (result.text) console.log("助手响应: ", result.text);
 
@@ -285,8 +261,7 @@ async function executeAgent(prompt: string, onReply: (chunk: MessagePart) => Pro
       const parts = await parseMarkdown(result.text);
       for (const part of parts) {
         if (typeof part === "string") {
-          const segments = splitMessage(part);
-          for (const seg of segments) {
+          for (const seg of splitMessage(part)) {
             if (!seg.trim()) continue;
             await onReply(seg);
             await Bun.sleep(500);
@@ -356,10 +331,7 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, d
   return { enqueue, run };
 }
 
-// ── 执行层：创建单个会话的 Bot ─────────────────────────
-
 function createBot(sessionId: string) {
-  const historyFile = `chat_${sessionId}`;
 
   async function processBatch(
     batch: PendingMessage[],
@@ -371,28 +343,15 @@ function createBot(sessionId: string) {
     }
     const imageMap = await processImageAssets(Array.from(urls));
     const prompt = buildPrompt(batch, imageMap);
-    const { messages: fullMessages, usage } = await executeAgent(prompt, async (chunk) => {
+    await executeAgent(prompt, async (chunk) => {
       await ctx.reply(chunk);
     });
-    await saveChatHistory(historyFile, fullMessages);
-    await cache.set("usage", usage);
   }
 
   const scheduler = createScheduler(processBatch);
   scheduler.run().catch(console.error);
 
   return { enqueue: scheduler.enqueue };
-}
-
-const botMap = new Map<string, ReturnType<typeof createBot>>();
-
-function getBot(sessionId: string) {
-  let bot = botMap.get(sessionId);
-  if (!bot) {
-    bot = createBot(sessionId);
-    botMap.set(sessionId, bot);
-  }
-  return bot;
 }
 
 async function handleCommand(
@@ -422,20 +381,6 @@ async function handleCommand(
         `└ 总计 ${fmt(u?.totalTokens)}`,
       ].join("\n"),
     );
-    return true;
-  }
-
-  if (rawText === "/summary" && isMaster) {
-    try {
-      await ctx.reply("正在摘要...");
-      const historyFile = `chat_${sessionId}`;
-      const messages = await loadChatHistory(historyFile);
-      await generateSummary(model, systemPrompt, messages, {}, historyFile);
-      await ctx.reply("摘要完成");
-    } catch (error) {
-      console.error(`主动摘要失败: ${error}`);
-      await ctx.reply(`摘要失败: ${error}`);
-    }
     return true;
   }
 
@@ -515,6 +460,16 @@ async function main() {
     accessToken: CONFIG.onebot.accessToken,
     reconnect: true,
   });
+  const botMap = new Map<string, ReturnType<typeof createBot>>();
+
+  function getBot(sessionId: string) {
+    let bot = botMap.get(sessionId);
+    if (!bot) {
+      bot = createBot(sessionId);
+      botMap.set(sessionId, bot);
+    }
+    return bot;
+  }
 
   bot.onMessage(async (event, ctx) => {
     const segments = event.message;
