@@ -10,7 +10,8 @@ import { saveBufferToCache } from "./utils/image-cache";
 import { cache } from "./utils/cache";
 import { env } from "node:process";
 
-import { createDeepSeek } from "@ai-sdk/deepseek";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { imageToText } from "./multimedia";
 import { parseMarkdown, type MessagePart } from "./images";
 import { splitMessage } from "./utils/message-splitter";
@@ -49,17 +50,18 @@ interface PendingMessage {
   isMaster: boolean;
 }
 
-const CONFIG = {
-  onebot: {
-    url: "ws://127.0.0.1:3001/",
-    accessToken: "your_token",
-  },
-  ai: {
-    apiKey: env.OPENAI_API_KEY!,
-    baseURL: env.OPENAI_API_BASE!,
-    modelName: "deepseek-v4-flash",
-  },
-} as const;
+const bot = new OneBotClient({
+  url: "ws://127.0.0.1:3001",
+  accessToken: "your_token",
+  reconnect: true,
+});
+
+const provider = createOpenAICompatible({
+  name: "new-api",
+  apiKey: env.OPENAI_API_KEY!,
+  baseURL: env.OPENAI_API_BASE!,
+});
+const model = provider("deepseek-v4-flash-free");
 
 /**
  * 解析OneBot消息段落为统一格式
@@ -215,12 +217,6 @@ function buildPrompt(batch: PendingMessage[], imageMap: Map<string, { path: stri
   return finalPrompt;
 }
 
-const provider = createDeepSeek({
-  apiKey: CONFIG.ai.apiKey,
-  baseURL: CONFIG.ai.baseURL,
-});
-const model = provider(CONFIG.ai.modelName);
-
 async function loadChatHistory(name: string): Promise<ModelMessage[]> {
   try {
     const history = await readFile(resolve(".cache", `${name}.json`), "utf8");
@@ -239,7 +235,7 @@ async function saveChatHistory(name: string, history: ModelMessage[]) {
   }
 }
 
-async function executeAgent(prompt: string, onReply: (chunk: MessagePart) => Promise<void>) {
+async function executeAgent(prompt: string, onReply: (chunk: string) => Promise<void>) {
   console.log("prompt: ", prompt);
   const history = await loadChatHistory("chat");
 
@@ -258,19 +254,7 @@ async function executeAgent(prompt: string, onReply: (chunk: MessagePart) => Pro
     if (result.text) console.log("助手响应: ", result.text);
 
     if (result.text) {
-      const parts = await parseMarkdown(result.text);
-      for (const part of parts) {
-        if (typeof part === "string") {
-          for (const seg of splitMessage(part)) {
-            if (!seg.trim()) continue;
-            await onReply(seg);
-            await Bun.sleep(500);
-          }
-        } else {
-          await onReply(part);
-          await Bun.sleep(1000);
-        }
-      }
+      await onReply(result.text);
     }
     usage = result.usage;
     messages = [...messages, ...result.response.messages];
@@ -278,6 +262,7 @@ async function executeAgent(prompt: string, onReply: (chunk: MessagePart) => Pro
     if (result.toolCalls.length === 0) break;
   }
 
+  await saveChatHistory("chat", messages);
   return { messages, usage };
 }
 
@@ -305,13 +290,18 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, d
     if (!currentCtx) currentCtx = ctx;
     cache.push(item);
     lastMsgAt = Date.now();
-    if (wake) { wake(); wake = null; }
+    if (wake) {
+      wake();
+      wake = null;
+    }
   }
 
   async function run() {
     while (true) {
       if (cache.length === 0) {
-        await new Promise<void>((r) => { wake = r });
+        await new Promise<void>((r) => {
+          wake = r;
+        });
       }
       while (Date.now() - lastMsgAt < debounceMs) {
         await Bun.sleep(100);
@@ -332,11 +322,7 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, d
 }
 
 function createBot(sessionId: string) {
-
-  async function processBatch(
-    batch: PendingMessage[],
-    ctx: OneBotEventContext<OneBotMessageEvent>,
-  ) {
+  async function processBatch(batch: PendingMessage[], ctx: OneBotEventContext<OneBotMessageEvent>) {
     const urls = new Set<string>();
     for (const msg of batch) {
       extractImageUrls(msg.unifiedMessages, urls);
@@ -344,7 +330,19 @@ function createBot(sessionId: string) {
     const imageMap = await processImageAssets(Array.from(urls));
     const prompt = buildPrompt(batch, imageMap);
     await executeAgent(prompt, async (chunk) => {
-      await ctx.reply(chunk);
+      const parts = await parseMarkdown(chunk);
+      for (const part of parts) {
+        if (typeof part === "string") {
+          for (const seg of splitMessage(part)) {
+            if (!seg.trim()) continue;
+            await ctx.reply(seg);
+            await Bun.sleep(500);
+          }
+        } else {
+          await ctx.reply(part);
+          await Bun.sleep(1000);
+        }
+      }
     });
   }
 
@@ -455,11 +453,6 @@ async function handleBiliLink(input: string, ctx: OneBotEventContext<OneBotMessa
 
 async function main() {
   let selfId: string | undefined = undefined;
-  const bot = new OneBotClient({
-    url: CONFIG.onebot.url,
-    accessToken: CONFIG.onebot.accessToken,
-    reconnect: true,
-  });
   const botMap = new Map<string, ReturnType<typeof createBot>>();
 
   function getBot(sessionId: string) {
@@ -496,9 +489,7 @@ async function main() {
       .join(" ")
       .trim();
 
-    const sessionId = event.message_type === "group"
-      ? `group:${event.group_id}`
-      : `private:${event.user_id}`;
+    const sessionId = event.message_type === "group" ? `group:${event.group_id}` : `private:${event.user_id}`;
 
     const isCommandHandled = await handleCommand(rawText, ctx, isMaster, sessionId);
     if (isCommandHandled) return;
@@ -520,12 +511,15 @@ async function main() {
         },
       );
 
-      getBot(sessionId).enqueue({
-        unifiedMessages: unified,
-        nickname: event.sender.nickname,
-        date: new Date(event.time * 1000),
-        isMaster,
-      }, ctx);
+      getBot(sessionId).enqueue(
+        {
+          unifiedMessages: unified,
+          nickname: event.sender.nickname,
+          date: new Date(event.time * 1000),
+          isMaster,
+        },
+        ctx,
+      );
     } catch (error) {
       console.error("消息解析或入队失败:", error);
     }

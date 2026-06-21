@@ -46,9 +46,7 @@ function bufferToDataUrl(buffer: Buffer, filename: string): string {
  * 从缓存目录读取图片并转为 Data URL
  * 若文件不存在返回 null
  */
-export async function readCachedImageAsDataUrl(
-  virtualPath: string,
-): Promise<string | null> {
+export async function readCachedImageAsDataUrl(virtualPath: string): Promise<string | null> {
   const realPath = virtualToRealPath(virtualPath);
   try {
     const buffer = await readFile(realPath);
@@ -63,14 +61,8 @@ export async function readCachedImageAsDataUrl(
  * 将图片 Buffer 存入缓存目录，返回虚拟路径
  * 从 index.ts 的 processImageAssets 中提取
  */
-export async function saveBufferToCache(
-  buffer: Buffer,
-  mimeType: string,
-): Promise<string> {
-  const hash = createHash("sha256")
-    .update(buffer)
-    .digest("hex")
-    .slice(0, 12);
+export async function saveBufferToCache(buffer: Buffer, mimeType: string): Promise<string> {
+  const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 12);
   const encoded = bs58.encode(Buffer.from(hash, "hex"));
   const ext = extension(mimeType) || "jpg";
   const filename = `${encoded}.${ext}`;

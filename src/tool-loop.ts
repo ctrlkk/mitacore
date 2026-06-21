@@ -10,14 +10,7 @@
  *   - 控制错误处理（决定错误以什么形式回传给模型）
  */
 
-import {
-  generateText,
-  type JSONValue,
-  type ModelMessage,
-  type Tool,
-  type ToolResultPart,
-  type ToolSet,
-} from "ai";
+import { generateText, type JSONValue, type ModelMessage, type Tool, type ToolResultPart, type ToolSet } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { tool } from "ai";
@@ -57,9 +50,7 @@ const tools: Record<string, Tool> = {
 
 /** 从工具定义中剥离 execute，只保留 schema 给模型看 */
 function stripToolExecutors(tools: Record<string, Tool>): ToolSet {
-  return Object.fromEntries(
-    Object.entries(tools).map(([name, { execute, ...rest }]) => [name, rest]),
-  );
+  return Object.fromEntries(Object.entries(tools).map(([name, { execute, ...rest }]) => [name, rest]));
 }
 
 function getErrorMessage(error: unknown): string {
@@ -102,9 +93,7 @@ async function toToolResultOutput(
 
 async function run() {
   const toolsForGenerate = stripToolExecutors(tools);
-  let messages: ModelMessage[] = [
-    { role: "user", content: "北京天气怎么样？顺便算一下 (12 + 8) * 3" },
-  ];
+  let messages: ModelMessage[] = [{ role: "user", content: "北京天气怎么样？顺便算一下 (12 + 8) * 3" }];
 
   for (let step = 0; step < 10; step++) {
     const result = await generateText({
