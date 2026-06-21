@@ -5,7 +5,7 @@ import { readFile, mkdir, writeFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { extractVideoId, resolveShortUrl, getVideoInfo, downloadBilibiliVideo } from "./bilibili";
 
-import { download } from "./utils/blob";
+import { blobToDataURL, download } from "./utils/blob";
 import { saveBufferToCache } from "./utils/image-cache";
 import { cache } from "./utils/cache";
 import { env } from "node:process";
@@ -56,12 +56,12 @@ const bot = new OneBotClient({
   reconnect: true,
 });
 
-const provider = createOpenAICompatible({
+const provider = createAnthropic({
   name: "new-api",
   apiKey: env.OPENAI_API_KEY!,
   baseURL: env.OPENAI_API_BASE!,
 });
-const model = provider("deepseek-v4-flash-free");
+const model = provider("MiniMax-M3");
 
 /**
  * 解析OneBot消息段落为统一格式
@@ -104,51 +104,47 @@ async function processImageAssets(urls: string[]) {
   const resultMap = new Map<string, { path: string; description: string }>();
   if (urls.length === 0) return resultMap;
 
-  const downloadTasks = urls.map(async (url) => {
-    try {
-      const blob = await download(url);
-      const buffer = Buffer.from(await blob.bytes());
-      const path = await saveBufferToCache(buffer, blob.type);
-      return { url, path, success: true as const };
-    } catch (error) {
-      console.error(`下载图片失败: ${url}`, error);
-      return { url, path: "", success: false as const };
-    }
-  });
-  const downloaded = await Promise.all(downloadTasks);
+  const downloaded = await Promise.all(
+    urls.map(async (url) => {
+      try {
+        const blob = await download(url);
+        const buffer = Buffer.from(await blob.bytes());
+        const path = await saveBufferToCache(buffer, blob.type);
+        return { url, blob, path };
+      } catch (error) {
+        console.error(`下载图片失败: ${url}`, error);
+        return null;
+      }
+    }),
+  );
 
-  const uniquePaths = new Map<string, string>();
-  for (const item of downloaded) {
-    if (item.success && !uniquePaths.has(item.path)) {
-      uniquePaths.set(item.path, item.url);
-    }
-  }
+  const uniquePaths = new Map(downloaded.filter((item) => item !== null).map((item) => [item.path, item.blob]));
 
-  const descriptionTasks = Array.from(uniquePaths.entries()).map(async ([path, url]) => {
-    try {
-      const cached = await cache.get<string>(path);
-      if (cached) return { path, description: cached };
-      const description = await imageToText(url);
-      await cache.set(path, description);
-      return { path, description };
-    } catch (error) {
-      console.error(`图片转述失败: ${path}`, error);
-      return { path, description: "[图片转述失败]" };
-    }
-  });
-  const descriptions = await Promise.all(descriptionTasks);
+  const descriptions = await Promise.all(
+    Array.from(uniquePaths.entries()).map(async ([path, blob]) => {
+      try {
+        const cached = await cache.get<string>(path);
+        if (cached) return { path, description: cached };
+        const description = await imageToText(await blobToDataURL(blob));
+        await cache.set(path, description);
+        return { path, description };
+      } catch (error) {
+        console.error(`图片转述失败: ${path}`, error);
+        return { path, description: "图片转述失败" };
+      }
+    }),
+  );
   const pathToDesc = new Map(descriptions.map((d) => [d.path, d.description]));
 
-  for (const item of downloaded) {
-    if (item.success) {
+  downloaded
+    .filter((item) => item !== null)
+    .forEach((item) => {
       resultMap.set(item.url, {
         path: item.path,
-        description: pathToDesc.get(item.path) || "[未知图片]",
+        description: pathToDesc.get(item.path) || "未知图片",
       });
-    } else {
-      resultMap.set(item.url, { path: "", description: "[图片加载失败]" });
-    }
-  }
+    });
+
   return resultMap;
 }
 
@@ -235,7 +231,22 @@ async function saveChatHistory(name: string, history: ModelMessage[]) {
   }
 }
 
-async function executeAgent(prompt: string, onReply: (chunk: string) => Promise<void>) {
+async function sliceReply(chunk: string): Promise<MessagePart[]> {
+  const parts = await parseMarkdown(chunk);
+  const result: MessagePart[] = [];
+  for (const part of parts) {
+    if (typeof part === "string") {
+      for (const seg of splitMessage(part)) {
+        if (seg.trim()) result.push(seg);
+      }
+    } else {
+      result.push(part);
+    }
+  }
+  return result;
+}
+
+async function executeAgent(prompt: string, onReply: (segments: MessagePart[]) => Promise<void>) {
   console.log("prompt: ", prompt);
   const history = await loadChatHistory("chat");
 
@@ -248,13 +259,25 @@ async function executeAgent(prompt: string, onReply: (chunk: string) => Promise<
       system: systemPrompt,
       messages,
       tools,
+      async onStepFinish(callback) {
+        console.log("工具调用", callback.toolCalls);
+      },
     });
 
     if (result.reasoning) console.log("内部思考: ", result.reasoning);
     if (result.text) console.log("助手响应: ", result.text);
 
     if (result.text) {
-      await onReply(result.text);
+      const segments = await sliceReply(result.text);
+      await onReply(segments);
+      // const sentText = segments
+      //   .map((seg) => {
+      //     if (typeof seg === "string") return seg;
+      //     return seg.raw;
+      //   })
+      //   .join("\n");
+      // const firstMsg = result.response.messages[0];
+      // if (firstMsg && firstMsg.role === "assistant") firstMsg.content = sentText;
     }
     usage = result.usage;
     messages = [...messages, ...result.response.messages];
@@ -329,19 +352,10 @@ function createBot(sessionId: string) {
     }
     const imageMap = await processImageAssets(Array.from(urls));
     const prompt = buildPrompt(batch, imageMap);
-    await executeAgent(prompt, async (chunk) => {
-      const parts = await parseMarkdown(chunk);
-      for (const part of parts) {
-        if (typeof part === "string") {
-          for (const seg of splitMessage(part)) {
-            if (!seg.trim()) continue;
-            await ctx.reply(seg);
-            await Bun.sleep(500);
-          }
-        } else {
-          await ctx.reply(part);
-          await Bun.sleep(1000);
-        }
+    await executeAgent(prompt, async (segments) => {
+      for (const seg of segments) {
+        await ctx.reply(seg);
+        await Bun.sleep(500);
       }
     });
   }

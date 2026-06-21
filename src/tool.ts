@@ -5,9 +5,9 @@ import { readFile } from "node:fs/promises";
 import { lookup } from "mime-types";
 import { download } from "./utils/blob";
 import { imageToText } from "./multimedia";
-import { saveBufferToCache, isVirtualImagePath, virtualToRealPath } from "./utils/image-cache";
+import { saveBufferToCache, sanitizeImagePath, virtualToRealPath } from "./utils/image-cache";
 
-const SUPPORTS_MULTIMODAL = false;
+const SUPPORTS_MULTIMODAL = true;
 
 interface GeneratedImage {
   path: string;
@@ -26,17 +26,18 @@ export default {
       const form = new FormData();
       form.append("prompt", prompt);
       for (const ref of images) {
-        const filePath = isVirtualImagePath(ref) ? virtualToRealPath(ref) : ref;
+        const virtualPath = sanitizeImagePath(ref);
+        const filePath = virtualToRealPath(virtualPath);
         const mime = lookup(filePath);
         const mimes = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp"]);
         if (!mime || !mimes.has(mime)) {
-          return `不支持该类型的图像文件：${ref}`;
+          return `不支持该类型的图像文件：${virtualPath}`;
         }
         let buffer: Buffer;
         try {
           buffer = await readFile(filePath);
         } catch {
-          return `图片文件未找到: "${ref}"，可能不存在或已过期，请使用绝对文件系统路径或检查文件是否存在。`;
+          return `图片文件未找到: "${virtualPath}"，可能不存在或已过期，请检查文件是否存在。`;
         }
         const filename = parse(filePath).base;
         form.append("images", new Blob([buffer], { type: mime }), filename);
@@ -75,7 +76,7 @@ export default {
           type: "content",
           value: output.flatMap((r) => [
             { type: "text", text: `生成的图片: ${r.path}` },
-            { type: "media", data: r.base64, mediaType: r.mediaType },
+            { type: "image-data", data: r.base64, mediaType: r.mediaType },
           ]),
         };
       }
@@ -113,20 +114,21 @@ export default {
       path: z.string().describe("图片的路径，可以是绝对文件系统路径或 /images/ 开头的缓存路径"),
     }),
     execute: async ({ path: imagePath }) => {
-      const filePath = isVirtualImagePath(imagePath) ? virtualToRealPath(imagePath) : imagePath;
+      const virtualPath = sanitizeImagePath(imagePath);
+      const filePath = virtualToRealPath(virtualPath);
       const mime = lookup(filePath);
       const mimes = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp", "image/gif"]);
       if (!mime || !mimes.has(mime)) {
-        return `不支持该类型的图像文件：${imagePath}`;
+        return `不支持该类型的图像文件：${virtualPath}`;
       }
       let buffer: Buffer;
       try {
         buffer = await readFile(filePath);
       } catch {
-        return `图片文件未找到: "${imagePath}"，可能不存在或已过期，请使用绝对文件系统路径或检查文件是否存在。`;
+        return `图片文件未找到: "${virtualPath}"，可能不存在或已过期，请检查文件是否存在。`;
       }
       return {
-        path: imagePath,
+        path: virtualPath,
         base64: buffer.toString("base64"),
         mediaType: mime,
       };
@@ -143,7 +145,7 @@ export default {
           type: "content",
           value: [
             { type: "text", text: `图片内容: ${output.path}` },
-            { type: "media", data: output.base64, mediaType: output.mediaType },
+            { type: "image-data", data: output.base64, mediaType: output.mediaType },
           ],
         };
       }

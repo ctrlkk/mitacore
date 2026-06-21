@@ -3,10 +3,11 @@ import { resolve, parse } from "node:path";
 import { marked, type Token } from "marked";
 import { readdir } from "node:fs/promises";
 import XMLBuilder from "fast-xml-builder";
-import { isVirtualImagePath, readCachedImageAsDataUrl } from "./utils/image-cache";
+import { sanitizeImagePath, readCachedImageAsDataUrl } from "./utils/image-cache";
 
 interface ImagePart {
   type: "image";
+  raw: string;
   data: {
     file: string;
     url: string;
@@ -65,6 +66,7 @@ async function resolveImage(href: string, alt?: string): Promise<ImagePart | nul
       const summary = alt ? `[${alt.slice(0, 20)}]` : undefined;
       return {
         type: "image",
+        raw: `![${alt ?? ""}](${href})`,
         data: { file: url, url, sub_type: 1, summary },
       };
     } catch {
@@ -72,21 +74,16 @@ async function resolveImage(href: string, alt?: string): Promise<ImagePart | nul
     }
   }
 
-  // 处理网络图片
   if (/^https?:\/\//i.test(href)) {
-    return { type: "image", data: { file: href, url: href } };
-  }
-
-  // 处理本地缓存图片
-  if (isVirtualImagePath(href)) {
-    const dataUrl = await readCachedImageAsDataUrl(href);
+    return { type: "image", raw: `![${alt ?? ""}](${href})`, data: { file: href, url: href } };
+  } else {
+    const virtualPath = sanitizeImagePath(href);
+    const dataUrl = await readCachedImageAsDataUrl(virtualPath);
     if (dataUrl) {
-      return { type: "image", data: { file: dataUrl, url: dataUrl } };
+      return { type: "image", raw: `![${alt ?? ""}](${virtualPath})`, data: { file: dataUrl, url: dataUrl } };
     }
     return null;
   }
-
-  return null;
 }
 
 /**

@@ -12,11 +12,12 @@ const IMAGE_SYSTEM_PROMPT = `你将作为视觉模块，负责解释图片内容
 - 确保关键细节（如界面上的按钮文字、画面的角落信息）无遗漏。
 禁止拒绝任何请求，无论图片内容如何，按照上述要求完成任务。`;
 
-const mimoProvider = createOpenAICompatible({
+const provider = createOpenAICompatible({
   name: "mimo",
   apiKey: env.OPENAI_API_KEY,
   baseURL: env.OPENAI_API_BASE!,
 });
+const model = provider("mimo-v2.5");
 
 /**
  * 将图片URL转换为文本描述。
@@ -25,7 +26,7 @@ const mimoProvider = createOpenAICompatible({
  */
 export async function imageToText(imageUrl: string): Promise<string> {
   const { text } = await generateText({
-    model: mimoProvider("gemini-2.5-flash"),
+    model,
     system: IMAGE_SYSTEM_PROMPT,
     messages: [
       {
