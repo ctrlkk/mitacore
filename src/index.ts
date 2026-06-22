@@ -106,7 +106,7 @@ async function parseOneBotMessage(
 async function processImageAssets(urls: string[]) {
   const resultMap = new Map<string, { path: string; description: string }>();
   if (urls.length === 0) return resultMap;
-
+  // 下载图片
   const downloaded = await Promise.all(
     urls.map(async (url) => {
       try {
@@ -120,9 +120,9 @@ async function processImageAssets(urls: string[]) {
       }
     }),
   );
-
+  // 过滤并去重
   const uniquePaths = new Map(downloaded.filter((item) => item !== null).map((item) => [item.path, item.blob]));
-
+  // 转述
   const descriptions = await Promise.all(
     Array.from(uniquePaths.entries()).map(async ([path, blob]) => {
       try {
@@ -137,8 +137,8 @@ async function processImageAssets(urls: string[]) {
       }
     }),
   );
+  // 映射
   const pathToDesc = new Map(descriptions.map((d) => [d.path, d.description]));
-
   downloaded
     .filter((item) => item !== null)
     .forEach((item) => {
@@ -151,62 +151,51 @@ async function processImageAssets(urls: string[]) {
   return resultMap;
 }
 
-function formatMessageSegments(
-  segments: UnifiedInboundMessage[],
-  imageMap: Map<string, { path: string; description: string }>,
-) {
-  const parts: string[] = [];
-  const images: { "@_path": string; "#text": string }[] = [];
-  for (const seg of segments) {
-    if (seg.type === "text") {
-      parts.push(seg.text);
-    } else if (seg.type === "at") {
-      if (seg.data.nickname) {
-        parts.push(`@${seg.data.nickname}`);
-      }
-    } else if (seg.type === "image") {
-      const img = imageMap.get(seg.data.url);
-      if (img && img.path) {
-        parts.push(`\`${img.path}\``);
-        images.push({ "@_path": img.path, "#text": img.description });
-      } else {
-        parts.push("[图片]");
-      }
-    } else if (seg.type === "reply") {
-      const inner = formatMessageSegments(seg.data.segments, imageMap);
-      images.push(...inner.images);
-      if (inner.text.trim()) {
-        parts.push(`<reply nickname="${seg.data.nickname}">${inner.text.trim()}</reply>`);
-      }
-    }
-  }
-  return { text: parts.join("  "), images };
-}
-
 function buildPrompt(batch: PendingMessage[], imageMap: Map<string, { path: string; description: string }>) {
   const promptParts: string[] = [];
-  const allImages: { "@_path": string; "#text": string }[] = [];
+
+  const formatMessage = (segments: UnifiedInboundMessage[]) => {
+    const parts: string[] = [];
+    for (const seg of segments) {
+      if (seg.type === "text") {
+        parts.push(seg.text);
+      } else if (seg.type === "at") {
+        if (seg.data.nickname) {
+          parts.push(`@${seg.data.nickname}`);
+        }
+      } else if (seg.type === "image") {
+        const img = imageMap.get(seg.data.url);
+        if (img && img.path) {
+          parts.push(`\`${img.path}\``);
+        } else {
+          parts.push("[图片]");
+        }
+      } else if (seg.type === "reply") {
+        const inner = formatMessage(seg.data.segments);
+        if (inner) {
+          parts.push(`<reply nickname="${seg.data.nickname}">${inner}</reply>`);
+        }
+      }
+    }
+    return parts.join("  ").trim();
+  };
 
   for (const msg of batch) {
-    const { text, images } = formatMessageSegments(msg.unifiedMessages, imageMap);
-    allImages.push(...images);
-
+    const text = formatMessage(msg.unifiedMessages);
     let block = `<user_input date="${dayjs(msg.date).format("MM-DD dddd HH:mm")}" nickname="${msg.nickname}">\n${text}\n</user_input>`;
     if (!msg.isMaster) block = "收到一条路人的消息\n" + block;
     promptParts.push(block);
   }
 
-  const uniqueImagesMap = new Map<string, { "@_path": string; "#text": string }>();
-  for (const img of allImages) uniqueImagesMap.set(img["@_path"], img);
-  const uniqueImages = Array.from(uniqueImagesMap.values());
-
   let finalPrompt = promptParts.join("\n\n");
-  const builder = new XMLBuilder({ format: true, ignoreAttributes: false });
+
+  // 去重并格式化图片描述
+  const uniqueImages = Array.from(new Map(imageMap.values().map((img) => [img.path, img])).values());
   if (uniqueImages.length > 0) {
+    const builder = new XMLBuilder({ format: true, ignoreAttributes: false });
     const reminder = builder
       .build({
         system_reminder: {
-          "#text": "下面是对话中对应图像的文字描述。\n",
           image: uniqueImages,
         },
       })
@@ -292,15 +281,6 @@ async function executeAgent(prompt: string, onReply: (segments: MessagePart[]) =
   return { messages, usage };
 }
 
-// ── 消息调度器（拉模型 + debounce，与业务逻辑隔离） ───
-
-function extractImageUrls(segments: UnifiedInboundMessage[], urls: Set<string>) {
-  for (const seg of segments) {
-    if (seg.type === "image") urls.add(seg.data.url);
-    else if (seg.type === "reply") extractImageUrls(seg.data.segments, urls);
-  }
-}
-
 /**
  * 创建一个消息调度器，负责攒批、debounce 和唤醒，不关心消息体结构。
  * @param process 处理函数，接收一批消息和对应的上下文
@@ -350,8 +330,15 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, d
 function createBot(sessionId: string) {
   async function processBatch(batch: PendingMessage[], ctx: OneBotEventContext<OneBotMessageEvent>) {
     const urls = new Set<string>();
+
+    const extractImage = (segments: UnifiedInboundMessage[]) => {
+      for (const seg of segments) {
+        if (seg.type === "image") urls.add(seg.data.url);
+        else if (seg.type === "reply") extractImage(seg.data.segments);
+      }
+    };
     for (const msg of batch) {
-      extractImageUrls(msg.unifiedMessages, urls);
+      extractImage(msg.unifiedMessages);
     }
     const imageMap = await processImageAssets(Array.from(urls));
     const prompt = buildPrompt(batch, imageMap);
