@@ -12,7 +12,7 @@ Drizzle + TypeScript 迁移模式，从 `E:/works/opencode/packages/core/` 借�
 
 1. **手写 schema**（`*.sql.ts`）—— 唯一的 schema 真理源，用 drizzle-orm 的 `sqliteTable` 构造函数定义
 2. **codegen**（`script/migration.ts`）—— 跑 `drizzle-kit generate` 拿到 SQL，翻译成 TS 模块；同时维护一个"迁移注册表"用动态 import 列出所有迁移
-3. **runtime**（`migration.ts`）—— 启动时跑 `apply(db)`，对比 `migration` journal 表决定 bootstrap 还是增量
+3. **runtime**（`migration.ts`）—— 启动时跑 `apply(db)`，对比 `__drizzle_migrations` journal 表决定 bootstrap 还是增量
 
 为什么是"TS 化"而不是直接 `.sql`：方便 bundler（bun、webpack 等）把迁移作为源码打进产物；也给手写 backfill 逻辑留口子（`up()` 是个普通函数，可以插入任意代码）。
 
@@ -20,9 +20,9 @@ Drizzle + TypeScript 迁移模式，从 `E:/works/opencode/packages/core/` 借�
 
 | 数据库状态 | 判定 | 行为 |
 |---|---|---|
-| 空库 | `sqlite_master` 没有非 `sqlite_` 表 | 跑 `schema.up()` 全量 DDL；建 `migration` journal 表；把所有已注册迁移标记为已应用 |
-| 已有 `migration` journal 表 | 视为已 bootstrap | 走 `applyOnly()`，对每个未在 journal 的迁移跑 `up()` + 插入 journal |
-| 有别的表但没 `migration` 表 | 拒绝 | 抛"数据库非空且没有 migration journal 表"——半初始化状态不能盲目迁移 |
+| 空库 | `sqlite_master` 没有非 `sqlite_` 表 | 跑 `schema.up()` 全量 DDL；建 `__drizzle_migrations` journal 表；把所有已注册迁移标记为已应用 |
+| 已有 `__drizzle_migrations` journal 表 | 视为已 bootstrap | 走 `applyOnly()`，对每个未在 journal 的迁移跑 `up()` + 插入 journal |
+| 有别的表但没 `__drizzle_migrations` 表 | 拒绝 | 抛"数据库非空且没有 __drizzle_migrations journal 表"——半初始化状态不能盲目迁移 |
 
 codegen 5 步（`script/migration.ts`）：
 
@@ -69,14 +69,14 @@ codegen 5 步（`script/migration.ts`）：
 - **每个迁移跑在自己一个事务里** —— 不要在迁移里写需要跨事务的逻辑
 - **lock 是 in-process 的** —— 跨进程安全靠 SQLite WAL + 文件锁，不靠 `Mutex`
 - **空库路径的"标记所有迁移已完成"** —— 因为 `schema.gen.ts` 包含全部当前 DDL，跑了它就等价于跑了所有迁移的合集；这是 bootstrap 优化，不是 bug
-- **sentinel 表的选择** —— 我们用 `migration` journal 表本身做 sentinel（它在 `applyOnly` 一开始就建出来，恒存在）；opencode 用真实业务表（如 `session`），那是因为 opencode 已有那样的业务表
+- **sentinel 表的选择** —— 我们用 `__drizzle_migrations` journal 表本身做 sentinel（它在 `applyOnly` 一开始就建出来，恒存在；表名沿用 drizzle 官方约定）；opencode 用真实业务表（如 `session`），那是因为 opencode 已有那样的业务表
 
 ## 调试去哪看
 
 | 现象 | 看哪里 |
 |---|---|
-| `apply()` 抛"数据库非空且没有 migration journal 表" | `migration.ts:31-33` —— 有人手动建过表；删库或补 `migration` journal |
+| `apply()` 抛"数据库非空且没有 __drizzle_migrations journal 表" | `migration.ts:31-33` —— 有人手动建过表；删库或补 `__drizzle_migrations` journal |
 | codegen 报"schema changes" 但 schema 没改 | `.drizzle-out/meta/_journal.json` 可能损坏；删 `.drizzle-out/` 重跑 |
-| 迁移没生效 | `select * from migration` 看 journal，缺哪条补哪条 |
+| 迁移没生效 | `select * from __drizzle_migrations` 看 journal，缺哪条补哪条 |
 | 生成的 `.ts` 文件丢了 `import { sql }` | 重新跑 `bun run migration`（codegen 模板会重新生成） |
 | 类型错误 | `bunx tsc --noEmit`；`migration.ts:18` 的 `Transaction` 类型如果不对，drizzle-orm 升级时这里会先炸 |

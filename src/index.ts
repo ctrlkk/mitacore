@@ -15,6 +15,9 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { imageToText } from "./multimedia";
 import { parseMarkdown, type MessagePart } from "./images";
 import { splitMessage } from "./utils/message-splitter";
+import { db } from "./database/db";
+import { apply as applyMigrations } from "./database/migration";
+import { ensureUserAlias } from "./database/user-alias";
 import tools from "./tool";
 
 import XMLBuilder from "fast-xml-builder";
@@ -466,6 +469,9 @@ async function handleBiliLink(input: string, ctx: OneBotEventContext<OneBotMessa
 }
 
 async function main() {
+  // 先跑数据库迁移：空库走 bootstrap，已 bootstrap 的库只跑新增迁移
+  await applyMigrations(db);
+
   let selfId: string | undefined = undefined;
   const botMap = new Map<string, ReturnType<typeof createBot>>();
 
@@ -497,6 +503,8 @@ async function main() {
     }
 
     const isMaster = event.sender.user_id === 2870245624;
+    // 把发送者写进用户映射表（首次见到时建立短号），过滤之后做，避免无关用户也入缓存
+    ensureUserAlias("onebot", String(event.user_id), event.sender.nickname);
     const rawText = segments
       .filter((seg) => seg.type === "text")
       .map((seg) => seg.data.text)
@@ -514,13 +522,16 @@ async function main() {
         async (qq) => {
           if (event.message_type === "group") {
             const { nickname } = await ctx.client.getGroupMemberInfo(Number(event.group_id), qq);
+            ensureUserAlias("onebot", String(qq), nickname);
             return nickname;
           }
           const { nickname } = await ctx.client.getStrangerInfo(qq);
+          ensureUserAlias("onebot", String(qq), nickname);
           return nickname;
         },
         async (id) => {
           const { user_id, message } = await ctx.client.getMessage(Number(id));
+          ensureUserAlias("onebot", String(user_id), event.sender.nickname);
           return { userId: user_id, message: message };
         },
       );

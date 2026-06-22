@@ -17,6 +17,10 @@ const tsDir = path.join(root, "src/database/migration");
 const registry = path.join(root, "src/database/migration.gen.ts");
 const schema = path.join(root, "src/database/schema.gen.ts");
 const persistentOut = path.join(root, "src/database/.drizzle-out");
+// tmp 目录放在项目内（同盘符）。drizzle-kit 的 out 走 path.relative，
+// 跨盘符（如项目在 E:\，os.tmpdir() 在 C:\）算出的"相对路径"是绝对路径，
+// drizzle-kit 又会 prepend cwd，导致 ENOENT。
+const localTmp = path.join(root, ".cache", "drizzle-tmp");
 
 const args = parseArgs({
   args: process.argv.slice(2),
@@ -54,7 +58,8 @@ async function generate() {
   }
 
   // === Step 4: 一次性 throwaway out 跑全量 DDL（schema.gen.ts 给空库 bootstrap 用）===
-  const fullOut = await fs.mkdtemp(path.join(os.tmpdir(), "agents-bot-full-"));
+  await fs.mkdir(localTmp, { recursive: true });
+  const fullOut = await fs.mkdtemp(path.join(localTmp, "full-"));
   try {
     await drizzle(fullOut, "schema");
     const fullMigrations = await generatedMigrations(fullOut);
@@ -80,7 +85,8 @@ async function check() {
   }
 
   // check 是纯校验，不应污染持久 out。把 .drizzle-out/meta/ 复制到 temp，drizzle 跑在 temp 上。
-  const tempOut = await fs.mkdtemp(path.join(os.tmpdir(), "agents-bot-migration-check-"));
+  await fs.mkdir(localTmp, { recursive: true });
+  const tempOut = await fs.mkdtemp(path.join(localTmp, "check-"));
   try {
     const metaSrc = path.join(persistentOut, "meta");
     if (await dirExists(metaSrc)) {
@@ -95,7 +101,7 @@ async function check() {
     }
 
     // 校验 schema.gen.ts 和 registry 是否最新（全量 DDL 对比，也在 temp 上跑）
-    const fullOut = await fs.mkdtemp(path.join(os.tmpdir(), "agents-bot-full-check-"));
+    const fullOut = await fs.mkdtemp(path.join(localTmp, "full-check-"));
     try {
       await drizzle(fullOut, "schema");
       const fullMigrations = await generatedMigrations(fullOut);
