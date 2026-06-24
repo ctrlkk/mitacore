@@ -1,28 +1,19 @@
-import { generateText, type LanguageModel, type LanguageModelUsage, type ModelMessage } from "ai";
+import type { LanguageModelUsage } from "ai";
 import type { OneBotMessageEvent, OneBotMessageSegment } from "./onebot/websocket-client";
 import { OneBotClient, type OneBotEventContext } from "./onebot/onebot-client";
-import { readFile, mkdir, writeFile, stat } from "node:fs/promises";
-import { resolve } from "node:path";
-import { extractVideoId, resolveShortUrl, getVideoInfo, downloadBilibiliVideo } from "./bilibili";
 
 import { blobToDataURL, download } from "./utils/blob";
 import { saveBufferToCache } from "./utils/image-cache";
 import { cache } from "./utils/cache";
-import { env } from "node:process";
 
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { imageToText } from "./multimedia";
-import { parseMarkdown, type MessagePart } from "./images";
-import { splitMessage } from "./utils/message-splitter";
 import { db } from "./database/db";
 import { apply as applyMigrations } from "./database/migration";
 import { ensureUserAlias } from "./database/user-alias";
-import tools from "./tool";
+import { runPlanner } from "./planner";
+import { runExecutor } from "./executor";
 
 import XMLBuilder from "fast-xml-builder";
-import systemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
-import summaryPrompt from "../prompts/summary.md";
 import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
 
@@ -58,13 +49,6 @@ const bot = new OneBotClient({
   accessToken: "your_token",
   reconnect: true,
 });
-
-const provider = createAnthropic({
-  name: "new-api",
-  apiKey: env.OPENAI_API_KEY!,
-  baseURL: env.OPENAI_API_BASE!,
-});
-const model = provider("MiniMax-M3");
 
 /**
  * 解析OneBot消息段落为统一格式
@@ -205,82 +189,6 @@ function buildPrompt(batch: PendingMessage[], imageMap: Map<string, { path: stri
   return finalPrompt;
 }
 
-async function loadChatHistory(name: string): Promise<ModelMessage[]> {
-  try {
-    const history = await readFile(resolve(".cache", `${name}.json`), "utf8");
-    return JSON.parse(history);
-  } catch {
-    return [];
-  }
-}
-
-async function saveChatHistory(name: string, history: ModelMessage[]) {
-  try {
-    await mkdir(resolve(".cache"), { recursive: true });
-    await writeFile(resolve(".cache", `${name}.json`), JSON.stringify(history, null, 2));
-  } catch (error) {
-    console.error(`保存历史记录失败: ${error}`);
-  }
-}
-
-async function sliceReply(chunk: string): Promise<MessagePart[]> {
-  const parts = await parseMarkdown(chunk);
-  const result: MessagePart[] = [];
-  for (const part of parts) {
-    if (typeof part === "string") {
-      for (const seg of splitMessage(part)) {
-        if (seg.trim()) result.push(seg);
-      }
-    } else {
-      result.push(part);
-    }
-  }
-  return result;
-}
-
-async function executeAgent(prompt: string, onReply: (segments: MessagePart[]) => Promise<void>) {
-  console.log("prompt: ", prompt);
-  const history = await loadChatHistory("chat");
-
-  let messages: ModelMessage[] = [...history, { role: "user", content: prompt }];
-  let usage: LanguageModelUsage | undefined;
-
-  for (let step = 0; step < 20; step++) {
-    const result = await generateText({
-      model,
-      system: systemPrompt,
-      messages,
-      tools,
-      async onStepFinish(callback) {
-        console.log("工具调用", callback.toolCalls);
-      },
-    });
-
-    if (result.reasoning) console.log("内部思考: ", result.reasoning);
-    if (result.text) console.log("助手响应: ", result.text);
-
-    if (result.text) {
-      const segments = await sliceReply(result.text);
-      await onReply(segments);
-      // const sentText = segments
-      //   .map((seg) => {
-      //     if (typeof seg === "string") return seg;
-      //     return seg.raw;
-      //   })
-      //   .join("\n");
-      // const firstMsg = result.response.messages[0];
-      // if (firstMsg && firstMsg.role === "assistant") firstMsg.content = sentText;
-    }
-    usage = result.usage;
-    messages = [...messages, ...result.response.messages];
-
-    if (result.toolCalls.length === 0) break;
-  }
-
-  await saveChatHistory("chat", messages);
-  return { messages, usage };
-}
-
 /**
  * 创建一个消息调度器，负责攒批、debounce 和唤醒，不关心消息体结构。
  * @param process 处理函数，接收一批消息和对应的上下文
@@ -342,12 +250,15 @@ function createBot(sessionId: string) {
     }
     const imageMap = await processImageAssets(Array.from(urls));
     const prompt = buildPrompt(batch, imageMap);
-    await executeAgent(prompt, async (segments) => {
+
+    const { plan, submitReply } = await runPlanner(prompt);
+    const { replyText } = await runExecutor(prompt, plan, async (segments) => {
       for (const seg of segments) {
         await ctx.reply(seg);
         await Bun.sleep(500);
       }
     });
+    await submitReply(replyText);
   }
 
   const scheduler = createScheduler(processBatch);
@@ -386,73 +297,7 @@ async function handleCommand(
     return true;
   }
 
-  const biliMatch = rawText.match(/^\/bili\s+(.+)$/);
-  if (biliMatch && biliMatch[1]) {
-    await handleBiliLink(biliMatch[1].trim(), ctx);
-    return true;
-  }
-
   return false;
-}
-
-async function handleBiliLink(input: string, ctx: OneBotEventContext<OneBotMessageEvent>) {
-  try {
-    let resolvedInput = input;
-    if (input.includes("b23.tv") || input.includes("b23.wtf")) {
-      const realUrl = await resolveShortUrl(input);
-      if (!realUrl) {
-        await ctx.reply("无法解析b23.tv短链接");
-        return;
-      }
-      resolvedInput = realUrl;
-    }
-
-    const videoId = extractVideoId(resolvedInput);
-    if (!videoId) {
-      await ctx.reply("无法识别B站视频，请提供有效的BV号、AV号或B站视频链接");
-      return;
-    }
-
-    const info = await getVideoInfo(videoId.bvid);
-    const mins = Math.floor(info.duration / 60);
-    const secs = info.duration % 60;
-    await ctx.reply([
-      { type: "image", data: { file: info.pic, url: info.pic } },
-      {
-        type: "text",
-        data: {
-          text: [
-            info.title,
-            `UP主: ${info.owner.name}`,
-            `时长: ${mins}:${secs.toString().padStart(2, "0")}`,
-            `分P: ${info.pages.length}`,
-            `正在下载...`,
-          ].join("\n"),
-        },
-      },
-    ]);
-
-    const cacheDir = resolve(".cache", "bilibili");
-    await mkdir(cacheDir, { recursive: true });
-    const outputPath = resolve(cacheDir, `${videoId.bvid}.mp4`);
-
-    if (info.pages.length === 0) {
-      await ctx.reply("该视频没有可下载的分P");
-      return;
-    }
-
-    const exists = await stat(outputPath)
-      .then(() => true)
-      .catch(() => false);
-    if (!exists) {
-      await downloadBilibiliVideo(videoId.bvid, info.pages[0]!.cid, outputPath);
-    }
-
-    await ctx.reply({ type: "video", data: { file: outputPath, url: "", thumb: info.pic } });
-  } catch (error: unknown) {
-    console.error("B站视频处理失败:", error);
-    await ctx.reply("B站视频处理失败");
-  }
 }
 
 async function main() {

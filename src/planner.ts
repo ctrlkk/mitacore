@@ -1,0 +1,91 @@
+import { generateText, tool, type ModelMessage } from "ai";
+import { z } from "zod";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { provider } from "./model";
+import plannerSystemPrompt from "../prompts/planner.md";
+import personaSystemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
+
+const model = provider("deepseek-v4-flash");
+
+const submitPlanTool = tool({
+  description: "提交本轮回复策略，包含语气、角度、要点、长度、工具调用等",
+  inputSchema: z.object({
+    plan: z.string().describe("回复策略描述，简洁可执行，不超过 200 字"),
+  }),
+  execute: async ({ plan }) => plan,
+});
+
+async function loadPlannerHistory(): Promise<ModelMessage[]> {
+  try {
+    return JSON.parse(await readFile(resolve(".cache", "planner.json"), "utf8"));
+  } catch {
+    return [];
+  }
+}
+
+async function savePlannerHistory(history: ModelMessage[]) {
+  try {
+    await mkdir(resolve(".cache"), { recursive: true });
+    await writeFile(resolve(".cache", "planner.json"), JSON.stringify(history, null, 2));
+  } catch (error) {
+    console.error("保存规划层历史失败:", error);
+  }
+}
+
+interface PlannerResult {
+  plan: string;
+  /** 由执行层调用：用实际回复替换规划结束标记并落盘 */
+  submitReply: (replyText: string) => Promise<void>;
+}
+
+/**
+ * 运行规划层
+ * @param userInputMessage 已用 <user_input> 标签包好的用户消息
+ * @returns plan + submitReply 回调（调用后把完整 messages 持久化到 .cache/planner.json）
+ */
+export async function runPlanner(userInputMessage: string): Promise<PlannerResult> {
+  const history = await loadPlannerHistory();
+  const messages: ModelMessage[] = [...history, { role: "user", content: userInputMessage }];
+
+  let planText = "";
+  let endMarkerIndex = -1;
+
+  for (let step = 0; step < 10; step++) {
+    const result = await generateText({
+      model,
+      system: [plannerSystemPrompt, personaSystemPrompt].join("\n"),
+      messages,
+      tools: { submit_plan: submitPlanTool },
+      providerOptions: {
+        anthropic: { thinking: { type: "enabled", budgetTokens: 8000 } },
+      },
+    });
+
+    if (result.reasoning) console.log("内部思考: ", result.reasoning);
+    if (result.text) console.log("助手响应: ", result.text);
+
+    messages.push(...result.response.messages);
+
+    const submitCall = result.toolCalls.find((tc) => tc.toolName === "submit_plan");
+    if (submitCall) {
+      planText = (submitCall.input as { plan?: string }).plan ?? "";
+      messages.push({ role: "assistant", content: "finish" });
+      endMarkerIndex = messages.length - 1;
+      break;
+    }
+
+    if (result.toolCalls.length === 0) break;
+  }
+
+  console.log("规划层 plan:", planText);
+
+  const submitReply = async (replyText: string): Promise<void> => {
+    const finalMessages = messages.map((m, i) =>
+      i === endMarkerIndex ? { role: "assistant" as const, content: replyText } : m,
+    );
+    await savePlannerHistory(finalMessages);
+  };
+
+  return { plan: planText, submitReply };
+}
