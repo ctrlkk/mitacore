@@ -1,5 +1,5 @@
 import { marked, type Token } from "marked";
-import { sanitizeImagePath, readCachedImageAsDataUrl } from "./utils/image-cache";
+import { sanitizeImagePath, readCachedImageAsDataUrl, downloadImageAsDataUrl } from "./utils/image-cache";
 import { resolveStickerImage } from "./utils/stickers";
 
 interface ImagePart {
@@ -53,7 +53,11 @@ async function resolveImage(href: string, alt?: string): Promise<ImagePart | nul
   if (href.startsWith("sticker:")) {
     return resolveStickerImage(href, alt);
   } else if (/^https?:\/\//i.test(href)) {
-    return { type: "image", raw: `![${alt ?? ""}](${href})`, data: { file: href, url: href } };
+    const dataUrl = await downloadImageAsDataUrl(href);
+    if (dataUrl) {
+      return { type: "image", raw: `![${alt ?? ""}](${href})`, data: { file: dataUrl, url: dataUrl } };
+    }
+    return null;
   } else {
     const virtualPath = sanitizeImagePath(href);
     const dataUrl = await readCachedImageAsDataUrl(virtualPath);

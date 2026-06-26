@@ -17,7 +17,7 @@ const provider = createOpenAICompatible({
   apiKey: env.OPENAI_API_KEY,
   baseURL: env.OPENAI_API_BASE!,
 });
-const model = provider("qwen3.7-plus");
+const model = provider("mimo-v2.5");
 
 /**
  * 将图片URL转换为文本描述。

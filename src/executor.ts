@@ -31,7 +31,7 @@ async function sliceReply(chunk: string): Promise<MessagePart[]> {
   const result: MessagePart[] = [];
   for (const part of parts) {
     if (typeof part === "string") {
-      for (const seg of splitMessage(part)) {
+      for (const seg of splitMessage(part, { maxSplitNum: 5 })) {
         if (seg.trim()) result.push(seg);
       }
     } else {
@@ -58,7 +58,12 @@ export async function runExecutor(
     { role: "user", content: userPrompt },
     {
       role: "user",
-      content: `参考plan信息进行回复，但视情况而定，无需完全遵守.\n<reply_plan>\n${plan}\n</reply_plan>`,
+      content:
+        "你正在聊天，上面是正在聊的内容，其中包含聊天记录和聊天中的图片。\n" +
+        "回复尽量简短一些。请注意把握聊天内容。\n" +
+        "请考虑对方的发言频率，想法，思考自己何时回复以及回复内容。\n\n" +
+        "参考下方plan信息进行回复，但视情况而定，无需完全遵守.\n" +
+        `<reply_plan>\n${plan}\n</reply_plan>`,
     },
   );
   const runtimeMessages: ModelMessage[] = [];

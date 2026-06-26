@@ -2,6 +2,7 @@ import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { resolve, parse, basename, posix } from "node:path";
 import { createHash } from "node:crypto";
 import { extension } from "mime-types";
+import { download, blobToDataURL } from "./blob";
 import bs58 from "bs58";
 
 /** 图片缓存的真实文件系统目录 */
@@ -73,4 +74,19 @@ export async function saveBufferToCache(buffer: Buffer, mimeType: string): Promi
   await writeFile(resolve(IMAGE_CACHE_DIR, filename), buffer);
 
   return realToVirtualPath(filename);
+}
+
+/**
+ * 下载远程图片并转换为 base64 Data URL
+ * @param url 远程图片链接
+ * @returns base64 Data URL，失败返回 null
+ */
+export async function downloadImageAsDataUrl(url: string): Promise<string | null> {
+  try {
+    const blob = await download(url, { limit: 3 * 1024 * 1024 });
+    const dataUrl = await blobToDataURL(blob);
+    return dataUrl;
+  } catch {
+    return null;
+  }
 }

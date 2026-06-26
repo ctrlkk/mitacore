@@ -7,7 +7,7 @@ import { download } from "./utils/blob";
 import { imageToText } from "./multimedia";
 import { saveBufferToCache, sanitizeImagePath, virtualToRealPath } from "./utils/image-cache";
 
-const SUPPORTS_MULTIMODAL = true;
+const SUPPORTS_MULTIMODAL = false;
 
 interface GeneratedImage {
   path: string;
@@ -41,7 +41,7 @@ const ImageGeneration = tool({
       const filename = parse(filePath).base;
       form.append("images", new Blob([buffer], { type: mime }), filename);
     }
-    const response = await fetch("http://localhost:3000/generate", {
+    const response = await fetch("http://localhost:3564/generate", {
       method: "POST",
       body: form,
     });
@@ -181,6 +181,4 @@ const queryMemory = tool({
   },
 });
 
-export default {
-  ImageGeneration,
-};
+export { ImageGeneration };
