@@ -2,7 +2,7 @@
 
 ## 来源
 
-Drizzle + TypeScript 迁移模式，从 `E:/works/opencode/packages/core/` 借鉴。
+Drizzle + TypeScript 迁移模式，从 `https://github.com/anomalyco/opencode.git` 借鉴。
 
 **与 opencode 的关键差异**：opencode 用 drizzle-kit **1.0+**（1.0.0-rc.2），本项目锁在 stable 上限 **0.31.10**。1.0+ 的 `out/baseline/snapshot.json` 增量 diff 机制在 0.31.10 不支持，所以本目录的 out 结构和 diff 流程都做了适配 —— 升级时这段差异是最容易踩坑的地方。
 
