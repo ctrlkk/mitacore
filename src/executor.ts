@@ -6,7 +6,7 @@ import { parseMarkdown, type MessagePart } from "./images";
 import { splitMessage } from "./utils/message-splitter";
 import systemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
 
-const model = provider("MiniMax-M3");
+const model = provider("deepseek-v4-pro");
 
 async function loadExecutorHistory(): Promise<ModelMessage[]> {
   try {

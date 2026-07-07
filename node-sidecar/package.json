@@ -1,0 +1,28 @@
+{
+  "name": "doubao",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "server": "node server.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.8",
+    "@hono/zod-validator": "^0.8.0",
+    "hono": "^4.12.27",
+    "p-queue": "^9.3.0",
+    "playwright": "^1.60.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "esbuild": "^0.28.1",
+    "postject": "^1.0.0-alpha.6",
+    "prettier": "^3.9.0",
+    "typescript": "^5"
+  },
+  "prettier": {
+    "printWidth": 120
+  }
+}

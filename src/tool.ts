@@ -6,14 +6,21 @@ import { lookup } from "mime-types";
 import { download } from "./utils/blob";
 import { imageToText } from "./multimedia";
 import { saveBufferToCache, sanitizeImagePath, virtualToRealPath } from "./utils/image-cache";
+import { setupImageGenerator } from "./generate-image";
 
 const SUPPORTS_MULTIMODAL = false;
+
+// 懒加载 sidecar：只在首次 execute 时才启动浏览器（~10s），之后复用同一实例；
+// 子进程随父进程退出经 Windows Job Object 自动回收
+let generatorPromise: Promise<Awaited<ReturnType<typeof setupImageGenerator>>> | null = null;
 
 interface GeneratedImage {
   path: string;
   base64: string;
   mediaType: string;
 }
+
+const ALLOWED_IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp"]);
 
 const ImageGeneration = tool({
   description: "根据输入的描述生成图像，当需要视觉内容创作时使用。",
@@ -22,14 +29,12 @@ const ImageGeneration = tool({
     images: z.array(z.string()).describe("可选的用于图像生成的参考图，必须是绝对文件系统路径").default([]),
   }),
   execute: async ({ prompt, images }) => {
-    const form = new FormData();
-    form.append("prompt", prompt);
+    const files: File[] = [];
     for (const ref of images) {
       const virtualPath = sanitizeImagePath(ref);
       const filePath = virtualToRealPath(virtualPath);
       const mime = lookup(filePath);
-      const mimes = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp"]);
-      if (!mime || !mimes.has(mime)) {
+      if (!mime || !ALLOWED_IMAGE_MIME.has(mime)) {
         return `不支持该类型的图像文件：${virtualPath}`;
       }
       let buffer: Buffer;
@@ -38,28 +43,24 @@ const ImageGeneration = tool({
       } catch {
         return `图片文件未找到: "${virtualPath}"，可能不存在或已过期，请检查文件是否存在。`;
       }
-      const filename = parse(filePath).base;
-      form.append("images", new Blob([buffer], { type: mime }), filename);
+      files.push(new File([buffer], parse(filePath).base, { type: mime }));
     }
-    const response = await fetch("http://localhost:3564/generate", {
-      method: "POST",
-      body: form,
-    });
-    if (!response.ok) {
-      throw new Error(`图像生成失败: ${response.status} ${await response.text()}`);
-    }
-    const { urls } = (await response.json()) as { urls: string[] };
-    const results: GeneratedImage[] = [];
-    for (const url of urls) {
-      const blob = await download(url);
-      const buffer = Buffer.from(await blob.bytes());
-      const path = await saveBufferToCache(buffer, blob.type);
-      results.push({
-        path,
-        base64: buffer.toString("base64"),
-        mediaType: blob.type || "image/png",
-      });
-    }
+
+    const { generate } = await (generatorPromise ??= setupImageGenerator());
+    const urls = await generate(prompt, files);
+
+    const results: GeneratedImage[] = await Promise.all(
+      urls.map(async (url) => {
+        const blob = await download(url);
+        const buffer = Buffer.from(await blob.bytes());
+        const path = await saveBufferToCache(buffer, blob.type);
+        return {
+          path,
+          base64: buffer.toString("base64"),
+          mediaType: blob.type || "image/png",
+        };
+      }),
+    );
     console.log("图像已生成");
     return results;
   },

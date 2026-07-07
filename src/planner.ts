@@ -3,6 +3,7 @@ import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { provider } from "./model";
+import { ImageGeneration } from "./tool";
 import plannerSystemPrompt from "../prompts/planner.md";
 import personaSystemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
 
@@ -13,7 +14,6 @@ const submitPlanTool = tool({
   inputSchema: z.object({
     plan: z.string().describe("回复策略描述，简洁可执行，不超过 200 字"),
   }),
-  execute: async ({ plan }) => plan,
 });
 
 async function loadPlannerHistory(): Promise<ModelMessage[]> {
@@ -49,14 +49,14 @@ export async function runPlanner(userInputMessage: string): Promise<PlannerResul
   const messages: ModelMessage[] = [...history, { role: "user", content: userInputMessage }];
 
   let planText = "";
-  let endMarkerIndex = -1;
+  let toolCallId: string | undefined;
 
   for (let step = 0; step < 10; step++) {
     const result = await generateText({
       model,
       system: [plannerSystemPrompt, personaSystemPrompt].join("\n"),
       messages,
-      tools: { submit_plan: submitPlanTool },
+      tools: { submit_plan: submitPlanTool, generate_image: ImageGeneration },
       providerOptions: {
         anthropic: { thinking: { type: "enabled", budgetTokens: 8000 } },
       },
@@ -70,8 +70,7 @@ export async function runPlanner(userInputMessage: string): Promise<PlannerResul
     const submitCall = result.toolCalls.find((tc) => tc.toolName === "submit_plan");
     if (submitCall) {
       planText = (submitCall.input as { plan?: string }).plan ?? "";
-      messages.push({ role: "assistant", content: "finish" });
-      endMarkerIndex = messages.length - 1;
+      toolCallId = submitCall.toolCallId;
       break;
     }
 
@@ -81,8 +80,20 @@ export async function runPlanner(userInputMessage: string): Promise<PlannerResul
   console.log("规划层 plan:", planText);
 
   const submitReply = async (replyText: string): Promise<void> => {
-    const finalMessages = messages.map((m, i) =>
-      i === endMarkerIndex ? { role: "assistant" as const, content: replyText } : m,
+    const finalMessages: ModelMessage[] = messages;
+    finalMessages.push(
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: toolCallId ?? "submit_plan",
+            toolName: "submit_plan",
+            output: { type: "text", value: replyText },
+          },
+        ],
+      },
+      { role: "assistant", content: "over" },
     );
     await savePlannerHistory(finalMessages);
   };

@@ -18,6 +18,12 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # external reference projects
 vendor
 
+# python virtual environments
+.venv
+
+# pyinstaller build artifacts
+__pycache__
+
 # dotenv environment variable files
 .env
 .env.development.local
