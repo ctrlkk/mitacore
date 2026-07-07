@@ -20,7 +20,7 @@ const persistentOut = path.join(root, "src/database/.drizzle-out");
 // tmp 目录放在项目内（同盘符）。drizzle-kit 的 out 走 path.relative，
 // 跨盘符（如项目在 E:\，os.tmpdir() 在 C:\）算出的"相对路径"是绝对路径，
 // drizzle-kit 又会 prepend cwd，导致 ENOENT。
-const localTmp = path.join(root, ".cache", "drizzle-tmp");
+const localTmp = path.join(root, "data", "drizzle-tmp");
 
 const args = parseArgs({
   args: process.argv.slice(2),

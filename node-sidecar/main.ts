@@ -103,7 +103,7 @@ async function setupBrowser(headless: boolean, clean: boolean) {
     const browser = await chromium.launch({ ...launchOpts, headless });
     ctx = await browser.newContext({ viewport: launchOpts.viewport });
   } else {
-    ctx = await chromium.launchPersistentContext(".cache/.browser", launchOpts);
+    ctx = await chromium.launchPersistentContext("data/.browser", launchOpts);
   }
 
   const pg: Page = ctx.pages()[0] ?? (await ctx.newPage());

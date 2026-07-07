@@ -7,6 +7,6 @@ export default defineConfig({
   out: "./migration-tmp",
   dbCredentials: {
     // 必须与 src/database/db.ts 中的 DB_PATH 保持一致
-    url: resolve(".cache", "db", "app.db"),
+    url: resolve("data", "db", "app.db"),
   },
 });

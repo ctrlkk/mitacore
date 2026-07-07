@@ -4,9 +4,10 @@ import { createHash } from "node:crypto";
 import { extension } from "mime-types";
 import { download, blobToDataURL } from "./blob";
 import bs58 from "bs58";
+import { dataPath } from "./path";
 
 /** 图片缓存的真实文件系统目录 */
-const IMAGE_CACHE_DIR = resolve(".cache", "images");
+const IMAGE_CACHE_DIR = dataPath("images");
 const IMAGE_VIRTUAL_PREFIX = "/images/";
 
 /**
@@ -21,7 +22,7 @@ export function sanitizeImagePath(raw: string): string {
 
 /**
  * 虚拟路径 → 真实文件系统路径
- * `/images/abc.jpg` → `/abs/path/.cache/images/abc.jpg`
+ * `/images/abc.jpg` → `/abs/path/data/images/abc.jpg`
  */
 export function virtualToRealPath(virtualPath: string): string {
   return resolve(IMAGE_CACHE_DIR, basename(virtualPath));

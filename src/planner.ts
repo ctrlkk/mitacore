@@ -1,8 +1,8 @@
 import { generateText, tool, type ModelMessage } from "ai";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { provider } from "./model";
+import { dataPath } from "./utils/path";
 import { ImageGeneration } from "./tool";
 import plannerSystemPrompt from "../prompts/planner.md";
 import personaSystemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
@@ -18,7 +18,7 @@ const submitPlanTool = tool({
 
 async function loadPlannerHistory(): Promise<ModelMessage[]> {
   try {
-    return JSON.parse(await readFile(resolve(".cache", "planner.json"), "utf8"));
+    return JSON.parse(await readFile(dataPath("planner.json"), "utf8"));
   } catch {
     return [];
   }
@@ -26,8 +26,8 @@ async function loadPlannerHistory(): Promise<ModelMessage[]> {
 
 async function savePlannerHistory(history: ModelMessage[]) {
   try {
-    await mkdir(resolve(".cache"), { recursive: true });
-    await writeFile(resolve(".cache", "planner.json"), JSON.stringify(history, null, 2));
+    await mkdir(dataPath(), { recursive: true });
+    await writeFile(dataPath("planner.json"), JSON.stringify(history, null, 2));
   } catch (error) {
     console.error("保存规划层历史失败:", error);
   }

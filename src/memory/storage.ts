@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile, rm, readdir, stat } from "node:fs/promises";
 import { resolve, dirname, relative, normalize } from "node:path";
 import { glob } from "glob";
+import { dataPath } from "../utils/path";
 
 export interface IMemoryStorage {
   read(path: string, offset: number, limit: number): Promise<string>;
@@ -11,7 +12,7 @@ export interface IMemoryStorage {
   grep(pattern: string, path: string | undefined, include: string | undefined, ignoreCase: boolean): Promise<string>;
 }
 
-const BASE_DIR = resolve(process.cwd(), ".cache/memory");
+const BASE_DIR = dataPath("memory");
 const MAX_LINE_LENGTH = 2000;
 const MAX_LINE_SUFFIX = "...";
 const MAX_MATCHES = 100;

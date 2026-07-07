@@ -1,50 +1,44 @@
-# dependencies (bun install)
+# 依赖
 node_modules
 
-# output
+# 构建产物
 out
 dist
 *.tgz
 
-# code coverage
+# 测试覆盖率
 coverage
 *.lcov
 
-# logs
+# 日志
 logs
 _.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
-# external reference projects
+# 外部引用项目
 vendor
 
-# python virtual environments
+# Python 虚拟环境
 .venv
-
-# pyinstaller build artifacts
 __pycache__
 
-# dotenv environment variable files
+# 环境变量
 .env
 .env.development.local
 .env.test.local
 .env.production.local
 .env.local
 
-# caches
-.eslintcache
-.cache
+# 缓存 & 运行时数据
 *.tsbuildinfo
 /data
 
-# IntelliJ based IDEs
+# IDE
 .idea
-
-# Finder (MacOS) folder config
 .DS_Store
 
-# drizzle-kit throwaway output (the codegen uses os.tmpdir() in practice, this is defense in depth)
+# drizzle-kit 一次性输出（实际 codegen 用 os.tmpdir()，这里是兜底）
 migration-tmp/
 
-# 持久化 drizzle-kit out 目录（journal 跨运行保留，生成 .ts 后不入库）
+# drizzle-kit 持久化 out 目录（journal 跨运行保留，生成 .ts 后不入库）
 src/database/.drizzle-out/

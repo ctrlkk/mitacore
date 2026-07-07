@@ -1,16 +1,16 @@
 import { generateText, type LanguageModelUsage, type ModelMessage } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { provider } from "./model";
 import { parseMarkdown, type MessagePart } from "./images";
 import { splitMessage } from "./utils/message-splitter";
+import { dataPath } from "./utils/path";
 import systemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
 
 const model = provider("deepseek-v4-pro");
 
 async function loadExecutorHistory(): Promise<ModelMessage[]> {
   try {
-    const history = await readFile(resolve(".cache", "chat.json"), "utf8");
+    const history = await readFile(dataPath("chat.json"), "utf8");
     return JSON.parse(history);
   } catch {
     return [];
@@ -19,8 +19,8 @@ async function loadExecutorHistory(): Promise<ModelMessage[]> {
 
 async function saveExecutorHistory(history: ModelMessage[]) {
   try {
-    await mkdir(resolve(".cache"), { recursive: true });
-    await writeFile(resolve(".cache", "chat.json"), JSON.stringify(history, null, 2));
+    await mkdir(dataPath(), { recursive: true });
+    await writeFile(dataPath("chat.json"), JSON.stringify(history, null, 2));
   } catch (error) {
     console.error("保存执行层历史失败:", error);
   }

@@ -1,8 +1,9 @@
 import { createCache } from "cache-manager";
 import { Keyv } from "keyv";
 import { existsSync, mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { Database as DatabaseSync } from "bun:sqlite";
+import { dataPath } from "./path";
 
 class KeyvSqliteStore {
   private db: DatabaseSync;
@@ -59,7 +60,7 @@ class KeyvSqliteStore {
   }
 }
 
-const dir = resolve(".cache", "db");
+const dir = dataPath("db");
 if (!existsSync(dir)) {
   mkdirSync(dir, { recursive: true });
 }
