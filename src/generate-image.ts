@@ -3,9 +3,18 @@ import { join } from "node:path";
 import { cwd } from "node:process";
 import { existsSync } from "node:fs";
 
+const localNodePath = process.platform === "win32" ? join(cwd(), "bin", "node.exe") : join(cwd(), "bin", "node");
+
 export async function setupImageGenerator() {
-  const nodeBin = Bun.which("node");
-  if (!nodeBin) throw new Error("找不到 node 可执行文件，请先安装 Node.js");
+  let nodeBin: string | null = null;
+  if (existsSync(localNodePath)) {
+    nodeBin = localNodePath;
+  } else {
+    nodeBin = Bun.which("node");
+  }
+  if (!nodeBin) {
+    throw new Error("找不到 node 可执行文件，请在 bin 目录下放置 node.exe，或安装 Node.js");
+  }
 
   // 优先用打包产物（dist/sidecar/sidecar.cjs），开发时 fallback 到源码（node-sidecar/main.ts）
   const bundled = join(cwd(), "dist", "sidecar", "sidecar.cjs");
