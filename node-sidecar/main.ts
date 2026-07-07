@@ -41,9 +41,6 @@ const NOVNC = process.env.NOVNC === "1"; // 设 NOVNC=1 启用 VNC 模式
 const JPEG_QUALITY = Number(process.env.VIEW_QUALITY ?? 55);
 const INJECT_NO_ANIM = process.env.VIEW_NO_ANIM !== "0";
 
-let context!: BrowserContext;
-let page!: Page;
-
 // 注入 CSS 强杀所有动画/过渡（设 VIEW_NO_ANIM=0 可关）
 const NO_ANIM_CSS = `(function(){
   const s = document.createElement('style');
@@ -59,6 +56,9 @@ const NO_ANIM_CSS = `(function(){
   (document.head || document.documentElement).appendChild(s);
 })()`;
 
+/**
+ * 可选：如果在 Linux 上且未设置 DISPLAY 环境变量，自动启动 Xvfb
+ */
 async function maybeStartXvfb(): Promise<void> {
   if (!NOVNC || process.platform !== "linux") return;
   if (process.env.DISPLAY) return;
@@ -82,6 +82,12 @@ async function maybeStartXvfb(): Promise<void> {
   }
 }
 
+/**
+ * 设置浏览器上下文和页面
+ * @param headless 是否无头模式
+ * @param clean 是否清除持久上下文
+ * @returns 包含上下文和页面的对象
+ */
 async function setupBrowser(headless: boolean, clean: boolean) {
   const args = [
     "--no-sandbox",
@@ -110,6 +116,11 @@ async function setupBrowser(headless: boolean, clean: boolean) {
   return { context: ctx, page: pg };
 }
 
+/**
+ * 上传图片到页面
+ * @param page 页面对象
+ * @param file 图片文件对象
+ */
 async function uploadImage(page: Page, file: File): Promise<void> {
   const fileObj = {
     name: file.name,
@@ -127,6 +138,12 @@ async function uploadImage(page: Page, file: File): Promise<void> {
   await page.waitForTimeout(2000);
 }
 
+/**
+ * 导航到页面并发送提示
+ * @param page 页面对象
+ * @param prompt 提示文本
+ * @param images 图片文件对象数组
+ */
 async function navigateAndSendPrompt(page: Page, prompt: string, images?: File[]): Promise<void> {
   await page.goto(BASE_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
 
@@ -157,6 +174,12 @@ async function navigateAndSendPrompt(page: Page, prompt: string, images?: File[]
   await ta.press("Enter");
 }
 
+/**
+ * 从事件对象中提取图片URL
+ * @param ev 事件对象
+ * @param urls 已找到的URL数组
+ * @returns 找到的URL数组
+ */
 function collectUrls(ev: any, urls: string[]): string[] {
   const found: string[] = [];
 
@@ -195,6 +218,13 @@ function collectUrls(ev: any, urls: string[]): string[] {
   return found;
 }
 
+/**
+ * 生成图片URL列表
+ * @param page 页面对象
+ * @param prompt 提示文本
+ * @param images 图片文件对象数组
+ * @returns 图片URL数组
+ */
 async function generateImages(page: Page, prompt: string, images?: File[]): Promise<string[]> {
   const urls: string[] = [];
   let done = false;
@@ -239,12 +269,20 @@ async function generateImages(page: Page, prompt: string, images?: File[]): Prom
   return urls;
 }
 
+/**
+ * 点击删除菜单项并确认删除
+ * @param page 页面对象
+ */
 async function clickMenuAndDelete(page: Page): Promise<void> {
   await page.getByRole("menuitem", { name: "删除" }).first().click();
   const dialog = page.getByRole("dialog").first();
   await dialog.getByRole("button", { name: "删除" }).first().click();
 }
 
+/**
+ * 删除当前对话
+ * @param page 页面对象
+ */
 async function deleteCurrentConversation(page: Page): Promise<void> {
   console.log("开始清理当前对话...");
 
@@ -299,8 +337,8 @@ async function main(): Promise<void> {
   await maybeStartXvfb();
 
   const browserStuff = await setupBrowser(false, false);
-  context = browserStuff.context;
-  page = browserStuff.page;
+  const context = browserStuff.context;
+  const page = browserStuff.page;
 
   // 用 init_script 注入强杀动画 CSS，每次跳转/刷新都自动生效
   if (INJECT_NO_ANIM) {
