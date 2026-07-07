@@ -1,23 +1,37 @@
+import { createServer } from "node:net";
+import { resolve } from "node:path";
+import { cwd } from "node:process";
+
 import type { LanguageModelUsage } from "ai";
-import type { OneBotMessageEvent, OneBotMessageSegment } from "./onebot/websocket-client";
-import { OneBotClient, type OneBotEventContext } from "./onebot/onebot-client";
-
-import { blobToDataURL, download } from "./utils/blob";
-import { saveBufferToCache } from "./utils/image-cache";
-import { cache } from "./utils/cache";
-
-import { imageToText } from "./multimedia";
-import { db } from "./database/db";
-import { apply as applyMigrations } from "./database/migration";
-import { ensureUserAlias } from "./database/user-alias";
-import { runPlanner } from "./planner";
-import { runExecutor } from "./executor";
-
 import XMLBuilder from "fast-xml-builder";
 import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
 
+import type { OneBotMessageEvent, OneBotMessageSegment } from "./onebot/websocket-client";
+import { OneBotClient, type OneBotEventContext } from "./onebot/onebot-client";
+import { launchNapCat, type NapCatConfig } from "./napcat/loader";
+import { db } from "./database/db";
+import { apply as applyMigrations } from "./database/migration";
+import { ensureUserAlias } from "./database/user-alias";
+import { imageToText } from "./multimedia";
+import { runExecutor } from "./executor";
+import { runPlanner } from "./planner";
+import { blobToDataURL, download } from "./utils/blob";
+import { cache } from "./utils/cache";
+import { saveBufferToCache } from "./utils/image-cache";
+
 dayjs.locale("zh-cn");
+
+function acquireEphemeralPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.listen(0, () => {
+      const { port } = server.address() as { port: number };
+      server.close(() => resolve(port));
+    });
+    server.on("error", reject);
+  });
+}
 
 interface UnifiedTextMessage {
   type: "text";
@@ -43,12 +57,6 @@ interface PendingMessage {
   date: Date;
   isMaster: boolean;
 }
-
-const bot = new OneBotClient({
-  url: "ws://127.0.0.1:3001",
-  accessToken: "your_token",
-  reconnect: true,
-});
 
 /**
  * 解析OneBot消息段落为统一格式
@@ -300,9 +308,82 @@ async function handleCommand(
   return false;
 }
 
-async function main() {
+if (import.meta.main) {
   // 先跑数据库迁移：空库走 bootstrap，已 bootstrap 的库只跑新增迁移
   await applyMigrations(db);
+
+  // NapCat 配置
+  const napcatConfig: NapCatConfig = {
+    qqId: "2790285434",
+    napcatDir: resolve(cwd(), "data", "runtime", "napcat"),
+    qqPath: "",
+  };
+
+  console.log("启动 NapCat...");
+  const napcat = await launchNapCat(napcatConfig);
+  const api = await napcat.waitForWebUI();
+  console.log(`NapCat WebUI 端口: ${napcat.webuiPort}`);
+
+  const version = await api.getNapCatVersion();
+  console.log(`NapCat 版本: ${version}`);
+
+  await napcat.waitForReady();
+  console.log("NapCat 协议适配器已就绪");
+
+  const isLoggedIn = await api.checkLoginStatus();
+  console.log(`QQ 登录状态: ${isLoggedIn ? "已登录" : "未登录"}`);
+
+  // 获取临时端口用于 WebSocket 服务器
+  const wsPort = await acquireEphemeralPort();
+
+  // 推送 OB11 配置
+  await api.setOB11Config({
+    network: {
+      httpServers: [],
+      httpClients: [],
+      httpSseServers: [],
+      websocketServers: [
+        {
+          enable: true,
+          name: "websocket-server",
+          host: "127.0.0.1",
+          port: wsPort,
+          messagePostFormat: "array",
+          reportSelfMessage: false,
+          token: "",
+          enableForcePushEvent: true,
+          debug: false,
+          heartInterval: 30000,
+        },
+      ],
+      websocketClients: [],
+      plugins: [],
+    },
+    musicSignUrl: "",
+    enableLocalFile2Url: false,
+    parseMultMsg: false,
+  });
+  console.log("OneBot 配置已推送");
+
+  // 创建 OneBot 客户端并连接
+  const bot = new OneBotClient({
+    url: `ws://127.0.0.1:${wsPort}`,
+    accessToken: "",
+    reconnect: true,
+  });
+
+  // 捕获暂停信号，在程序暂停时关闭 NapCat
+  process.on("SIGINT", async () => {
+    console.log("\n接收到中断信号，正在关闭 NapCat…");
+    await napcat.stop();
+    process.exit(0);
+  });
+
+  process.on("SIGTERM", async () => {
+    console.log("\n接收到终止信号，正在关闭 NapCat…");
+    await napcat.stop();
+    process.exit(0);
+  });
 
   let selfId: string | undefined = undefined;
   const botMap = new Map<string, ReturnType<typeof createBot>>();
@@ -387,5 +468,3 @@ async function main() {
   selfId = String(user_id);
   console.log(`Bot 已连接并运行，ID: ${user_id}，昵称: ${nickname}`);
 }
-
-main().catch(console.error);
