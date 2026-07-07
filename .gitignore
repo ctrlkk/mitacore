@@ -35,6 +35,7 @@ __pycache__
 .eslintcache
 .cache
 *.tsbuildinfo
+/data
 
 # IntelliJ based IDEs
 .idea
