@@ -446,7 +446,7 @@ if (import.meta.main) {
         },
         async (id) => {
           const { user_id, message } = await ctx.client.getMessage(Number(id));
-          ensureUserAlias("onebot", String(user_id), event.sender.nickname);
+          ensureUserAlias("onebot", String(user_id));
           return { userId: user_id, message: message };
         },
       );
