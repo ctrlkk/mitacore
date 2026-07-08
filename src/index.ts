@@ -99,46 +99,48 @@ async function parseOneBotMessage(
 async function processImageAssets(urls: string[]) {
   const resultMap = new Map<string, { path: string; description: string }>();
   if (urls.length === 0) return resultMap;
-  // 下载图片
-  const downloaded = await Promise.all(
+
+  const assets = await Promise.all(
     urls.map(async (url) => {
       try {
         const { virtualPath, realPath } = await downloadToCache(url);
         const blob = await compressImage(Bun.file(realPath));
-        return { url, blob, path: virtualPath };
+        return { url, path: virtualPath, blob };
       } catch (error) {
-        console.error(`下载图片失败: ${url}`, error);
+        console.error(`下载失败: ${url}`, error);
         return null;
       }
     }),
-  );
-  // 过滤并去重
-  const uniquePaths = new Map(downloaded.filter((item) => item !== null).map((item) => [item.path, item.blob]));
-  // 转述
-  const descriptions = await Promise.all(
-    Array.from(uniquePaths.entries()).map(async ([path, blob]) => {
-      try {
-        const cached = await cache.get<string>(path);
-        if (cached) return { path, description: cached };
-        const description = await imageToText(await blobToDataURL(blob));
+  ).then((items) => items.filter((item) => item !== null));
+
+  const pathGroups = new Map<string, { blob: Blob; sourceUrls: string[] }>();
+  for (const asset of assets) {
+    const group = pathGroups.get(asset.path);
+    if (group) {
+      group.sourceUrls.push(asset.url);
+    } else {
+      pathGroups.set(asset.path, { blob: asset.blob, sourceUrls: [asset.url] });
+    }
+  }
+
+  await Promise.all(
+    Array.from(pathGroups.entries()).map(async ([path, { blob, sourceUrls }]) => {
+      let description = await cache.get<string>(path);
+      if (!description) {
+        try {
+          const dataUrl = await blobToDataURL(blob);
+          description = await imageToText(dataUrl);
+        } catch (error) {
+          console.error(`转述失败: ${path}`, error);
+          description = "图片转述失败";
+        }
         await cache.set(path, description);
-        return { path, description };
-      } catch (error) {
-        console.error(`图片转述失败: ${path}`, error);
-        return { path, description: "图片转述失败" };
+      }
+      for (const url of sourceUrls) {
+        resultMap.set(url, { path, description });
       }
     }),
   );
-  // 映射
-  const pathToDesc = new Map(descriptions.map((d) => [d.path, d.description]));
-  downloaded
-    .filter((item) => item !== null)
-    .forEach((item) => {
-      resultMap.set(item.url, {
-        path: item.path,
-        description: pathToDesc.get(item.path) || "图片转述失败",
-      });
-    });
 
   return resultMap;
 }
