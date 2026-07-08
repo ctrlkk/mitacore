@@ -16,6 +16,7 @@ import { PassThrough } from "node:stream";
 import { cwd } from "node:process";
 import { downloadNapcat } from "./download";
 import { OneBotClient } from "../onebot/onebot-client";
+import { formatBytes } from "../utils/format";
 
 const sleep = Bun.sleep;
 
@@ -297,7 +298,21 @@ export async function ensureNapcat(napcatDir: string): Promise<void> {
   }
 
   console.log(`缺少 napcat.mjs 文件: ${missing.join(", ")}，开始下载…`);
-  await downloadNapcat(napcatDir);
+  let totalSize = 0;
+  await downloadNapcat(napcatDir, (received, total) => {
+    if (total && !totalSize) {
+      totalSize = total;
+      console.log(`总大小: ${formatBytes(total)}`);
+    }
+    if (total) {
+      process.stdout.write(
+        `\r下载进度: ${formatBytes(received)}/${formatBytes(total)} (${Math.round((received / total) * 100)}%)`,
+      );
+    } else {
+      process.stdout.write(`\r已下载: ${formatBytes(received)}`);
+    }
+  });
+  if (totalSize) console.log();
 
   const stillMissing = required.filter((f) => !existsSync(resolve(napcatDir, f)));
   if (stillMissing.length > 0) {

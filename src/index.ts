@@ -337,6 +337,7 @@ if (import.meta.main) {
 
   // 获取临时端口用于 WebSocket 服务器
   const wsPort = await acquireEphemeralPort();
+  console.log(`临时 WebSocket 端口: ${wsPort}`);
 
   // 推送 OB11 配置
   await api.setOB11Config({

@@ -6,7 +6,10 @@ import AdmZip from "adm-zip";
  * 从 GitHub Releases 下载 NapCat.Shell.zip，镜像回退避免 GFW 干扰。
  * 后置条件：解压完成后删除临时 zip 文件，不保留残留。
  */
-export async function downloadNapcat(targetDir: string, onProgress?: (pct: number) => void): Promise<void> {
+export async function downloadNapcat(
+  targetDir: string,
+  onProgress?: (received: number, total: number) => void,
+): Promise<void> {
   const zipPath = join(targetDir, `NapCat.Shell.${Date.now()}.zip`);
   mkdirSync(targetDir, { recursive: true });
 
@@ -42,7 +45,7 @@ export async function downloadNapcat(targetDir: string, onProgress?: (pct: numbe
         const { done, value } = await reader.read();
         if (done) break;
         received += value.length;
-        if (total && onProgress) onProgress(Math.round((received / total) * 100));
+        if (onProgress) onProgress(received, total);
         writer.write(value);
       }
       writer.end();

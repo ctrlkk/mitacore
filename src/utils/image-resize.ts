@@ -1,18 +1,9 @@
 import type { BunFile } from "bun";
 import { resolve, dirname } from "node:path";
 import { existsSync } from "node:fs";
+import { formatBytes } from "./format";
 
 const MAX_DIM = 1024;
-
-/**
- * 将字节数转换为易读格式
- */
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
-}
 
 /**
  * 查找 ffmpeg 可执行文件
