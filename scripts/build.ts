@@ -124,6 +124,10 @@ async function buildNode() {
   });
   const installCode = await installProc.exited;
   if (installCode !== 0) throw new Error(`Install 失败，退出码 ${installCode}`);
+}
+
+async function copyBin() {
+  const outBinDir = join(outDir, "bin");
 
   // 复制 Node 运行时到输出目录
   const nodeBin = Bun.which("node");
@@ -131,7 +135,6 @@ async function buildNode() {
     console.warn("找不到系统 node，跳过复制。请确保目标环境有 node。");
     return;
   }
-  const outBinDir = join(outDir, "bin");
   mkdirSync(outBinDir, { recursive: true });
   const targetNodePath = join(outBinDir, `node${exeExt}`);
   console.log(`复制 ${nodeBin} → ${targetNodePath}`);
@@ -140,13 +143,26 @@ async function buildNode() {
   if (process.platform !== "win32") {
     chmodSync(targetNodePath, 0o755);
   }
+
+  // 复制 ffmpeg 到输出目录（用于 GIF 压缩）
+  const ffmpegBin = Bun.which("ffmpeg");
+  if (ffmpegBin) {
+    const targetFfmpegPath = join(outBinDir, `ffmpeg${exeExt}`);
+    console.log(`复制 ${ffmpegBin} → ${targetFfmpegPath}`);
+    copyFileSync(ffmpegBin, targetFfmpegPath);
+    if (process.platform !== "win32") {
+      chmodSync(targetFfmpegPath, 0o755);
+    }
+  } else {
+    console.warn("找不到系统 ffmpeg，跳过复制。请确保目标环境有 ffmpeg。");
+  }
 }
 
 // 准备输出目录
 mkdirSync(outDir, { recursive: true });
 
 // 并行构建
-await Promise.all([buildApp(), buildNode()]);
+await Promise.all([buildApp(), buildNode(), copyBin()]);
 
 console.log("\n==> 构建完成：");
 for (const f of readdirSync(outDir)) {

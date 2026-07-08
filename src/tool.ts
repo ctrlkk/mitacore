@@ -1,26 +1,22 @@
+import type { ToolResultOutput } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 import { tool } from "ai";
-import { parse } from "node:path";
-import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
 import { lookup } from "mime-types";
-import { download } from "./utils/blob";
 import { imageToText } from "./multimedia";
-import { saveBufferToCache, sanitizeImagePath, virtualToRealPath } from "./utils/image-cache";
+import { sanitizeImagePath, virtualToRealPath, downloadToCache } from "./utils/image-cache";
 import { setupImageGenerator } from "./generate-image";
+
+// 提取 type 为 'content' 的分支
+type ContentResult = Extract<ToolResultOutput, { type: "content" }>;
+type ContentValue = ContentResult["value"];
+type ContentPart = ContentValue[number];
 
 const SUPPORTS_MULTIMODAL = false;
 
 // 懒加载 sidecar：只在首次 execute 时才启动浏览器（~10s），之后复用同一实例；
 // 子进程随父进程退出经 Windows Job Object 自动回收
 let generatorPromise: Promise<Awaited<ReturnType<typeof setupImageGenerator>>> | null = null;
-
-interface GeneratedImage {
-  path: string;
-  base64: string;
-  mediaType: string;
-}
-
-const ALLOWED_IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp"]);
 
 const ImageGeneration = tool({
   description: "根据输入的描述生成图像，当需要视觉内容创作时使用。",
@@ -31,40 +27,36 @@ const ImageGeneration = tool({
   execute: async ({ prompt, images }) => {
     const files: File[] = [];
     for (const ref of images) {
-      const virtualPath = sanitizeImagePath(ref);
-      const filePath = virtualToRealPath(virtualPath);
+      const filePath = virtualToRealPath(sanitizeImagePath(ref));
       const mime = lookup(filePath);
-      if (!mime || !ALLOWED_IMAGE_MIME.has(mime)) {
-        return `不支持该类型的图像文件：${virtualPath}`;
+      if (!mime || !["image/jpeg", "image/png", "image/webp", "image/bmp"].includes(mime)) {
+        return `不支持该类型的图像文件：${ref}`;
       }
-      let buffer: Buffer;
-      try {
-        buffer = await readFile(filePath);
-      } catch {
-        return `图片文件未找到: "${virtualPath}"，可能不存在或已过期，请检查文件是否存在。`;
+      const file = Bun.file(filePath);
+      if (!file.exists()) {
+        return `图片文件未找到: "${ref}"，可能不存在或已过期，请检查文件是否存在。`;
       }
-      files.push(new File([buffer], parse(filePath).base, { type: mime }));
+      files.push(new File([file], basename(filePath), { type: mime }));
     }
 
     const { generate } = await (generatorPromise ??= setupImageGenerator());
     const urls = await generate(prompt, files);
 
-    const results: GeneratedImage[] = await Promise.all(
+    const results = await Promise.all(
       urls.map(async (url) => {
-        const blob = await download(url);
-        const buffer = Buffer.from(await blob.bytes());
-        const path = await saveBufferToCache(buffer, blob.type);
+        const { virtualPath, realPath } = await downloadToCache(url);
+        const file = Bun.file(realPath);
         return {
-          path,
-          base64: buffer.toString("base64"),
-          mediaType: blob.type || "image/png",
+          path: virtualPath,
+          mediaType: "image/webp",
+          base64: await new Bun.Image(file).webp({ quality: 80 }).toBase64(),
         };
       }),
     );
     console.log("图像已生成");
     return results;
   },
-  async toModelOutput({ output }) {
+  async toModelOutput({ output }): Promise<ToolResultOutput> {
     if (typeof output === "string") {
       return {
         type: "content",
@@ -72,25 +64,21 @@ const ImageGeneration = tool({
       };
     }
     if (SUPPORTS_MULTIMODAL) {
+      const value: ContentPart[] = output.flatMap((r, index) => [
+        { type: "text", text: `#${index} 图片路径：${r.path}` },
+        { type: "image-data", data: r.base64, mediaType: r.mediaType },
+      ]);
+      value.unshift({ type: "text", text: `图片生成成功，一共${output.length}张，下面是图片预览；` });
       return {
         type: "content",
-        value: output.flatMap((r) => [
-          { type: "text", text: `生成的图片: ${r.path}` },
-          { type: "image-data", data: r.base64, mediaType: r.mediaType },
-        ]),
+        value,
       };
     }
-    console.log("开始描述图像");
     const descriptions = await Promise.all(
       output.map(async (r) => {
-        try {
-          const dataUrl = `data:${r.mediaType};base64,${r.base64}`;
-          const description = await imageToText(dataUrl);
-          return `  <image path="${r.path}">\n${description.trim()}\n</image>`;
-        } catch (e) {
-          console.error(`图片转述失败: ${r.path}`, e);
-          return `  <image path="${r.path}">[图片转述失败]</image>`;
-        }
+        const dataUrl = `data:${r.mediaType};base64,${r.base64}`;
+        const description = await imageToText(dataUrl).catch(() => "图片转述失败");
+        return ["<image>", `<path>${r.path}</path>`, description.trim(), "</image>"].join("\n");
       }),
     );
     console.log("图像描述完成");
@@ -99,86 +87,10 @@ const ImageGeneration = tool({
       value: [
         {
           type: "text",
-          text: `<generated_images>\n${descriptions.join("\n")}\n</generated_images>`,
+          text: [`图像生成成功，一共${descriptions.length}张，下面是图片预览；`, descriptions.join("\n")].join("\n"),
         },
       ],
     };
-  },
-});
-
-const ReadImage = tool({
-  description:
-    "读取一张图片并获取其内容描述。仅在上下文中出现不明图片、需要了解图片内容时使用。" +
-    "这种情况通常发生在：图片信息因上下文增长而被移除，或需要重新查看某张图片的内容时。" +
-    "未发生这种情况的时候请不要使用该工具。",
-  inputSchema: z.object({
-    path: z.string().describe("图片的路径，可以是绝对文件系统路径或 /images/ 开头的缓存路径"),
-  }),
-  execute: async ({ path: imagePath }) => {
-    const virtualPath = sanitizeImagePath(imagePath);
-    const filePath = virtualToRealPath(virtualPath);
-    const mime = lookup(filePath);
-    const mimes = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp", "image/gif"]);
-    if (!mime || !mimes.has(mime)) {
-      return `不支持该类型的图像文件：${virtualPath}`;
-    }
-    let buffer: Buffer;
-    try {
-      buffer = await readFile(filePath);
-    } catch {
-      return `图片文件未找到: "${virtualPath}"，可能不存在或已过期，请检查文件是否存在。`;
-    }
-    return {
-      path: virtualPath,
-      base64: buffer.toString("base64"),
-      mediaType: mime,
-    };
-  },
-  async toModelOutput({ output }) {
-    if (typeof output === "string") {
-      return {
-        type: "content",
-        value: [{ type: "text", text: output }],
-      };
-    }
-    if (SUPPORTS_MULTIMODAL) {
-      return {
-        type: "content",
-        value: [
-          { type: "text", text: `图片内容: ${output.path}` },
-          { type: "image-data", data: output.base64, mediaType: output.mediaType },
-        ],
-      };
-    }
-    const dataUrl = `data:${output.mediaType};base64,${output.base64}`;
-    try {
-      const description = await imageToText(dataUrl);
-      return {
-        type: "content",
-        value: [
-          {
-            type: "text",
-            text: `<image path="${output.path}">\n${description.trim()}\n</image>`,
-          },
-        ],
-      };
-    } catch (e) {
-      console.error(`图片转述失败: ${output.path}`, e);
-      return {
-        type: "content",
-        value: [{ type: "text", text: `图片转述失败: ${output.path}` }],
-      };
-    }
-  },
-});
-
-const queryMemory = tool({
-  description: "发起一个子任务来查询记忆系统中存储的记忆信息，允许通过口语化的方式来指派一个特定任务。",
-  inputSchema: z.object({
-    prompt: z.string().describe("用于查询记忆的提示词内容"),
-  }),
-  execute: async ({ prompt }) => {
-    return "还未实现哦~";
   },
 });
 

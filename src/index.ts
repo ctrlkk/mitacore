@@ -16,9 +16,10 @@ import { ensureUserAlias } from "./database/user-alias";
 import { imageToText } from "./multimedia";
 import { runExecutor } from "./executor";
 import { runPlanner } from "./planner";
-import { blobToDataURL, download } from "./utils/blob";
+import { blobToDataURL } from "./utils/blob";
 import { cache } from "./utils/cache";
-import { saveBufferToCache } from "./utils/image-cache";
+import { downloadToCache } from "./utils/image-cache";
+import { compressImage } from "./utils/image-resize";
 
 dayjs.locale("zh-cn");
 
@@ -102,10 +103,9 @@ async function processImageAssets(urls: string[]) {
   const downloaded = await Promise.all(
     urls.map(async (url) => {
       try {
-        const blob = await download(url);
-        const buffer = Buffer.from(await blob.bytes());
-        const path = await saveBufferToCache(buffer, blob.type);
-        return { url, blob, path };
+        const { virtualPath, realPath } = await downloadToCache(url);
+        const blob = await compressImage(Bun.file(realPath));
+        return { url, blob, path: virtualPath };
       } catch (error) {
         console.error(`下载图片失败: ${url}`, error);
         return null;
@@ -136,7 +136,7 @@ async function processImageAssets(urls: string[]) {
     .forEach((item) => {
       resultMap.set(item.url, {
         path: item.path,
-        description: pathToDesc.get(item.path) || "未知图片",
+        description: pathToDesc.get(item.path) || "图片转述失败",
       });
     });
 
