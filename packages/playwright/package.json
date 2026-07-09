@@ -1,8 +1,9 @@
 {
-  "name": "doubao",
+  "name": "playwright",
   "type": "module",
   "private": true,
   "scripts": {
+    "build": "bun run build.ts",
     "server": "node main.ts"
   },
   "dependencies": {

@@ -16,9 +16,9 @@ export async function setupImageGenerator() {
     throw new Error("找不到 node 可执行文件，请在 bin 目录下放置 node.exe，或安装 Node.js");
   }
 
-  // 优先用打包产物（dist/sidecar/sidecar.cjs），开发时 fallback 到源码（node-sidecar/main.ts）
-  const bundled = join(cwd(), "dist", "sidecar", "sidecar.cjs");
-  const source = join(cwd(), "node-sidecar", "main.ts");
+  // 优先用打包产物（dist/sidecar/playwright.cjs），开发时 fallback 到源码（packages/playwright/main.ts）
+  const bundled = join(cwd(), "dist", "sidecar", "playwright.cjs");
+  const source = join(cwd(), "packages", "playwright", "main.ts");
   const childPath = existsSync(bundled) ? bundled : source;
   const child = spawn(nodeBin, [childPath], {
     stdio: ["inherit", "inherit", "inherit", "ipc"],
@@ -52,7 +52,7 @@ export async function setupImageGenerator() {
   // 子进程提前非正常退出，父进程也别卡着
   child.on("exit", (code) => {
     if (!killed && code !== 0) {
-      console.error(`node-sidecar 异常退出，code=${code}`);
+      console.error(`playwright 异常退出，code=${code}`);
       process.exit(code ?? 1);
     }
   });
@@ -71,7 +71,7 @@ export async function setupImageGenerator() {
     });
     child.on("exit", (code: number | null) => {
       if (code !== 0) {
-        reject(new Error(`node-sidecar 启动失败，exit code=${code}`));
+        reject(new Error(`playwright 启动失败，exit code=${code}`));
       }
     });
   });

@@ -10,7 +10,7 @@ import {
   chmodSync,
 } from "node:fs";
 import { join } from "node:path";
-import esbuild from "esbuild";
+import { requirePkgs } from "../packages/playwright/externals.ts";
 
 const root = join(import.meta.dir, "..");
 const outDir = join(root, "dist");
@@ -49,50 +49,33 @@ async function buildApp() {
 }
 
 /**
- * 构建 Node sidecar：esbuild 打包 + 安装运行时依赖 + 复制 node 运行时
+ * 构建 Node sidecar：调用 packages/playwright 自管的 esbuild 打包，
+ * 然后复制产物 + 写最小 package.json + 安装运行时依赖
  */
-async function buildNode() {
+async function buildSidecar() {
   const sidecarDir = join(outDir, "sidecar");
+  const pkgDir = join(root, "packages", "playwright");
+  const bundleOut = join(sidecarDir, "playwright.cjs");
 
-  // 无法内联的动态依赖包，通常是 require 动态加载的模块
-  const requirePkgs = new Set([
-    "puppeteer-extra-plugin-stealth",
-    "puppeteer-extra",
-    "clone-deep",
-    "lazy-cache",
-    "kind-of",
-    "is-plain-object",
-    "shallow-clone",
-    "for-in",
-    "for-own",
-    "mixin-deep",
-  ]);
-
-  // 准备：清理旧依赖，重建 sidecar 目录
   clean(join(sidecarDir, "node_modules"));
   mkdirSync(sidecarDir, { recursive: true });
 
-  // 打包 node 代码
-  const result = await esbuild.build({
-    entryPoints: [join(root, "node-sidecar", "main.ts")],
-    bundle: true,
-    platform: "node",
-    target: "node24",
-    format: "cjs",
-    banner: { js: `const __import_meta_url = require("url").pathToFileURL(__filename).href;` },
-    define: { "import.meta.url": "__import_meta_url" },
-    external: ["*.node", ...requirePkgs],
-    outfile: join(sidecarDir, "sidecar.cjs"),
-    logLevel: "info",
+  // 子包自管打包：产物输出到 packages/playwright/dist/playwright.cjs
+  const buildProc = Bun.spawn({
+    cmd: ["bun", "run", "build"],
+    cwd: pkgDir,
+    stdio: ["ignore", "inherit", "inherit"],
   });
-  if (result.errors.length) {
-    result.errors.forEach((e) => console.error(e.text));
-    throw new Error("esbuild 失败");
-  }
+  const buildCode = await buildProc.exited;
+  if (buildCode !== 0) throw new Error(`子包 build 失败，退出码 ${buildCode}`);
+
+  const bundleSrc = join(pkgDir, "dist", "playwright.cjs");
+  if (!existsSync(bundleSrc)) throw new Error(`找不到子包 build 产物：${bundleSrc}`);
+  copyFileSync(bundleSrc, bundleOut);
 
   // 生成最小 package.json：只包含 esbuild externalize 的直接依赖
   // 它们的传递依赖（clone-deep / lazy-cache / kind-of / chromium-bidi / ...）bun install 自动解析
-  const sidecarPkg = JSON.parse(readFileSync(join(root, "node-sidecar", "package.json"), "utf-8")) as {
+  const sidecarPkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf-8")) as {
     type?: string;
     dependencies?: Record<string, string>;
   };
@@ -162,7 +145,7 @@ async function copyBin() {
 mkdirSync(outDir, { recursive: true });
 
 // 并行构建
-await Promise.all([buildApp(), buildNode(), copyBin()]);
+await Promise.all([buildApp(), buildSidecar(), copyBin()]);
 
 console.log("\n==> 构建完成：");
 for (const f of readdirSync(outDir)) {
