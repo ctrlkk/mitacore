@@ -9,7 +9,7 @@ import "dayjs/locale/zh-cn";
 
 import type { OneBotMessageEvent, OneBotMessageSegment } from "./onebot/websocket-client";
 import { OneBotClient, type OneBotEventContext } from "./onebot/onebot-client";
-import { launchNapCat, type NapCatConfig } from "./napcat/loader";
+import { launchNapCat, startBuiltinNapCat, type NapCatConfig } from "./napcat/loader";
 import { db } from "./database/db";
 import { apply as applyMigrations } from "./database/migration";
 import { ensureUserAlias } from "./database/user-alias";
@@ -20,8 +20,26 @@ import { blobToDataURL } from "./utils/blob";
 import { cache } from "./utils/cache";
 import { downloadToCache } from "./utils/image-cache";
 import { compressImage } from "./utils/image-resize";
+import { loadConfig, getConfig, type Config } from "./config";
 
 dayjs.locale("zh-cn");
+
+/**
+ * 检查ID是否在范围内
+ * @param id 要检查的ID
+ * @param scope 范围配置
+ * @returns 是否在范围内
+ */
+function isIdInScope(id: string, scope: Config["napcat"]["groups"]): boolean {
+  const isInList = scope.ids.includes(id);
+  if (scope.mode === "whitelist") {
+    // 白名单模式：只有在列表中的ID才允许
+    return isInList;
+  } else {
+    // 黑名单模式：只有在列表中的ID才禁止
+    return !isInList;
+  }
+}
 
 function acquireEphemeralPort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -311,81 +329,41 @@ async function handleCommand(
 }
 
 if (import.meta.main) {
+  // 加载配置文件
+  const config = loadConfig();
+
   // 先跑数据库迁移：空库走 bootstrap，已 bootstrap 的库只跑新增迁移
   await applyMigrations(db);
 
-  // NapCat 配置
-  const napcatConfig: NapCatConfig = {
-    qqId: "2790285434",
-    napcatDir: resolve(cwd(), "data", "runtime", "napcat"),
-    qqPath: "",
-  };
+  // 根据配置选择启动方式
+  let wsUrl: string;
+  let accessToken: string;
 
-  console.log("启动 NapCat...");
-  const napcat = await launchNapCat(napcatConfig);
-  const api = await napcat.waitForWebUI();
-  console.log(`NapCat WebUI 端口: ${napcat.webuiPort}`);
-
-  const version = await api.getNapCatVersion();
-  console.log(`NapCat 版本: ${version}`);
-
-  await napcat.waitForReady();
-  console.log("NapCat 协议适配器已就绪");
-
-  const isLoggedIn = await api.checkLoginStatus();
-  console.log(`QQ 登录状态: ${isLoggedIn ? "已登录" : "未登录"}`);
-
-  // 获取临时端口用于 WebSocket 服务器
-  const wsPort = await acquireEphemeralPort();
-  console.log(`临时 WebSocket 端口: ${wsPort}`);
-
-  // 推送 OB11 配置
-  await api.setOB11Config({
-    network: {
-      httpServers: [],
-      httpClients: [],
-      httpSseServers: [],
-      websocketServers: [
-        {
-          enable: true,
-          name: "websocket-server",
-          host: "127.0.0.1",
-          port: wsPort,
-          messagePostFormat: "array",
-          reportSelfMessage: false,
-          token: "",
-          enableForcePushEvent: true,
-          debug: false,
-          heartInterval: 30000,
-        },
-      ],
-      websocketClients: [],
-      plugins: [],
-    },
-    musicSignUrl: "",
-    enableLocalFile2Url: false,
-    parseMultMsg: false,
-  });
-  console.log("OneBot 配置已推送");
+  if (config.napcat.qq_id) {
+    const result = await startBuiltinNapCat(config.napcat.qq_id);
+    wsUrl = result.wsUrl;
+    accessToken = result.accessToken;
+    process.on("SIGINT", async () => {
+      console.log("\n接收到中断信号，正在关闭 NapCat…");
+      await result.stop();
+      process.exit(0);
+    });
+    process.on("SIGTERM", async () => {
+      console.log("\n接收到终止信号，正在关闭 NapCat…");
+      await result.stop();
+      process.exit(0);
+    });
+  } else {
+    wsUrl = config.napcat.ws_url!;
+    accessToken = config.napcat.token ?? "";
+    console.log(`使用外置 NapCat: ${wsUrl}`);
+  }
 
   // 创建 OneBot 客户端并连接
   const bot = new OneBotClient({
-    url: `ws://127.0.0.1:${wsPort}`,
-    accessToken: "",
+    url: wsUrl,
+    accessToken,
     reconnect: true,
-  });
-
-  // 捕获暂停信号，在程序暂停时关闭 NapCat
-  process.on("SIGINT", async () => {
-    console.log("\n接收到中断信号，正在关闭 NapCat…");
-    await napcat.stop();
-    process.exit(0);
-  });
-
-  process.on("SIGTERM", async () => {
-    console.log("\n接收到终止信号，正在关闭 NapCat…");
-    await napcat.stop();
-    process.exit(0);
   });
 
   let selfId: string | undefined = undefined;
@@ -402,8 +380,14 @@ if (import.meta.main) {
 
   bot.onMessage(async (event, ctx) => {
     const segments = event.message;
+    const config = getConfig();
+
+    // 检查消息是否在范围内
     if (event.message_type === "group") {
-      if (![761178785, 976782057].includes(event.group_id)) {
+      if (!isIdInScope(String(event.group_id), config.napcat.groups)) {
+        return;
+      }
+      if (!isIdInScope(String(event.user_id), config.napcat.group_members)) {
         return;
       }
       const isAtBot = segments.some((seg) => seg.type === "at" && seg.data.qq === selfId);
@@ -411,7 +395,7 @@ if (import.meta.main) {
         return;
       }
     } else if (event.message_type === "private") {
-      if (event.user_id !== 2870245624) {
+      if (!isIdInScope(String(event.user_id), config.napcat.private_chats)) {
         return;
       }
     } else {

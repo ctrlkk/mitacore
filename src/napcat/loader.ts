@@ -216,12 +216,21 @@ const posixAdapter: PlatformAdapter = {
 
 const platform: PlatformAdapter = IS_WIN ? win32Adapter : posixAdapter;
 
+/**
+ * 获取临时端口号
+ * @returns 临时端口号
+ */
 function acquireEphemeralPort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
-    server.listen(0, () => {
-      const { port } = server.address() as { port: number };
-      server.close(() => resolve(port));
+    server.unref().listen(0, () => {
+      const address = server.address();
+      if (address && typeof address !== "string") {
+        const port = address.port;
+        server.close(() => resolve(port));
+      } else {
+        server.close(() => reject(new Error("无法获取有效的IP端口。")));
+      }
     });
     server.on("error", reject);
   });
@@ -394,86 +403,88 @@ export async function launchNapCat(config: NapCatConfig) {
   };
 }
 
-/** 独立运行时入口：启动 NapCat → 等待 WebUI → 推送 OB11 配置 → 退出 */
-if (import.meta.main) {
-  const config: NapCatConfig = {
-    qqId: "2790285434",
+function oneBotConfig(wsPort: number) {
+  return {
+    network: {
+      httpServers: [],
+      httpClients: [],
+      httpSseServers: [],
+      websocketServers: [
+        {
+          enable: true,
+          name: "websocket-server",
+          host: "127.0.0.1",
+          port: wsPort,
+          messagePostFormat: "array",
+          reportSelfMessage: false,
+          token: "",
+          enableForcePushEvent: true,
+          debug: false,
+          heartInterval: 30000,
+        },
+      ],
+      websocketClients: [],
+      plugins: [],
+    },
+    musicSignUrl: "",
+    enableLocalFile2Url: false,
+    parseMultMsg: false,
+  };
+}
+
+/**
+ * 启动内置 NapCat 进程
+ * @param qqId QQ ID
+ * @returns 包含 WebSocket URL、访问令牌和停止函数的对象
+ *  - wsUrl: WebSocket 连接 URL
+ *  - accessToken: 访问令牌，用于身份验证
+ *  - stop: 停止 NapCat 进程的函数
+ */
+export async function startBuiltinNapCat(qqId: string) {
+  const napcatConfig: NapCatConfig = {
+    qqId,
     napcatDir: resolve(cwd(), "data", "runtime", "napcat"),
     qqPath: "",
   };
 
-  const inst = await launchNapCat(config);
-  const api = await inst.waitForWebUI();
-  console.log(`NapCat WebUI 端口: ${inst.webuiPort}`);
+  console.log("启动内置 NapCat...");
+  const napcat = await launchNapCat(napcatConfig);
+  const api = await napcat.waitForWebUI();
+  console.log(`NapCat WebUI 端口: ${napcat.webuiPort}`);
 
   const version = await api.getNapCatVersion();
   console.log(`NapCat 版本: ${version}`);
 
-  await inst.waitForReady();
+  await napcat.waitForReady();
+  console.log("NapCat 协议适配器已就绪");
 
   const isLoggedIn = await api.checkLoginStatus();
   console.log(`QQ 登录状态: ${isLoggedIn ? "已登录" : "未登录"}`);
 
-  // 捕获暂停信号，在程序暂停时关闭 NapCat
-  process.on("SIGINT", async () => {
-    console.log("\n接收到中断信号，正在关闭 NapCat…");
-    await inst.stop();
-    process.exit(0);
-  });
-
-  process.on("SIGTERM", async () => {
-    console.log("\n接收到终止信号，正在关闭 NapCat…");
-    await inst.stop();
-    process.exit(0);
-  });
-
   const wsPort = await acquireEphemeralPort();
+  console.log(`临时 WebSocket 端口: ${wsPort}`);
 
-  await api
-    .setOB11Config({
-      network: {
-        httpServers: [],
-        httpClients: [],
-        httpSseServers: [],
-        websocketServers: [
-          {
-            enable: true,
-            name: "websocket-server",
-            host: "127.0.0.1",
-            port: wsPort,
-            messagePostFormat: "array",
-            reportSelfMessage: false,
-            token: "",
-            enableForcePushEvent: true,
-            debug: false,
-            heartInterval: 30000,
-          },
-        ],
-        websocketClients: [],
-        plugins: [],
-      },
-      musicSignUrl: "",
-      enableLocalFile2Url: false,
-      parseMultMsg: false,
-    })
-    .then(() => {
-      console.log("OneBot 配置已推送");
+  await api.setOB11Config(oneBotConfig(wsPort));
+  console.log("OneBot 配置已推送");
 
-      const bot = new OneBotClient({
-        url: `ws://127.0.0.1:${wsPort}`,
-        reconnect: true,
-      });
-      bot.connect().then(() => {
-        console.log("OneBot 连接成功");
-        bot.onMessage((event, ctx) => {
-          console.log(event.message);
-        });
-      });
-    })
-    .catch(() => {
-      console.log("OneBot 配置推送失败");
-    });
+  return {
+    wsUrl: `ws://127.0.0.1:${wsPort}`,
+    accessToken: "",
+    stop: napcat.stop,
+  };
+}
 
+if (import.meta.main) {
+  const napcat = await startBuiltinNapCat("2790285434");
+  const client = new OneBotClient({
+    url: napcat.wsUrl,
+    accessToken: napcat.accessToken,
+    reconnect: true,
+  });
+  client.onMessage((msg) => {
+    console.log(msg);
+  });
+  await client.connect();
   // 保持程序运行，等待信号
   await new Promise(() => {});
 }

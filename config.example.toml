@@ -1,0 +1,61 @@
+[napcat]
+# ws_url: 自定义 napcat WebSocket 地址，为空时使用内置服务
+# ws_url = "ws://localhost:3001"
+
+# token: napcat 服务 token，为空时使用内置服务
+# token = "your-token"
+
+# qq_id: 内置的 napcat 启动器所使用的目标 QQ 号，意思就是在 napcat 中登录该账号。
+qq_id = "2870245624"
+
+# groups: 群聊范围控制
+[napcat.groups]
+# mode 可选: "whitelist"（仅这些群生效） / "blacklist"（排除这些群）
+mode = "whitelist"
+# ids: 群号列表（字符串格式）
+ids = ["123456789"]
+
+# private_chats: 私聊范围控制
+[napcat.private_chats]
+mode = "whitelist"
+ids = ["123456789"]
+
+# group_members: 群内用户范围控制（在已允许的群内，进一步控制哪些成员可以触发）
+[napcat.group_members]
+mode = "blacklist"
+ids = []
+
+
+# 供应商配置 (可配置多个，通过 [[providers]] 追加)
+[[providers]]
+# name: 供应商名称，用于内部区分
+name = "deepseek"
+
+# type: 端点类型，决定了底层如何与供应商的 API 进行通信。
+# 可选值: "anthropic" | "deepseek" | "openai-compatible" | "openai"
+#
+# 【端点类型选择指南与避坑说明】
+# 1. "anthropic": 适用于 Anthropic 官方或支持该协议的中转站，框架适配最好。如果供应商支持建议优先选。
+# 2. "openai-compatible": 兼容性最为广泛的端点类型。
+#    ！在支持交织推理的思考模型中，使用该类型可能会因缺少 `reasoning_content` 字段而报 400 错误。
+# 3. "deepseek": 在 openai-compatible 兼容格式上扩展了 `reasoning_content` 解析，
+#    支持交织推理过程（思考链 -> 工具调用 -> 继续思考 -> 输出）。
+#    使用 deepseek 模型或其它需要交织推理的模型时建议选择该类型。
+# 4. "openai": 仅限 OpenAI 官方最新的 Responses API，仅建议 GPT 模型使用。
+type = "deepseek"
+
+[providers.options]
+base_url = "https://api.deepseek.com"
+api_key = "your-deepseek-api-key"
+
+# 模型配置
+# id: 供应商 API 中的真实模型 ID
+# alias: 别名，防止多供应商冲突，机器人触发时使用此别名
+[[providers.models]]
+id = "deepseek-v4-flash"
+alias = "deepseek-v4-flash"
+
+# 一个供应商下可以配置多个模型
+[[providers.models]]
+id = "deepseek-v4-pro"
+alias = "deepseek-v4-pro"
