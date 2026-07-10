@@ -5,8 +5,6 @@ import { getModel } from "@/model";
 import { dataPath } from "@/utils/path";
 import { ImageGeneration } from "@/tool";
 import { config } from "@/config";
-import plannerSystemPrompt from "@prompts/planner.md";
-import personaSystemPrompt from "@prompts/贤惠幼妻仙狐小姐.md";
 
 const submitPlanTool = tool({
   description: "提交本轮回复策略，包含语气、角度、要点、长度、工具调用等",
@@ -51,10 +49,29 @@ export async function runPlanner(userInputMessage: string): Promise<PlannerResul
   let planText = "";
   let toolCallId: string | undefined;
 
+  const { default: planPrompt } = await import("./prompts/plan.txt");
+  const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
+  const { default: replyPrompt } = await import("@prompts/role.md");
+
+  const system = [
+    "<role>",
+    planPrompt.trim(),
+    "</role>",
+    "",
+    "<capabilities>",
+    capabilitiesPrompt.trim(),
+    "</capabilities>",
+    "",
+    "下面为 `reply agent` 的角色设定：",
+    "<reply_role>",
+    replyPrompt.trim(),
+    "</reply_role>",
+  ].join("\n");
+
   for (let step = 0; step < 10; step++) {
     const result = await generateText({
       model,
-      system: [plannerSystemPrompt, personaSystemPrompt].join("\n"),
+      system,
       messages,
       tools: { submit_plan: submitPlanTool, generate_image: ImageGeneration },
       providerOptions: {

@@ -5,7 +5,6 @@ import { parseMarkdown, type MessagePart } from "@/images";
 import { splitMessage } from "@/utils/message-splitter";
 import { dataPath } from "@/utils/path";
 import { config } from "@/config";
-import systemPrompt from "@prompts/贤惠幼妻仙狐小姐.md";
 
 async function loadExecutorHistory(): Promise<ModelMessage[]> {
   try {
@@ -41,13 +40,13 @@ async function sliceReply(chunk: string): Promise<MessagePart[]> {
 }
 
 /**
- * 运行执行层（仙狐小姐 persona）
+ * 运行回复层（仙狐小姐 persona）
  * @param userPrompt 已用 <user_input> 标签包好的用户消息
  * @param plan 规划层生成的策略
  * @param onReply 实际发送消息的回调
  * @returns replyText（拼接所有 step 的文本）+ usage
  */
-export async function runExecutor(
+export async function runReply(
   userPrompt: string,
   plan: string,
   onReply: (segments: MessagePart[]) => Promise<void>,
@@ -71,10 +70,23 @@ export async function runExecutor(
   let usage: LanguageModelUsage | undefined;
   let replyText = "";
 
+  const { default: prompt } = await import("@prompts/role.md");
+  const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
+
+  const system = [
+    "<role>",
+    prompt.trim(),
+    "</role>",
+    "",
+    "<capabilities>",
+    capabilitiesPrompt.trim(),
+    "</capabilities>",
+  ].join("\n");
+
   for (let step = 0; step < 20; step++) {
     const result = await generateText({
       model,
-      system: systemPrompt,
+      system,
       messages: [...historyMessages, ...runtimeMessages],
     });
 

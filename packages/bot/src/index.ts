@@ -1,7 +1,3 @@
-import { createServer } from "node:net";
-import { resolve } from "node:path";
-import { cwd } from "node:process";
-
 import type { LanguageModelUsage } from "ai";
 import XMLBuilder from "fast-xml-builder";
 import dayjs from "dayjs";
@@ -9,12 +5,12 @@ import "dayjs/locale/zh-cn";
 
 import type { OneBotMessageEvent, OneBotMessageSegment } from "@/onebot/websocket-client";
 import { OneBotClient, type OneBotEventContext } from "@/onebot/onebot-client";
-import { launchNapCat, startBuiltinNapCat, type NapCatConfig } from "@/napcat/loader";
+import { startBuiltinNapCat } from "@/napcat/loader";
 import { db } from "@/database/db";
 import { apply as applyMigrations } from "@/database/migration";
 import { ensureUserAlias } from "@/database/user-alias";
 import { imageToText } from "@/multimedia";
-import { runExecutor } from "@/executor";
+import { runReply } from "@/reply";
 import { runPlanner } from "@/planner";
 import { blobToDataURL } from "@/utils/blob";
 import { cache } from "@/utils/cache";
@@ -39,17 +35,6 @@ function isIdInScope(id: string, scope: Config["napcat"]["groups"]): boolean {
     // 黑名单模式：只有在列表中的ID才禁止
     return !isInList;
   }
-}
-
-function acquireEphemeralPort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.listen(0, () => {
-      const { port } = server.address() as { port: number };
-      server.close(() => resolve(port));
-    });
-    server.on("error", reject);
-  });
 }
 
 interface UnifiedTextMessage {
@@ -102,6 +87,7 @@ async function parseOneBotMessage(
       const result = await getMessage(Number(seg.data.id));
       if (!result) continue;
       let inner = await parseOneBotMessage(result.message, getNickname, () => Promise.resolve(null));
+      if (inner.length === 0) continue;
       let nickname = await getNickname(result.userId);
       messages.push({ type: "reply", data: { id: seg.data.id, nickname, segments: inner } });
     }
@@ -148,6 +134,7 @@ async function processImageAssets(urls: string[]) {
         try {
           const dataUrl = await blobToDataURL(blob);
           description = await imageToText(dataUrl);
+          description = description.trim();
           cache.set(path, description).catch((err) => {
             console.error("缓存图片描述失败", err);
           });
@@ -197,7 +184,6 @@ function buildPrompt(batch: PendingMessage[], imageMap: Map<string, { path: stri
   for (const msg of batch) {
     const text = formatMessage(msg.unifiedMessages);
     let block = `<user_input date="${dayjs(msg.date).format("MM-DD dddd HH:mm")}" nickname="${msg.nickname}">\n${text}\n</user_input>`;
-    if (!msg.isMaster) block = "收到一条路人的消息\n" + block;
     promptParts.push(block);
   }
 
@@ -279,10 +265,11 @@ function createBot(sessionId: string) {
       extractImage(msg.unifiedMessages);
     }
     const imageMap = await processImageAssets(Array.from(urls));
-    const prompt = buildPrompt(batch, imageMap);
+    const prompt = buildPrompt(batch, imageMap).trim();
+    console.log("用户输入", prompt);
 
     const { plan, submitReply } = await runPlanner(prompt);
-    const { replyText } = await runExecutor(prompt, plan, async (segments) => {
+    const { replyText } = await runReply(prompt, plan, async (segments) => {
       for (const seg of segments) {
         await ctx.reply(seg);
         await Bun.sleep(500);
@@ -365,8 +352,13 @@ if (import.meta.main) {
     reconnect: true,
   });
 
-  let selfId: string | undefined = undefined;
+  await bot.connect();
+
   const botMap = new Map<string, ReturnType<typeof createBot>>();
+  const user = await bot.getLoginInfo();
+  const selfId = String(user.user_id);
+
+  console.log(`Bot 已连接并运行，ID: ${user.user_id}，昵称: ${user.nickname}`);
 
   function getBot(sessionId: string) {
     let bot = botMap.get(sessionId);
@@ -434,6 +426,10 @@ if (import.meta.main) {
         },
       );
 
+      if (unified.length === 0) {
+        console.log("没有可解析的消息内容，跳过当前输入");
+        return;
+      }
       getBot(sessionId).enqueue(
         {
           unifiedMessages: unified,
@@ -447,9 +443,4 @@ if (import.meta.main) {
       console.error("消息解析或入队失败:", error);
     }
   });
-
-  await bot.connect();
-  const { user_id, nickname } = await bot.getLoginInfo();
-  selfId = String(user_id);
-  console.log(`Bot 已连接并运行，ID: ${user_id}，昵称: ${nickname}`);
 }
