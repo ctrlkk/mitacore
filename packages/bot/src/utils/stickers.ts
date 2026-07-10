@@ -2,8 +2,9 @@ import { readFile, readdir } from "node:fs/promises";
 import { resolve, parse } from "node:path";
 import { lookup } from "mime-types";
 import XMLBuilder from "fast-xml-builder";
+import { projectPath } from "@/utils/path";
 
-const STICKERS_DIR = resolve("references", "stickers");
+const STICKERS_DIR = projectPath("references", "stickers");
 
 interface StickerImageResult {
   type: "image";

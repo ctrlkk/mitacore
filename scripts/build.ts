@@ -29,14 +29,14 @@ async function buildApp() {
   const bunBin = `app${exeExt}`;
 
   // 从 package.json 读 main 入口
-  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf-8"));
-  const bunEntry = join(root, pkg.module ?? "src/index.ts");
+  const botDir = join(root, "packages", "bot");
+  const pkg = JSON.parse(readFileSync(join(botDir, "package.json"), "utf-8"));
+  const bunEntry = join(botDir, pkg.module ?? "src/index.ts");
 
   clean(join(outDir, bunBin));
 
-  const bunArgs = ["bun", "build", "--compile", "--outfile", join(outDir, bunBin), bunEntry];
   const proc = Bun.spawn({
-    cmd: bunArgs,
+    cmd: ["bun", "build", "--compile", "--define", "__STANDALONE__=true", "--outfile", join(outDir, bunBin), bunEntry],
     cwd: root,
     stdio: ["ignore", "inherit", "inherit"],
   });

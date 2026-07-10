@@ -1,11 +1,11 @@
 import { generateText, type LanguageModelUsage, type ModelMessage } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { getModel } from "./model";
-import { parseMarkdown, type MessagePart } from "./images";
-import { splitMessage } from "./utils/message-splitter";
-import { dataPath } from "./utils/path";
-import { config } from "./config";
-import systemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
+import { getModel } from "@/model";
+import { parseMarkdown, type MessagePart } from "@/images";
+import { splitMessage } from "@/utils/message-splitter";
+import { dataPath } from "@/utils/path";
+import { config } from "@/config";
+import systemPrompt from "@prompts/贤惠幼妻仙狐小姐.md";
 
 async function loadExecutorHistory(): Promise<ModelMessage[]> {
   try {

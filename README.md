@@ -32,6 +32,6 @@ bun install
 
 | 命令 | 说明 |
 | --- | --- |
-| `bun run db` | 调用 `drizzle-kit` 官方 CLI（如 `bun run db generate` / `bun run db studio`） |
-| `bun run migration` | 执行 `script/migration.ts`，根据 `src/**/*.sql.ts` 重新生成 TypeScript 迁移模块、schema 与注册表 |
+| `bun run db` | 在 `packages/bot` 中调用 `drizzle-kit` 官方 CLI（如 `bun run db generate` / `bun run db studio`） |
+| `bun run migration` | 执行 `packages/bot/scripts/migration.ts`，根据 `packages/bot/src/**/*.sql.ts` 重新生成 TypeScript 迁移模块、schema 与注册表 |
 | `bun run migration:check` | 校验上述生成产物是否最新，过期则报错（适合 CI / 预提交钩子） |

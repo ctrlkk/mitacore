@@ -11,7 +11,7 @@ Drizzle + TypeScript 迁移模式，从 `https://github.com/anomalyco/opencode.g
 迁移系统由三块组成：
 
 1. **手写 schema**（`*.sql.ts`）—— 唯一的 schema 真理源，用 drizzle-orm 的 `sqliteTable` 构造函数定义
-2. **codegen**（`script/migration.ts`）—— 跑 `drizzle-kit generate` 拿到 SQL，翻译成 TS 模块；同时维护一个"迁移注册表"用动态 import 列出所有迁移
+2. **codegen**（`packages/bot/scripts/migration.ts`）—— 跑 `drizzle-kit generate` 拿到 SQL，翻译成 TS 模块；同时维护一个"迁移注册表"用动态 import 列出所有迁移
 3. **runtime**（`migration.ts`）—— 启动时跑 `apply(db)`，对比 `__drizzle_migrations` journal 表决定 bootstrap 还是增量
 
 为什么是"TS 化"而不是直接 `.sql`：方便 bundler（bun、webpack 等）把迁移作为源码打进产物；也给手写 backfill 逻辑留口子（`up()` 是个普通函数，可以插入任意代码）。
@@ -24,7 +24,7 @@ Drizzle + TypeScript 迁移模式，从 `https://github.com/anomalyco/opencode.g
 | 已有 `__drizzle_migrations` journal 表 | 视为已 bootstrap | 走 `applyOnly()`，对每个未在 journal 的迁移跑 `up()` + 插入 journal |
 | 有别的表但没 `__drizzle_migrations` 表 | 拒绝 | 抛"数据库非空且没有 __drizzle_migrations journal 表"——半初始化状态不能盲目迁移 |
 
-codegen 5 步（`script/migration.ts`）：
+codegen 5 步（`packages/bot/scripts/migration.ts`）：
 
 1. 跑 `drizzle-kit generate` 到持久 out 目录 → drizzle-kit 算 diff，产出新 `<id>.sql` + 更新 `meta/_journal.json` / `meta/<id>_snapshot.json`
 2. 把 `<id>.sql` 镜像成 `migration/<id>.ts`（已存在的跳过）
@@ -39,7 +39,7 @@ codegen 5 步（`script/migration.ts`）：
 - [`migration.ts`](./migration.ts) — 运行时 `apply()` / `applyOnly()`
 - [`test-tables.sql.ts`](./test-tables.sql.ts) — 测试 schema（user + post），业务替换时改/删这里
 - [`../../drizzle.config.ts`](../../drizzle.config.ts) — drizzle-kit 配置
-- [`../../script/migration.ts`](../../script/migration.ts) — codegen 入口
+- [`../../scripts/migration.ts`](../../scripts/migration.ts) — codegen 入口
 
 ### 自动生成（git tracked，不要手改）
 - [`schema.gen.ts`](./schema.gen.ts) — 全量 DDL（空库 bootstrap 用）

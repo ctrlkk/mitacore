@@ -14,6 +14,11 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["packages/bot/src/*"],
+      "@prompts/*": ["prompts/*"]
+    },
 
     // Best practices
     "strict": true,

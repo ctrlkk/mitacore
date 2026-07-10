@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import type { Migration } from "../migration";
 
 export default {
-  id: "0000_add_user_alias",
+  id: "0000_parched_grim_reaper",
   up(tx) {
     tx.run(sql`
       CREATE TABLE \`user_alias\` (

@@ -1,12 +1,12 @@
 import { generateText, tool, type ModelMessage } from "ai";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { getModel } from "./model";
-import { dataPath } from "./utils/path";
-import { ImageGeneration } from "./tool";
-import { config } from "./config";
-import plannerSystemPrompt from "../prompts/planner.md";
-import personaSystemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
+import { getModel } from "@/model";
+import { dataPath } from "@/utils/path";
+import { ImageGeneration } from "@/tool";
+import { config } from "@/config";
+import plannerSystemPrompt from "@prompts/planner.md";
+import personaSystemPrompt from "@prompts/贤惠幼妻仙狐小姐.md";
 
 const submitPlanTool = tool({
   description: "提交本轮回复策略，包含语气、角度、要点、长度、工具调用等",

@@ -9,18 +9,19 @@ import { $ } from "bun";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { cwd } from "node:process";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
-const root = path.resolve(import.meta.dirname, "..");
-const tsDir = path.join(root, "src/database/migration");
-const registry = path.join(root, "src/database/migration.gen.ts");
-const schema = path.join(root, "src/database/schema.gen.ts");
-const persistentOut = path.join(root, "src/database/.drizzle-out");
-// tmp 目录放在项目内（同盘符）。drizzle-kit 的 out 走 path.relative，
+const botDir = path.join(import.meta.dirname, "..");
+const tsDir = path.join(botDir, "src/database/migration");
+const registry = path.join(botDir, "src/database/migration.gen.ts");
+const schema = path.join(botDir, "src/database/schema.gen.ts");
+const persistentOut = path.join(botDir, "src/database/.drizzle-out");
+// tmp 目录放在仓库根（同盘符，且已在 .gitignore）。drizzle-kit 的 out 走 path.relative，
 // 跨盘符（如项目在 E:\，os.tmpdir() 在 C:\）算出的"相对路径"是绝对路径，
 // drizzle-kit 又会 prepend cwd，导致 ENOENT。
-const localTmp = path.join(root, "data", "drizzle-tmp");
+const localTmp = path.join(cwd(), "migration-tmp");
 
 const args = parseArgs({
   args: process.argv.slice(2),
@@ -76,10 +77,10 @@ async function generate() {
 async function check() {
   if (!(await hasAnySchemaFiles())) {
     if ((await Bun.file(schema).text()) !== renderSchema("")) {
-      throw new Error("数据库 schema 已过期，运行 `bun run script/migration.ts` 重新生成。");
+      throw new Error("数据库 schema 已过期，运行 `bun run migration` 重新生成。");
     }
     if ((await Bun.file(registry).text()) !== renderRegistry([])) {
-      throw new Error("迁移注册表已过期，运行 `bun run script/migration.ts` 重新生成。");
+      throw new Error("迁移注册表已过期，运行 `bun run migration` 重新生成。");
     }
     return;
   }
@@ -97,7 +98,7 @@ async function check() {
     const existing = new Set(await typescriptMigrations());
     const missing = generated.filter((name) => !existing.has(name));
     if (missing.length > 0) {
-      throw new Error(`有未生成的迁移: ${missing.join(", ")}，运行 \`bun run script/migration.ts\` 重新生成。`);
+      throw new Error(`有未生成的迁移: ${missing.join(", ")}，运行 \`bun run migration\` 重新生成。`);
     }
 
     // 校验 schema.gen.ts 和 registry 是否最新（全量 DDL 对比，也在 temp 上跑）
@@ -107,14 +108,14 @@ async function check() {
       const fullMigrations = await generatedMigrations(fullOut);
       const fullSql = fullMigrations[0] ? await migrationSql(fullOut, fullMigrations[0]) : "";
       if ((await Bun.file(schema).text()) !== renderSchema(fullSql)) {
-        throw new Error("数据库 schema 已过期，运行 `bun run script/migration.ts` 重新生成。");
+        throw new Error("数据库 schema 已过期，运行 `bun run migration` 重新生成。");
       }
     } finally {
       await fs.rm(fullOut, { recursive: true, force: true });
     }
 
     if ((await Bun.file(registry).text()) !== renderRegistry(await typescriptMigrations())) {
-      throw new Error("迁移注册表已过期，运行 `bun run script/migration.ts` 重新生成。");
+      throw new Error("迁移注册表已过期，运行 `bun run migration` 重新生成。");
     }
   } finally {
     await fs.rm(tempOut, { recursive: true, force: true });
@@ -130,7 +131,7 @@ async function dirExists(p: string): Promise<boolean> {
 }
 
 async function hasAnySchemaFiles() {
-  const cwd = path.join(root, "src");
+  const cwd = path.join(botDir, "src");
   for (const pattern of ["**/*.sql.ts", "**/sql.ts"]) {
     const matches = await Array.fromAsync(new Bun.Glob(pattern).scan({ cwd }));
     if (matches.length > 0) return true;
@@ -144,16 +145,16 @@ async function drizzle(output: string, name?: string) {
     os.tmpdir(),
     `agents-bot-drizzle-${Date.now()}-${Math.random().toString(36).slice(2)}.config.ts`,
   );
-  const relOut = path.relative(root, output);
+  const relOut = path.relative(botDir, output);
   await Bun.write(
     config,
-    `import config from ${JSON.stringify(pathToFileURL(path.join(root, "drizzle.config.ts")).href)}
+    `import config from ${JSON.stringify(pathToFileURL(path.join(botDir, "drizzle.config.ts")).href)}
 
 export default { ...config, out: ${JSON.stringify(relOut)} }
 `,
   );
   try {
-    await $`bun drizzle-kit generate --config ${config} ${name ? ["--name", name] : []}`.cwd(root);
+    await $`bun drizzle-kit generate --config ${config} ${name ? ["--name", name] : []}`.cwd(botDir);
   } finally {
     await fs.rm(config, { force: true });
   }

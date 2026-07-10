@@ -13,10 +13,10 @@ import { resolve, dirname } from "node:path";
 import { spawn, execSync, ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import { PassThrough } from "node:stream";
-import { cwd } from "node:process";
 import { downloadNapcat } from "./download";
 import { OneBotClient } from "../onebot/onebot-client";
 import { formatBytes } from "../utils/format";
+import { dataPath } from "../utils/path";
 
 const sleep = Bun.sleep;
 
@@ -443,7 +443,7 @@ function oneBotConfig(wsPort: number) {
 export async function startBuiltinNapCat(qqId: string) {
   const napcatConfig: NapCatConfig = {
     qqId,
-    napcatDir: resolve(cwd(), "data", "runtime", "napcat"),
+    napcatDir: dataPath("runtime", "napcat"),
     qqPath: "",
   };
 

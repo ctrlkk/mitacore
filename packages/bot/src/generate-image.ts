@@ -1,9 +1,8 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { join } from "node:path";
-import { cwd } from "node:process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { binPath, projectPath, sidecarPath } from "@/utils/path";
 
-const localNodePath = process.platform === "win32" ? join(cwd(), "bin", "node.exe") : join(cwd(), "bin", "node");
+const localNodePath = process.platform === "win32" ? binPath("node.exe") : binPath("node");
 
 export async function setupImageGenerator() {
   let nodeBin: string | null = null;
@@ -16,9 +15,9 @@ export async function setupImageGenerator() {
     throw new Error("找不到 node 可执行文件，请在 bin 目录下放置 node.exe，或安装 Node.js");
   }
 
-  // 优先用打包产物（dist/sidecar/playwright.cjs），开发时 fallback 到源码（packages/playwright/main.ts）
-  const bundled = join(cwd(), "dist", "sidecar", "playwright.cjs");
-  const source = join(cwd(), "packages", "playwright", "main.ts");
+  // 优先用打包产物（<installRoot>/sidecar/playwright.cjs），开发时 fallback 到源码
+  const bundled = sidecarPath("playwright.cjs");
+  const source = projectPath("packages", "playwright", "main.ts");
   const childPath = existsSync(bundled) ? bundled : source;
   const child = spawn(nodeBin, [childPath], {
     stdio: ["inherit", "inherit", "inherit", "ipc"],

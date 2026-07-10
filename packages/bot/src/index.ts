@@ -7,20 +7,20 @@ import XMLBuilder from "fast-xml-builder";
 import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
 
-import type { OneBotMessageEvent, OneBotMessageSegment } from "./onebot/websocket-client";
-import { OneBotClient, type OneBotEventContext } from "./onebot/onebot-client";
-import { launchNapCat, startBuiltinNapCat, type NapCatConfig } from "./napcat/loader";
-import { db } from "./database/db";
-import { apply as applyMigrations } from "./database/migration";
-import { ensureUserAlias } from "./database/user-alias";
-import { imageToText } from "./multimedia";
-import { runExecutor } from "./executor";
-import { runPlanner } from "./planner";
-import { blobToDataURL } from "./utils/blob";
-import { cache } from "./utils/cache";
-import { downloadToCache } from "./utils/image-cache";
-import { compressImage } from "./utils/image-resize";
-import { config, type Config } from "./config";
+import type { OneBotMessageEvent, OneBotMessageSegment } from "@/onebot/websocket-client";
+import { OneBotClient, type OneBotEventContext } from "@/onebot/onebot-client";
+import { launchNapCat, startBuiltinNapCat, type NapCatConfig } from "@/napcat/loader";
+import { db } from "@/database/db";
+import { apply as applyMigrations } from "@/database/migration";
+import { ensureUserAlias } from "@/database/user-alias";
+import { imageToText } from "@/multimedia";
+import { runExecutor } from "@/executor";
+import { runPlanner } from "@/planner";
+import { blobToDataURL } from "@/utils/blob";
+import { cache } from "@/utils/cache";
+import { downloadToCache } from "@/utils/image-cache";
+import { compressImage } from "@/utils/image-resize";
+import { config, type Config } from "@/config";
 
 dayjs.locale("zh-cn");
 

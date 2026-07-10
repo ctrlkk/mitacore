@@ -1,0 +1,37 @@
+{
+  "name": "bot",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run . --watch",
+    "start": "bun run .",
+    "db": "drizzle-kit",
+    "migration": "bun run scripts/migration.ts",
+    "migration:check": "bun run scripts/migration.ts --check"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.94",
+    "@ai-sdk/deepseek": "^2.0.45",
+    "@ai-sdk/openai": "^3.0.81",
+    "@ai-sdk/openai-compatible": "^2.0.57",
+    "@larksuiteoapi/node-sdk": "^1.70.0",
+    "@types/mime-types": "^3.0.1",
+    "adm-zip": "^0.5.18",
+    "ai": "^6.0.220",
+    "async-mutex": "^0.5.0",
+    "bs58": "^6.0.0",
+    "cache-manager": "^7.2.9",
+    "dayjs": "^1.11.21",
+    "drizzle-orm": "^0.45.2",
+    "fast-xml-builder": "^1.2.1",
+    "fast-xml-parser": "^5.9.3",
+    "glob": "^13.0.6",
+    "gray-matter": "^4.0.3",
+    "keyv": "^5.6.0",
+    "marked": "^18.0.5",
+    "mime-types": "^3.0.2",
+    "smol-toml": "^1.7.0",
+    "zod": "^4.4.3"
+  }
+}

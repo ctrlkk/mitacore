@@ -4,6 +4,19 @@
   "workspaces": {
     "": {
       "name": "agents-bot",
+      "devDependencies": {
+        "@types/adm-zip": "^0.5.8",
+        "@types/bun": "latest",
+        "drizzle-kit": "^0.31.10",
+        "esbuild": "^0.28.1",
+        "prettier": "3.8.4",
+      },
+      "peerDependencies": {
+        "typescript": "^5.9.3",
+      },
+    },
+    "packages/bot": {
+      "name": "bot",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.94",
         "@ai-sdk/deepseek": "^2.0.45",
@@ -27,16 +40,6 @@
         "mime-types": "^3.0.2",
         "smol-toml": "^1.7.0",
         "zod": "^4.4.3",
-      },
-      "devDependencies": {
-        "@types/adm-zip": "^0.5.8",
-        "@types/bun": "latest",
-        "drizzle-kit": "^0.31.10",
-        "esbuild": "^0.28.1",
-        "prettier": "3.8.4",
-      },
-      "peerDependencies": {
-        "typescript": "^5.9.3",
       },
     },
     "packages/playwright": {
@@ -202,6 +205,8 @@
     "balanced-match": ["balanced-match@4.0.4", "https://registry.npmmirror.com/balanced-match/-/balanced-match-4.0.4.tgz", {}, "sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA=="],
 
     "base-x": ["base-x@5.0.1", "https://registry.npmmirror.com/base-x/-/base-x-5.0.1.tgz", {}, "sha512-M7uio8Zt++eg3jPj+rHMfCC+IuygQHHCOU+IYsVtik6FWjuYpVt/+MRKcgsAMHh8mMFAwnB+Bs+mTrFiXjMzKg=="],
+
+    "bot": ["bot@workspace:packages/bot"],
 
     "brace-expansion": ["brace-expansion@5.0.6", "https://registry.npmmirror.com/brace-expansion/-/brace-expansion-5.0.6.tgz", { "dependencies": { "balanced-match": "^4.0.2" } }, "sha512-kLpxurY4Z4r9sgMsyG0Z9uzsBlgiU/EFKhj/h91/8yHu0edo7XuixOIH3VcJ8kkxs6/jPzoI6U9Vj3WqbMQ94g=="],
 

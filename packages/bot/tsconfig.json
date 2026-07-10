@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../..",
+    "paths": {
+      "@/*": ["packages/bot/src/*"],
+      "@prompts/*": ["prompts/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "../../prompts/**/*.md"]
+}
