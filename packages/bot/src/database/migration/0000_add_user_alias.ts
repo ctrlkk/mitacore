@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import type { Migration } from "../migration";
 
 export default {
-  id: "0000_parched_grim_reaper",
+  id: "0000_add_user_alias",
   up(tx) {
     tx.run(sql`
       CREATE TABLE \`user_alias\` (
@@ -15,4 +15,4 @@ export default {
     `);
     tx.run(sql`CREATE UNIQUE INDEX \`user_alias_platform_unique\` ON \`user_alias\` (\`platform\`,\`platform_id\`);`);
   },
-} satisfies Migration
+} satisfies Migration;

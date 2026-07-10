@@ -21,7 +21,7 @@ import { dataPath } from "../utils/path";
 const sleep = Bun.sleep;
 
 const LOAD_SCRIPT_FILE = "loadNapCat.js";
-const WEBUI_TOKEN_DEFAULT = "napcat-controller-token";
+const WEBUI_TOKEN_DEFAULT = Math.random().toString(36).substring(2, 15);
 const IS_WIN = process.platform === "win32";
 
 const WEBUI_URL_RE = /WebUi User Panel Url: http:\/\/127\.0\.0\.1:(\d+)\/webui\?token=(\S+)/;
@@ -397,6 +397,9 @@ export async function launchNapCat(config: NapCatConfig) {
     get webuiPort() {
       return handle.webuiPort;
     },
+    get webuiToken() {
+      return handle.webuiToken;
+    },
     waitForWebUI: () => apiPromise,
     waitForReady: () => readyPromise,
     stop: () => platform.stop(handle),
@@ -450,7 +453,7 @@ export async function startBuiltinNapCat(qqId: string) {
   console.log("启动内置 NapCat...");
   const napcat = await launchNapCat(napcatConfig);
   const api = await napcat.waitForWebUI();
-  console.log(`NapCat WebUI 端口: ${napcat.webuiPort}`);
+  console.log(`NapCat WebUI 端口: http://localhost:${napcat.webuiPort}/webui?token=${napcat.webuiToken}`);
 
   const version = await api.getNapCatVersion();
   console.log(`NapCat 版本: ${version}`);
