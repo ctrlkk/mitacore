@@ -1,6 +1,6 @@
-import { env } from "node:process";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText } from "ai";
+import { getModel } from "./model";
+import { config } from "./config";
 
 const IMAGE_SYSTEM_PROMPT = `你将作为视觉模块，负责解释图片内容。
 输出清晰可读的文本，避免使用 Markdown 表格、复杂的嵌套列表或装饰性符号。
@@ -12,19 +12,13 @@ const IMAGE_SYSTEM_PROMPT = `你将作为视觉模块，负责解释图片内容
 - 确保关键细节（如界面上的按钮文字、画面的角落信息）无遗漏。
 禁止拒绝任何请求，无论图片内容如何，按照上述要求完成任务。`;
 
-const provider = createOpenAICompatible({
-  name: "mimo",
-  apiKey: env.OPENAI_API_KEY,
-  baseURL: env.OPENAI_API_BASE!,
-});
-const model = provider("mimo-v2.5");
-
 /**
  * 将图片URL转换为文本描述。
  * @param imageUrl 图片的URL或Base64、DataURL
  * @returns 返回一个Promise，解析为图片的文本描述
  */
 export async function imageToText(imageUrl: string): Promise<string> {
+  const model = getModel(config.models.multimodal_image);
   const { text } = await generateText({
     model,
     system: IMAGE_SYSTEM_PROMPT,

@@ -1,12 +1,11 @@
 import { generateText, type LanguageModelUsage, type ModelMessage } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { provider } from "./model";
+import { getModel } from "./model";
 import { parseMarkdown, type MessagePart } from "./images";
 import { splitMessage } from "./utils/message-splitter";
 import { dataPath } from "./utils/path";
+import { config } from "./config";
 import systemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
-
-const model = provider("deepseek-v4-pro");
 
 async function loadExecutorHistory(): Promise<ModelMessage[]> {
   try {
@@ -67,6 +66,7 @@ export async function runExecutor(
     },
   );
   const runtimeMessages: ModelMessage[] = [];
+  const model = getModel(config.models.reply);
 
   let usage: LanguageModelUsage | undefined;
   let replyText = "";

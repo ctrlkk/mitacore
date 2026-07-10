@@ -9,24 +9,6 @@ const scopeConfig = z.object({
   ids: z.array(z.string()).default([]).describe("范围控制的 ID 列表"),
 });
 
-/** 模型配置 Schema */
-const modelSchema = z.object({
-  id: z.string().describe("模型ID"),
-  alias: z.string().describe("模型别名，用于防止模型id冲突"),
-});
-
-/** 供应商配置 Schema */
-const providerSchema = z.object({
-  name: z.enum(["anthropic", "openai", "openai-compatible", "deepseek"]).describe("供应商类型"),
-  options: z
-    .object({
-      base_url: z.url().describe("供应商 API 基础 URL"),
-      api_key: z.string().describe("供应商 API 密钥"),
-    })
-    .describe("供应商选项"),
-  models: z.array(modelSchema).describe("供应商提供的模型列表"),
-});
-
 const schema = z.object({
   napcat: z
     .object({
@@ -46,12 +28,39 @@ const schema = z.object({
       },
     )
     .describe("NapCat 配置"),
-  providers: z.array(providerSchema).describe("供应商配置"),
+  providers: z
+    .array(
+      z.object({
+        name: z.enum(["anthropic", "openai", "openai-compatible", "deepseek"]).describe("供应商类型"),
+        options: z
+          .object({
+            base_url: z.url().describe("供应商 API 基础 URL"),
+            api_key: z.string().describe("供应商 API 密钥"),
+          })
+          .describe("供应商选项"),
+        models: z
+          .array(
+            z.object({
+              id: z.string().describe("模型ID"),
+              alias: z.string().describe("模型别名，用于防止模型id冲突"),
+            }),
+          )
+          .describe("供应商提供的模型列表"),
+      }),
+    )
+    .describe("供应商配置"),
+  models: z
+    .object({
+      plan: z.string().describe("规划层使用的模型"),
+      reply: z.string().describe("执行层使用的模型"),
+      multimodal_image: z.string().describe("用于图像理解的外挂模型"),
+      multimodal_video: z.string().describe("用于视频理解的外挂模型"),
+      multimodal_audio: z.string().describe("用于音频处理的外挂模型"),
+    })
+    .describe("各模块使用的模型配置"),
 });
 
 export type Config = z.infer<typeof schema>;
-
-let cached: Config | undefined;
 
 function formatZodError(error: z.ZodError): string {
   const lines: string[] = ["配置校验失败，请检查以下字段："];
@@ -85,6 +94,11 @@ function getFieldDescription(path: PropertyKey[]): string | undefined {
     "napcat.private_chats": "私聊范围控制",
     "napcat.group_members": "群内用户范围控制",
     providers: "供应商配置",
+    "models.plan": "规划层模型别名",
+    "models.reply": "执行层模型别名",
+    "models.multimodal_image": "图像理解模型别名",
+    "models.multimodal_video": "视频理解模型别名",
+    "models.multimodal_audio": "音频处理模型别名",
   };
   // 过滤掉 symbol，并将路径转为字符串键
   const key = path
@@ -100,7 +114,7 @@ function getFieldDescription(path: PropertyKey[]): string | undefined {
 }
 
 /** 加载并校验配置文件，必须在程序入口最先调用 */
-export function loadConfig(path = dataPath("config.toml")): Config {
+function loadConfig(path = dataPath("config.toml")): Config {
   let raw: string;
   try {
     raw = readFileSync(path, "utf8");
@@ -121,18 +135,12 @@ export function loadConfig(path = dataPath("config.toml")): Config {
   if (!result.success) {
     throw new Error(formatZodError(result.error));
   }
-  cached = result.data;
-  return cached;
+  return result.data;
 }
 
-/** 获取已加载的配置，调用前必须先执行 loadConfig() */
-export function getConfig(): Config {
-  if (!cached) throw new Error("配置未加载，请先在入口调用 loadConfig()");
-  return cached;
-}
+export const config = loadConfig();
 
 if (import.meta.main) {
-  const cfg = loadConfig();
   console.log("配置加载成功:");
-  console.log(JSON.stringify(cfg, null, 2));
+  console.log(JSON.stringify(config, null, 2));
 }

@@ -1,13 +1,12 @@
 import { generateText, tool, type ModelMessage } from "ai";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { provider } from "./model";
+import { getModel } from "./model";
 import { dataPath } from "./utils/path";
 import { ImageGeneration } from "./tool";
+import { config } from "./config";
 import plannerSystemPrompt from "../prompts/planner.md";
 import personaSystemPrompt from "../prompts/贤惠幼妻仙狐小姐.md";
-
-const model = provider("deepseek-v4-flash");
 
 const submitPlanTool = tool({
   description: "提交本轮回复策略，包含语气、角度、要点、长度、工具调用等",
@@ -47,6 +46,7 @@ interface PlannerResult {
 export async function runPlanner(userInputMessage: string): Promise<PlannerResult> {
   const history = await loadPlannerHistory();
   const messages: ModelMessage[] = [...history, { role: "user", content: userInputMessage }];
+  const model = getModel(config.models.plan);
 
   let planText = "";
   let toolCallId: string | undefined;
@@ -93,7 +93,7 @@ export async function runPlanner(userInputMessage: string): Promise<PlannerResul
           },
         ],
       },
-      { role: "assistant", content: "over" },
+      { role: "assistant", content: "[Done]" },
     );
     await savePlannerHistory(finalMessages);
   };

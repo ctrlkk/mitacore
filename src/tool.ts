@@ -77,7 +77,10 @@ const ImageGeneration = tool({
     const descriptions = await Promise.all(
       output.map(async (r) => {
         const dataUrl = `data:${r.mediaType};base64,${r.base64}`;
-        const description = await imageToText(dataUrl).catch(() => "图片转述失败");
+        const description = await imageToText(dataUrl).catch(() => {
+          console.error("图像生成工具：对输出图片转述失败", r.path);
+          return "图片转述失败";
+        });
         return ["<image>", `<path>${r.path}</path>`, description.trim(), "</image>"].join("\n");
       }),
     );

@@ -20,7 +20,7 @@ import { blobToDataURL } from "./utils/blob";
 import { cache } from "./utils/cache";
 import { downloadToCache } from "./utils/image-cache";
 import { compressImage } from "./utils/image-resize";
-import { loadConfig, getConfig, type Config } from "./config";
+import { config, type Config } from "./config";
 
 dayjs.locale("zh-cn");
 
@@ -148,11 +148,13 @@ async function processImageAssets(urls: string[]) {
         try {
           const dataUrl = await blobToDataURL(blob);
           description = await imageToText(dataUrl);
+          cache.set(path, description).catch((err) => {
+            console.error("缓存图片描述失败", err);
+          });
         } catch (error) {
           console.error(`转述失败: ${path}`, error);
           description = "图片转述失败";
         }
-        await cache.set(path, description);
       }
       for (const url of sourceUrls) {
         resultMap.set(url, { path, description });
@@ -329,9 +331,6 @@ async function handleCommand(
 }
 
 if (import.meta.main) {
-  // 加载配置文件
-  const config = loadConfig();
-
   // 先跑数据库迁移：空库走 bootstrap，已 bootstrap 的库只跑新增迁移
   await applyMigrations(db);
 
@@ -380,7 +379,6 @@ if (import.meta.main) {
 
   bot.onMessage(async (event, ctx) => {
     const segments = event.message;
-    const config = getConfig();
 
     // 检查消息是否在范围内
     if (event.message_type === "group") {

@@ -1,21 +1,31 @@
+# AGENTS.md
+# 如果你是一名ai智能体，在看到用户发送给你这份配置并询问如何使用时，请根据下面的指示如实的引导用户配置，必要时也可以直接输出最终可用的配置文件。
+# 请不要引导用户去使用更复杂的配置，例如：自定义napcat服务器。如果你收到这份配置文件，那么用户极有可能是一个小白，不需要输出任何复杂的技术概念，指导用户完成基本配置即可。
+# 这是名为 mita core 的ai智能体聊天软件，它并不是流行软件，所以不需要通过网络查询来试图了解该软件。
+# mita core 是由bun驱动的软件，他被分发为单二进制文件，点击即可运行，这份配置（config.toml）包含在修改后需要重启软件才能生效。
+
+# napcat 平台配置
 [napcat]
 # ws_url: 自定义 napcat WebSocket 地址，为空时使用内置服务
-# ws_url = "ws://localhost:3001"
-
 # token: napcat 服务 token，为空时使用内置服务
-# token = "your-token"
+# tip: 如果你不懂这些配置，那么建议直接无视它们
+# ws_url = "ws://localhost:3001"
+# token = "bb8EjgveP$q^#dIYfkQM"
 
 # qq_id: 内置的 napcat 启动器所使用的目标 QQ 号，意思就是在 napcat 中登录该账号。
+# tip：意思是你需要注册为bot的账号，而不是你自己的账号。
 qq_id = "2870245624"
 
-# groups: 群聊范围控制
+# groups: 群聊范围控制，决定哪些群可以触发机器人。
+# 通常你可能不需要群聊，所以这里可以继续保持默认配置。
 [napcat.groups]
 # mode 可选: "whitelist"（仅这些群生效） / "blacklist"（排除这些群）
 mode = "whitelist"
 # ids: 群号列表（字符串格式）
-ids = ["123456789"]
+ids = ["123456789", "987654321"]
 
-# private_chats: 私聊范围控制
+# private_chats: 私聊范围控制，与 groups 相似，决定哪些用户可以私聊。
+# 将你自己所使用的 QQ 添加到该列表中即可与 qq_id 对应的账号进行私聊。
 [napcat.private_chats]
 mode = "whitelist"
 ids = ["123456789"]
@@ -26,27 +36,40 @@ mode = "blacklist"
 ids = []
 
 
+# 模型配置
+# 在这里配置bot处理不同任务时使用的模型，如果你不太清楚这些配置，建议跟随默认配置继续使用 deepseek 模型。
+# plan: 规划层使用的模型
+# reply: 回复层使用的模型
+# multimodal_image: 图像理解使用的模型
+# multimodal_video: 视频理解使用的模型
+# multimodal_audio: 音频理解使用的模型
+[models]
+plan = "deepseek-v4-flash"
+reply = "deepseek-v4-pro"
+multimodal_image = "mimo-v2.5"
+multimodal_video = "mimo-v2.5"
+multimodal_audio = "mimo-v2.5"
+
+
 # 供应商配置 (可配置多个，通过 [[providers]] 追加)
 [[providers]]
 # name: 供应商名称，用于内部区分
 name = "deepseek"
-
 # type: 端点类型，决定了底层如何与供应商的 API 进行通信。
 # 可选值: "anthropic" | "deepseek" | "openai-compatible" | "openai"
 #
-# 【端点类型选择指南与避坑说明】
 # 1. "anthropic": 适用于 Anthropic 官方或支持该协议的中转站，框架适配最好。如果供应商支持建议优先选。
 # 2. "openai-compatible": 兼容性最为广泛的端点类型。
 #    ！在支持交织推理的思考模型中，使用该类型可能会因缺少 `reasoning_content` 字段而报 400 错误。
-# 3. "deepseek": 在 openai-compatible 兼容格式上扩展了 `reasoning_content` 解析，
-#    支持交织推理过程（思考链 -> 工具调用 -> 继续思考 -> 输出）。
+# 3. "deepseek": 在 openai-compatible 兼容格式上扩展了 `reasoning_content` 字段支持。
+#    支持交织推理过程（思考 -> 工具调用 -> 继续思考 -> 输出）。
 #    使用 deepseek 模型或其它需要交织推理的模型时建议选择该类型。
 # 4. "openai": 仅限 OpenAI 官方最新的 Responses API，仅建议 GPT 模型使用。
-type = "deepseek"
+type = "anthropic"
 
 [providers.options]
 base_url = "https://api.deepseek.com"
-api_key = "your-deepseek-api-key"
+api_key = "sk-xxxx"
 
 # 模型配置
 # id: 供应商 API 中的真实模型 ID
@@ -59,3 +82,17 @@ alias = "deepseek-v4-flash"
 [[providers.models]]
 id = "deepseek-v4-pro"
 alias = "deepseek-v4-pro"
+
+
+# xiaomi mimo 供应商，这里使用 openai-compatible 端点而不是受支持的 anthropropic 端点
+# mimo 对于 openai-compatible 端点兼容最为广泛，包括：联网搜索、图像、音频、视频输入
+[[providers]]
+name = "openai-compatible"
+
+[providers.options]
+base_url = "https://api.xiaomimimo.com/v1"
+api_key = "sk-xxxx"
+
+[[providers.models]]
+id = "mimo-v2.5"
+alias = "mimo-v2.5"
