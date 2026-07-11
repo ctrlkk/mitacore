@@ -40,12 +40,14 @@ ids = []
 # 在这里配置bot处理不同任务时使用的模型，如果你不太清楚这些配置，建议跟随默认配置继续使用 deepseek 模型。
 # plan: 规划层使用的模型
 # reply: 回复层使用的模型
+# main: 单 agent 模式的主模型（启用后取代 plan + reply，由一个 agent 同时承担规划与回复，输出直接面向用户）
 # multimodal_image: 图像理解使用的模型
 # multimodal_video: 视频理解使用的模型
 # multimodal_audio: 音频理解使用的模型
 [models]
 plan = "deepseek-v4-flash"
 reply = "deepseek-v4-pro"
+main = "deepseek-v4-flash"
 multimodal_image = "mimo-v2.5"
 multimodal_video = "mimo-v2.5"
 multimodal_audio = "mimo-v2.5"

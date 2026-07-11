@@ -17,6 +17,7 @@ import { cache } from "@/utils/cache";
 import { downloadToCache } from "@/utils/image-cache";
 import { compressImage } from "@/utils/image-resize";
 import { config, type Config } from "@/config";
+import { runMain } from "./agent";
 
 dayjs.locale("zh-cn");
 
@@ -332,6 +333,12 @@ function createBot(sessionId: string) {
       }
     });
     await submitReply(replyText);
+    // await runMain(prompt, async (segments) => {
+    //   for (const seg of segments) {
+    //     await ctx.reply(seg);
+    //     await Bun.sleep(500);
+    //   }
+    // });
   }
 
   const scheduler = createScheduler(processBatch);

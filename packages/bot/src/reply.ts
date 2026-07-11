@@ -70,7 +70,7 @@ export async function runReply(
   let usage: LanguageModelUsage | undefined;
   let replyText = "";
 
-  const { default: prompt } = await import("@prompts/role.md");
+  const { default: prompt } = await import("@prompts/role.txt");
   const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
 
   const system = [

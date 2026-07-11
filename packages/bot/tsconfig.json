@@ -7,5 +7,5 @@
       "@prompts/*": ["prompts/*"]
     }
   },
-  "include": ["src/**/*.ts", "../../prompts/**/*.md"]
+  "include": ["src/**/*.ts"]
 }

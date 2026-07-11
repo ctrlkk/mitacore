@@ -1,10 +1,10 @@
-import { generateText, tool, type ModelMessage } from "ai";
+import { generateText, tool, type ModelMessage, type ToolSet } from "ai";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { getModel } from "@/model";
 import { dataPath } from "@/utils/path";
-import { ImageGeneration } from "@/tool";
 import { config } from "@/config";
+import { imageGen } from "./tools/image-gen";
 
 const submitPlanTool = tool({
   description: "提交本轮回复策略，包含语气、角度、要点、长度、工具调用等",
@@ -51,7 +51,7 @@ export async function runPlanner(userInputMessage: string): Promise<PlannerResul
 
   const { default: planPrompt } = await import("./prompts/plan.txt");
   const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
-  const { default: replyPrompt } = await import("@prompts/role.md");
+  const { default: replyPrompt } = await import("@prompts/role.txt");
 
   const system = [
     "<role>",
@@ -68,15 +68,15 @@ export async function runPlanner(userInputMessage: string): Promise<PlannerResul
     "</reply_role>",
   ].join("\n");
 
+  const tools: ToolSet = { submit_plan: submitPlanTool };
+  tools.image_gen = imageGen(tools, system, model);
+
   for (let step = 0; step < 10; step++) {
     const result = await generateText({
       model,
       system,
       messages,
-      tools: { submit_plan: submitPlanTool, generate_image: ImageGeneration },
-      providerOptions: {
-        anthropic: { thinking: { type: "enabled", budgetTokens: 8000 } },
-      },
+      tools,
     });
 
     if (result.reasoning) console.log("内部思考: ", result.reasoning);

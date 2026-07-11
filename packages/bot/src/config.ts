@@ -53,6 +53,7 @@ const schema = z.object({
     .object({
       plan: z.string().describe("规划层使用的模型"),
       reply: z.string().describe("执行层使用的模型"),
+      main: z.string().optional().describe("单 agent 模式的主模型，未配置时不可用"),
       multimodal_image: z.string().describe("用于图像理解的外挂模型"),
       multimodal_video: z.string().describe("用于视频理解的外挂模型"),
       multimodal_audio: z.string().describe("用于音频处理的外挂模型"),
@@ -96,6 +97,7 @@ function getFieldDescription(path: PropertyKey[]): string | undefined {
     providers: "供应商配置",
     "models.plan": "规划层模型别名",
     "models.reply": "执行层模型别名",
+    "models.main": "单 agent 模式主模型别名",
     "models.multimodal_image": "图像理解模型别名",
     "models.multimodal_video": "视频理解模型别名",
     "models.multimodal_audio": "音频处理模型别名",
