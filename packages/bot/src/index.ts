@@ -8,7 +8,7 @@ import { OneBotClient, type OneBotEventContext } from "@/onebot/onebot-client";
 import { startBuiltinNapCat } from "@/napcat/loader";
 import { db } from "@/database/db";
 import { apply as applyMigrations } from "@/database/migration";
-import { ensureUserAlias } from "@/database/user-alias";
+import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
 import { imageToText } from "@/multimedia";
 import { runReply } from "@/reply";
 import { runPlanner } from "@/planner";
@@ -51,11 +51,12 @@ interface UnifiedImageMessage {
 }
 interface UnifiedReplyMessage {
   type: "reply";
-  data: { id: string; nickname: string; segments: UnifiedInboundMessage[] };
+  data: { userId: string; nickname: string; segments: UnifiedInboundMessage[] }; // userId 为用户短号 u1、u2…
 }
 type UnifiedInboundMessage = UnifiedTextMessage | UnifiedAtMessage | UnifiedImageMessage | UnifiedReplyMessage;
 
 interface PendingMessage {
+  userId: string; // 短号 u1、u2…，来自 user_alias
   unifiedMessages: UnifiedInboundMessage[];
   nickname: string;
   date: Date;
@@ -88,8 +89,9 @@ async function parseOneBotMessage(
       if (!result) continue;
       let inner = await parseOneBotMessage(result.message, getNickname, () => Promise.resolve(null));
       if (inner.length === 0) continue;
-      let nickname = await getNickname(result.userId);
-      messages.push({ type: "reply", data: { id: seg.data.id, nickname, segments: inner } });
+      const nickname = await getNickname(result.userId);
+      const alias = ensureUserAlias("onebot", String(result.userId), nickname);
+      messages.push({ type: "reply", data: { userId: shortIdFor(alias.id), nickname, segments: inner } });
     }
   }
   return messages;
@@ -174,16 +176,19 @@ function buildPrompt(batch: PendingMessage[], imageMap: Map<string, { path: stri
       } else if (seg.type === "reply") {
         const inner = formatMessage(seg.data.segments);
         if (inner) {
-          parts.push(`<reply nickname="${seg.data.nickname}">${inner}</reply>`);
+          parts.push(`<reply user_id="${seg.data.userId}" nickname="${seg.data.nickname}">${inner}</reply>`);
         }
       }
     }
-    return parts.join("  ").trim();
+    return parts
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0)
+      .join(" ");
   };
 
   for (const msg of batch) {
     const text = formatMessage(msg.unifiedMessages);
-    let block = `<user_input date="${dayjs(msg.date).format("MM-DD dddd HH:mm")}" nickname="${msg.nickname}">\n${text}\n</user_input>`;
+    let block = `<user_input user_id="${msg.userId}" date="${dayjs(msg.date).format("MM-DD dddd HH:mm")}" nickname="${msg.nickname}">\n${text}\n</user_input>`;
     promptParts.push(block);
   }
 
@@ -206,29 +211,61 @@ function buildPrompt(batch: PendingMessage[], imageMap: Map<string, { path: stri
 }
 
 /**
- * 创建一个消息调度器，负责攒批、debounce 和唤醒，不关心消息体结构。
- * @param process 处理函数，接收一批消息和对应的上下文
- * @param debounceMs 静默期时长（毫秒），默认 1000
+ * 创建一个基于 debounce 的消息批处理调度器。
+ *
+ * 调度器维护一个缓存队列，仅当收到 trigger 消息时才会触发处理流程：
+ * - trigger 消息唤醒运行循环并设置 armed 标志
+ * - armed 期间到达的后续消息会延长 debounce，并入当前批次
+ * - 队列长度超过 maxQueue 时丢弃最旧的消息
+ * - 当距离最后一条消息达到 debounceMs 后，将整批消息交给 process 函数处理
+ *
+ * @param process - 批处理回调，接收一批消息与触发时保存的上下文
+ * @param debounceMs - 静默等待时间，超过该时间后才处理当前批次，默认 1000ms
+ * @param maxQueue - 缓存队列最大长度，默认 30
+ * @returns 暴露的 enqueue 与 run 方法
  */
-function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, debounceMs = 1000) {
+function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, debounceMs = 1000, maxQueue = 30) {
   const cache: T[] = [];
   let wake: (() => void) | null = null;
   let lastMsgAt = 0;
   let currentCtx: C | null = null;
+  let armed = false;
 
-  function enqueue(item: T, ctx: C) {
-    if (!currentCtx) currentCtx = ctx;
+  /**
+   * 将一条消息加入队列。
+   *
+   * @param item - 待入队的消息
+   * @param ctx - 当前事件上下文，trigger 消息会覆盖既有上下文
+   * @param options.trigger - 是否作为触发消息，true 时唤醒调度器并开启新批次
+   */
+  function enqueue(item: T, ctx: C, options?: { trigger?: boolean }) {
+    const trigger = options?.trigger ?? false;
+    if (trigger) currentCtx = ctx;
+    else if (!currentCtx) currentCtx = ctx;
     cache.push(item);
-    lastMsgAt = Date.now();
-    if (wake) {
-      wake();
-      wake = null;
+    while (cache.length > maxQueue) cache.shift();
+    if (trigger) {
+      armed = true;
+      lastMsgAt = Date.now();
+      if (wake) {
+        wake();
+        wake = null;
+      }
+      return;
     }
+    // 已 armed 时的后续消息延长 debounce，并入本批
+    if (armed) lastMsgAt = Date.now();
   }
 
+  /**
+   * 启动调度器主循环。
+   *
+   * 当队列空或未 armed 时挂起等待唤醒；armed 后等待 debounce 静默期，
+   * 随后将整批消息连同上下文交给 process 处理，处理异常会被捕获并记录。
+   */
   async function run() {
     while (true) {
-      if (cache.length === 0) {
+      if (cache.length === 0 || !armed) {
         await new Promise<void>((r) => {
           wake = r;
         });
@@ -236,9 +273,11 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, d
       while (Date.now() - lastMsgAt < debounceMs) {
         await Bun.sleep(100);
       }
+      if (!armed) continue;
       const batch = cache.splice(0);
       const ctx = currentCtx;
       currentCtx = null;
+      armed = false;
       if (batch.length === 0 || !ctx) continue;
       try {
         await process(batch, ctx);
@@ -251,7 +290,25 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, d
   return { enqueue, run };
 }
 
+/**
+ * 创建一个绑定到指定会话的机器人实例。
+ *
+ * 机器人内部通过调度器收集并批处理待处理消息，每个批次会：
+ * 1. 递归提取消息中的图片 URL（包括回复引用中的图片）
+ * 2. 下载并处理图片资源
+ * 3. 构建完整 prompt 并依次调用 planner 与 reply 流程
+ * 4. 将回复文本通过 ctx.reply 逐段发送
+ *
+ * @param sessionId - 当前会话 ID
+ * @returns 暴露的 enqueue 方法，用于将新消息加入调度队列
+ */
 function createBot(sessionId: string) {
+  /**
+   * 处理一批待处理消息：提取图片、构建 prompt、执行规划与回复。
+   *
+   * @param batch - 当前批次中待处理的消息集合
+   * @param ctx - OneBot 事件上下文，用于回复消息
+   */
   async function processBatch(batch: PendingMessage[], ctx: OneBotEventContext<OneBotMessageEvent>) {
     const urls = new Set<string>();
 
@@ -372,7 +429,8 @@ if (import.meta.main) {
   bot.onMessage(async (event, ctx) => {
     const segments = event.message;
 
-    // 检查消息是否在范围内
+    // 检查消息是否在范围内；群聊未 @ 也入队（静默），仅 @ 时触发处理
+    let trigger = false;
     if (event.message_type === "group") {
       if (!isIdInScope(String(event.group_id), config.napcat.groups)) {
         return;
@@ -380,21 +438,19 @@ if (import.meta.main) {
       if (!isIdInScope(String(event.user_id), config.napcat.group_members)) {
         return;
       }
-      const isAtBot = segments.some((seg) => seg.type === "at" && seg.data.qq === selfId);
-      if (!isAtBot) {
-        return;
-      }
+      trigger = segments.some((seg) => seg.type === "at" && seg.data.qq === selfId);
     } else if (event.message_type === "private") {
       if (!isIdInScope(String(event.user_id), config.napcat.private_chats)) {
         return;
       }
+      trigger = true;
     } else {
       return;
     }
 
     const isMaster = event.sender.user_id === 2870245624;
     // 把发送者写进用户映射表（首次见到时建立短号），过滤之后做，避免无关用户也入缓存
-    ensureUserAlias("onebot", String(event.user_id), event.sender.nickname);
+    const alias = ensureUserAlias("onebot", String(event.user_id), event.sender.nickname);
     const rawText = segments
       .filter((seg) => seg.type === "text")
       .map((seg) => seg.data.text)
@@ -403,8 +459,11 @@ if (import.meta.main) {
 
     const sessionId = event.message_type === "group" ? `group:${event.group_id}` : `private:${event.user_id}`;
 
-    const isCommandHandled = await handleCommand(rawText, ctx, isMaster, sessionId);
-    if (isCommandHandled) return;
+    // 命令仅在 trigger（私聊或群 @）时执行，避免非 @ 误触发
+    if (trigger) {
+      const isCommandHandled = await handleCommand(rawText, ctx, isMaster, sessionId);
+      if (isCommandHandled) return;
+    }
 
     try {
       const unified = await parseOneBotMessage(
@@ -430,14 +489,26 @@ if (import.meta.main) {
         console.log("没有可解析的消息内容，跳过当前输入");
         return;
       }
+
+      /**
+       * 未来：
+       * 需要设计一种方式，使用数据库存储队列而不是内存，保证重启后仍然可以保留队列。
+       * 这个方案需要保持较低的侵入性，我希望使用上能和目前的cache数组类似。
+       * 目前我能想到的做法就是学习我的parseOneBotMessage实现，规划器接受一个或多个函数，无需关心里面的具体实现。
+       *
+       * 计划：
+       * 依旧使用内存数组快速完成原型开发，之后首先将内存数组改修改为函数接口模式，再考虑如何接入sqlite模式。
+       */
       getBot(sessionId).enqueue(
         {
+          userId: shortIdFor(alias.id),
           unifiedMessages: unified,
           nickname: event.sender.nickname,
           date: new Date(event.time * 1000),
           isMaster,
         },
         ctx,
+        { trigger },
       );
     } catch (error) {
       console.error("消息解析或入队失败:", error);
