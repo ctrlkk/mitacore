@@ -79,7 +79,7 @@ export async function runPlanner(userInputMessage: string): Promise<PlannerResul
       tools,
     });
 
-    if (result.reasoning) console.log("内部思考: ", result.reasoning);
+    if (result.reasoning) console.log("内部思考: ", result.reasoningText);
     if (result.text) console.log("助手响应: ", result.text);
 
     messages.push(...result.response.messages);

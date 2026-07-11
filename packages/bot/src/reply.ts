@@ -90,7 +90,7 @@ export async function runReply(
       messages: [...historyMessages, ...runtimeMessages],
     });
 
-    if (result.reasoning) console.log("内部思考: ", result.reasoning);
+    if (result.reasoning) console.log("内部思考: ", result.reasoningText);
     if (result.text) console.log("助手响应: ", result.text);
     if (result.text) {
       const segments = await sliceReply(result.text);
