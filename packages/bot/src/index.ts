@@ -61,7 +61,8 @@ interface PendingMessage {
   unifiedMessages: UnifiedInboundMessage[];
   nickname: string;
   date: Date;
-  isMaster: boolean;
+  isAt: boolean;
+  isAdmin: boolean;
 }
 
 /**
@@ -213,8 +214,8 @@ function buildPrompt(batch: PendingMessage[], imageMap: Map<string, { path: stri
 /**
  * 创建一个基于 debounce 的消息批处理调度器。
  *
- * 调度器维护一个缓存队列，仅当收到 trigger 消息时才会触发处理流程：
- * - trigger 消息唤醒运行循环并设置 armed 标志
+ * 调度器维护一个缓存队列，仅当 shouldTrigger 函数返回 true 时才会触发处理流程：
+ * - 触发消息唤醒运行循环并设置 armed 标志
  * - armed 期间到达的后续消息会延长 debounce，并入当前批次
  * - 队列长度超过 maxQueue 时丢弃最旧的消息
  * - 当距离最后一条消息达到 debounceMs 后，将整批消息交给 process 函数处理
@@ -225,26 +226,36 @@ function buildPrompt(batch: PendingMessage[], imageMap: Map<string, { path: stri
  * @returns 暴露的 enqueue 与 run 方法
  */
 function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, debounceMs = 1000, maxQueue = 30) {
+  /** 缓存队列，存储待处理的消息 */
   const cache: T[] = [];
+  /** 唤醒挂起的运行循环 */
   let wake: (() => void) | null = null;
+  /** 最后一条消息到达的时间戳 */
   let lastMsgAt = 0;
+  /** 当前批次的上下文 */
   let currentCtx: C | null = null;
+  /** 是否已触发（收到 trigger 消息后为 true） */
   let armed = false;
 
   /**
    * 将一条消息加入队列。
    *
    * @param item - 待入队的消息
-   * @param ctx - 当前事件上下文，trigger 消息会覆盖既有上下文
-   * @param options.trigger - 是否作为触发消息，true 时唤醒调度器并开启新批次
+   * @param ctx - 当前事件上下文，触发消息会覆盖既有上下文
+   * @param options.shouldTrigger - 判断是否触发处理的函数，返回 true 时唤醒调度器并开启新批次
    */
-  function enqueue(item: T, ctx: C, options?: { trigger?: boolean }) {
-    const trigger = options?.trigger ?? false;
-    if (trigger) currentCtx = ctx;
-    else if (!currentCtx) currentCtx = ctx;
+  function enqueue(item: T, ctx: C, options?: { shouldTrigger?: (item: T, ctx: C) => boolean }) {
+    const shouldTrigger = options?.shouldTrigger?.(item, ctx) ?? false;
+    if (shouldTrigger) {
+      currentCtx = ctx;
+    } else if (!currentCtx) {
+      currentCtx = ctx;
+    }
+    while (cache.length > maxQueue) {
+      cache.shift();
+    }
     cache.push(item);
-    while (cache.length > maxQueue) cache.shift();
-    if (trigger) {
+    if (shouldTrigger) {
       armed = true;
       lastMsgAt = Date.now();
       if (wake) {
@@ -325,20 +336,20 @@ function createBot(sessionId: string) {
     const prompt = buildPrompt(batch, imageMap).trim();
     console.log("用户输入", prompt);
 
-    const { plan, submitReply } = await runPlanner(prompt);
-    const { replyText } = await runReply(prompt, plan, async (segments) => {
-      for (const seg of segments) {
-        await ctx.reply(seg);
-        await Bun.sleep(500);
-      }
-    });
-    await submitReply(replyText);
-    // await runMain(prompt, async (segments) => {
+    // const { plan, submitReply } = await runPlanner(prompt);
+    // const { replyText } = await runReply(prompt, plan, async (segments) => {
     //   for (const seg of segments) {
     //     await ctx.reply(seg);
     //     await Bun.sleep(500);
     //   }
     // });
+    // await submitReply(replyText);
+    await runMain(prompt, async (segments) => {
+      for (const seg of segments) {
+        await ctx.reply(seg);
+        await Bun.sleep(500);
+      }
+    });
   }
 
   const scheduler = createScheduler(processBatch);
@@ -350,10 +361,10 @@ function createBot(sessionId: string) {
 async function handleCommand(
   rawText: string,
   ctx: OneBotEventContext<OneBotMessageEvent>,
-  isMaster: boolean,
+  isAdmin: boolean,
   sessionId: string,
 ): Promise<boolean> {
-  if (rawText === "/ping" && isMaster) {
+  if (rawText === "/ping" && isAdmin) {
     const event = ctx.event as OneBotMessageEvent;
     const latency = Date.now() - event.time * 1000;
     await ctx.reply(`pong (${latency}ms)`);
@@ -435,8 +446,7 @@ if (import.meta.main) {
   bot.onMessage(async (event, ctx) => {
     const segments = event.message;
 
-    // 检查消息是否在范围内；群聊未 @ 也入队（静默），仅 @ 时触发处理
-    let trigger = false;
+    let isAt = false;
     if (event.message_type === "group") {
       if (!isIdInScope(String(event.group_id), config.napcat.groups)) {
         return;
@@ -444,17 +454,17 @@ if (import.meta.main) {
       if (!isIdInScope(String(event.user_id), config.napcat.group_members)) {
         return;
       }
-      trigger = segments.some((seg) => seg.type === "at" && seg.data.qq === selfId);
+      isAt = segments.some((seg) => seg.type === "at" && seg.data.qq === selfId);
     } else if (event.message_type === "private") {
       if (!isIdInScope(String(event.user_id), config.napcat.private_chats)) {
         return;
       }
-      trigger = true;
+      isAt = true;
     } else {
       return;
     }
 
-    const isMaster = event.sender.user_id === 2870245624;
+    const isAdmin = event.sender.user_id === 2870245624;
     // 把发送者写进用户映射表（首次见到时建立短号），过滤之后做，避免无关用户也入缓存
     const alias = ensureUserAlias("onebot", String(event.user_id), event.sender.nickname);
     const rawText = segments
@@ -465,9 +475,8 @@ if (import.meta.main) {
 
     const sessionId = event.message_type === "group" ? `group:${event.group_id}` : `private:${event.user_id}`;
 
-    // 命令仅在 trigger（私聊或群 @）时执行，避免非 @ 误触发
-    if (trigger) {
-      const isCommandHandled = await handleCommand(rawText, ctx, isMaster, sessionId);
+    if (isAt) {
+      const isCommandHandled = await handleCommand(rawText, ctx, isAdmin, sessionId);
       if (isCommandHandled) return;
     }
 
@@ -505,17 +514,19 @@ if (import.meta.main) {
        * 计划：
        * 依旧使用内存数组快速完成原型开发，之后首先将内存数组改修改为函数接口模式，再考虑如何接入sqlite模式。
        */
-      getBot(sessionId).enqueue(
-        {
-          userId: shortIdFor(alias.id),
-          unifiedMessages: unified,
-          nickname: event.sender.nickname,
-          date: new Date(event.time * 1000),
-          isMaster,
+      const message = {
+        userId: shortIdFor(alias.id),
+        unifiedMessages: unified,
+        nickname: event.sender.nickname,
+        date: new Date(event.time * 1000),
+        isAt,
+        isAdmin,
+      };
+      getBot(sessionId).enqueue(message, ctx, {
+        shouldTrigger(item, ctx) {
+          return item.isAt;
         },
-        ctx,
-        { trigger },
-      );
+      });
     } catch (error) {
       console.error("消息解析或入队失败:", error);
     }

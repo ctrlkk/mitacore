@@ -1,11 +1,11 @@
-import { generateText, type LanguageModelUsage, type ModelMessage } from "ai";
+import { generateText, type LanguageModelUsage, type ModelMessage, type ToolSet } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { getModel } from "@/model";
 import { parseMarkdown, type MessagePart } from "@/images";
 import { splitMessage } from "@/utils/message-splitter";
 import { dataPath } from "@/utils/path";
 import { config } from "@/config";
-import { ImageGeneration } from "@/tool";
+import { imageGen } from "./tools/image-gen";
 
 async function loadMainHistory(): Promise<ModelMessage[]> {
   try {
@@ -72,11 +72,13 @@ export async function runMain(userPrompt: string, onReply: (segments: MessagePar
     "</role>",
   ].join("\n");
 
+  const tools: ToolSet = {};
+  tools.image_gen = imageGen(tools, system, model);
+
   for (let step = 0; step < 20; step++) {
     const result = await generateText({
       model,
       system,
-      tools: { generate_image: ImageGeneration },
       messages: [...historyMessages, ...runtimeMessages],
     });
 
