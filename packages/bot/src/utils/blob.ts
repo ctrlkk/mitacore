@@ -26,8 +26,8 @@ export function base64ToBlob(base64: string, mimeType: string = "application/oct
  * @returns 返回Base64编码的Data URL字符串
  */
 export async function blobToDataURL(blob: Blob): Promise<string> {
-  const buffer = Buffer.from(await blob.bytes());
-  return `data:${blob.type};base64,${buffer.toString("base64")}`;
+  const buffer = await blob.bytes();
+  return `data:${blob.type};base64,${buffer.toBase64()}`;
 }
 
 /**

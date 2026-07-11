@@ -134,8 +134,7 @@ async function processImageAssets(urls: string[]) {
       let description = await cache.get<string>(path);
       if (!description) {
         try {
-          const dataUrl = await blobToDataURL(blob);
-          description = await imageToText(dataUrl);
+          description = await imageToText(blob);
           description = description.trim();
           cache.set(path, description).catch((err) => {
             console.error("缓存图片描述失败", err);

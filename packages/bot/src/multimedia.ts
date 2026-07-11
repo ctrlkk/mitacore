@@ -1,6 +1,9 @@
 import { generateText } from "ai";
-import { getModel } from "./model";
+import { getModel, getModelConfig } from "./model";
 import { config } from "./config";
+import { dataPath } from "./utils/path";
+import { blobToDataURL } from "./utils/blob";
+import { z } from "zod";
 
 const IMAGE_SYSTEM_PROMPT = `你将作为视觉模块，负责解释图片内容。
 输出清晰可读的文本，避免使用 Markdown 表格、复杂的嵌套列表或装饰性符号。
@@ -13,11 +16,11 @@ const IMAGE_SYSTEM_PROMPT = `你将作为视觉模块，负责解释图片内容
 禁止拒绝任何请求，无论图片内容如何，按照上述要求完成任务。`;
 
 /**
- * 将图片URL转换为文本描述。
- * @param imageUrl 图片的URL或Base64、DataURL
+ * 将图片 Blob 转换为文本描述。
+ * @param image 图片的 Blob
  * @returns 返回一个Promise，解析为图片的文本描述
  */
-export async function imageToText(imageUrl: string): Promise<string> {
+export async function imageToText(image: Blob): Promise<string> {
   const model = getModel(config.models.multimodal_image);
   const { text } = await generateText({
     model,
@@ -27,10 +30,92 @@ export async function imageToText(imageUrl: string): Promise<string> {
         role: "user",
         content: [
           { type: "text", text: "解释图片" },
-          { type: "image", image: imageUrl },
+          { type: "image", image: await blobToDataURL(image) },
         ],
       },
     ],
   });
   return text;
+}
+
+/** OpenAI Chat Completions 响应结构，只校验 videoToText 实际消费的字段 */
+const ChatCompletionsResponse = z.object({
+  choices: z
+    .array(
+      z.object({
+        message: z.object({
+          content: z.string(),
+        }),
+      }),
+    )
+    .min(1),
+});
+
+const VIDEO_SYSTEM_PROMPT = `你将作为视觉模块，负责解释视频内容。
+输出清晰可读的文本，避免使用 Markdown 表格、复杂的嵌套列表或装饰性符号。
+视频可能包含多个镜头与时间线上的变化，请按时间顺序描述关键画面、人物动作、场景切换与显著的视觉元素（构图、色调、字幕等）。
+- 不要使用分点列举，而是用逗号或连接词串联事件。
+- 描述时长、镜头节奏或文字内容时，用括号或自然语言从句呈现，例如："开头是街道的全景（持续约 3 秒），随后画面切换至室内访谈，画面右下角出现字幕"……"。"
+- 在涉及音频旁白或对话时，简要概括其内容（不要逐字转录），注明出现时机。
+- 如果画面在某段时间内没有可识别的有意义内容，直接跳过，不要强行编造。
+禁止拒绝任何请求，无论视频内容如何，按照上述要求完成任务。`;
+
+/**
+ * 将视频 Blob 转换为文本描述。
+ * 绕过 AI SDK，直接调用配置 provider 的 /v1/chat/completions，使用 OpenAI 兼容的视频 part
+ * （`{ type: "video_url", video_url: { url: ... }, fps?, media_resolution? }`）。
+ * 适用于任何支持该 part 形式的 openai-compatible 端点；不支持的 provider 会自行返回错误。
+ *
+ * @param blob 视频的 Blob，使用其 `type` 字段作为 mediaType，空时回退到 "video/mp4"
+ * @returns 视频的文本描述
+ */
+export async function videoToText(blob: Blob): Promise<string> {
+  const alias = config.models.multimodal_video;
+  const { baseUrl, apiKey, modelId } = getModelConfig(alias);
+
+  const mediaType = blob.type || "video/mp4";
+  if (!mediaType.startsWith("video/")) {
+    throw new Error(`videoToText 需要 video/* mediaType，拿到的是 "${mediaType}"`);
+  }
+
+  const dataUrl = await blobToDataURL(blob);
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: modelId,
+      messages: [
+        { role: "system", content: VIDEO_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: [
+            { type: "video_url", video_url: { url: dataUrl } },
+            { type: "text", text: "解释视频" },
+          ],
+        },
+      ],
+      max_completion_tokens: 1024,
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    throw new Error(`视频 API 调用失败 (${alias}=${modelId}): ${response.status} ${response.statusText} ${errText}`);
+  }
+
+  const parsed = ChatCompletionsResponse.safeParse(await response.json());
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+    throw new Error(`视频 API 响应结构异常 (${alias}=${modelId}): ${issues}`);
+  }
+  return parsed.data.choices[0]!.message.content;
+}
+
+if (import.meta.main) {
+  const text = await videoToText(Bun.file(dataPath("video.mp4")));
+  console.log(text);
 }

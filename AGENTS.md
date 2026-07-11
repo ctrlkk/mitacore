@@ -1,5 +1,24 @@
-这是 ai agent 软件。
-主程序由bun驱动，部分功能通过外挂node子进程来实现。
+这是一个由 bun 驱动的 ai agent 软件。
+
+project/
+├── AGENTS.md / CLAUDE.md     # AI 协作与代码风格规约
+├── package.json              # 根 workspace 配置（bun workspaces）
+├── tsconfig.json             # TS 配置
+├── bun.lock                  # Bun 锁文件
+├── config.example.toml       # 配置示例
+├── .env                      # 环境变量
+├── skills-lock.json          # 技能锁文件
+├── .prettierignore
+├── packages/                 # 工作区子包
+├── data/                     # 运行时数据（数据库、图片、缓存、聊天记录）
+├── dist/                     # 构建产物（app.exe、bin、sidecar）
+├── scripts/                  # 根级构建脚本
+├── prompts/                  # Agent 角色/记忆/总结提示词（Markdown）
+├── references/               # 参考资料：表情包、语音样本
+├── vendor/                   # 第三方 vendor 资源（NapCatQQ、opencode、ai 等）,主要用来存放三方库的源码提供参考。
+├── migration-tmp/            # 数据库迁移中间产物
+├── .agents/                  # Agent 工作流配置（skills 等）
+└── .claude/                  # Claude 配置
 
 ## 代码风格
 

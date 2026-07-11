@@ -43,3 +43,25 @@ export function getModel(alias: string): LanguageModel {
   }
   throw new Error(`未找到别名为 "${alias}" 的模型，请检查 config.toml 配置`);
 }
+
+/**
+ * 返回别名为 alias 的模型对应的 provider 配置与真实 model id，
+ * 用于绕过 AI SDK 直接调用 provider API（如 mimo 的 video_url 扩展）。
+ */
+export function getModelConfig(alias: string): {
+  baseUrl: string;
+  apiKey: string;
+  modelId: string;
+} {
+  for (const providerCfg of config.providers) {
+    const modelCfg = providerCfg.models.find((m) => m.alias === alias);
+    if (modelCfg) {
+      return {
+        baseUrl: providerCfg.options.base_url,
+        apiKey: providerCfg.options.api_key,
+        modelId: modelCfg.id,
+      };
+    }
+  }
+  throw new Error(`未找到别名为 "${alias}" 的模型，请检查 config.toml 配置`);
+}

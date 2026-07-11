@@ -48,8 +48,7 @@ const ImageGeneration = tool({
         const file = Bun.file(realPath);
         return {
           path: virtualPath,
-          mediaType: "image/webp",
-          base64: await new Bun.Image(file).webp({ quality: 80 }).toBase64(),
+          image: await new Bun.Image(file).webp({ quality: 80 }).blob(),
         };
       }),
     );
@@ -64,10 +63,15 @@ const ImageGeneration = tool({
       };
     }
     if (SUPPORTS_MULTIMODAL) {
-      const value: ContentPart[] = output.flatMap((r, index) => [
-        { type: "text", text: `#${index} 图片路径：${r.path}` },
-        { type: "image-data", data: r.base64, mediaType: r.mediaType },
-      ]);
+      const value: ContentPart[] = await Promise.all(
+        output.flatMap(async ({ path, image }, index): Promise<ContentPart[]> => {
+          const buffer = await image.bytes();
+          return [
+            { type: "text", text: `#${index} 图片路径：${path}` },
+            { type: "image-data", data: buffer.toBase64(), mediaType: image.type },
+          ];
+        }),
+      ).then((parts) => parts.flat());
       value.unshift({ type: "text", text: `图片生成成功，一共${output.length}张，下面是图片预览；` });
       return {
         type: "content",
@@ -75,13 +79,12 @@ const ImageGeneration = tool({
       };
     }
     const descriptions = await Promise.all(
-      output.map(async (r) => {
-        const dataUrl = `data:${r.mediaType};base64,${r.base64}`;
-        const description = await imageToText(dataUrl).catch(() => {
-          console.error("图像生成工具：对输出图片转述失败", r.path);
+      output.map(async ({ path, image }) => {
+        const description = await imageToText(image).catch(() => {
+          console.error("图像生成工具：对输出图片转述失败", path);
           return "图片转述失败";
         });
-        return ["<image>", `<path>${r.path}</path>`, description.trim(), "</image>"].join("\n");
+        return ["<image>", `<path>${path}</path>`, description.trim(), "</image>"].join("\n");
       }),
     );
     console.log("图像描述完成");
