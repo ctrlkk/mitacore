@@ -1,6 +1,6 @@
 import type { PendingMessage, UnifiedInboundMessage } from ".";
 import { generateText, type ModelMessage } from "ai";
-import { dataPath } from "./utils/path";
+import { dataPath, projectPath } from "./utils/path";
 import { readFile } from "node:fs/promises";
 import { getModel } from "./model";
 import { z } from "zod";
@@ -64,7 +64,7 @@ function parseTriggerDecisionText(text: string) {
 }
 
 export async function dispatchMessage(cache: PendingMessage[]) {
-  const { default: rolePrompt } = await import("@prompts/role.txt");
+  const rolePrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
   const { default: triggerPrompt } = await import("./prompts/trigger.txt");
 
   const conversation = cache
