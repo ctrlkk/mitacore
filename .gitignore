@@ -42,3 +42,5 @@ migration-tmp/
 
 # drizzle-kit 持久化 out 目录（journal 跨运行保留，生成 .ts 后不入库）
 src/database/.drizzle-out/
+
+/config.toml

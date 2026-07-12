@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parse } from "smol-toml";
 import { z } from "zod";
-import { dataPath } from "./utils/path";
+import { projectPath } from "./utils/path";
 
 /** 范围配置 Schema */
 const scopeConfig = z.object({
@@ -116,7 +116,7 @@ function getFieldDescription(path: PropertyKey[]): string | undefined {
 }
 
 /** 加载并校验配置文件，必须在程序入口最先调用 */
-function loadConfig(path = dataPath("config.toml")): Config {
+function loadConfig(path = projectPath("config.toml")): Config {
   let raw: string;
   try {
     raw = readFileSync(path, "utf8");

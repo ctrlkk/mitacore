@@ -27,7 +27,7 @@ export async function downloadNapcat(
   for (const url of candidates) {
     try {
       console.log(`下载中: ${url}`);
-      const resp = await fetch(url, { signal: AbortSignal.timeout(300_000) });
+      const resp = await fetch(url);
       if (!resp.ok || !resp.body) {
         lastError = `HTTP ${resp.status}`;
         console.log(`HTTP ${resp.status}，切换镜像`);

@@ -3,7 +3,7 @@ import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { getModel } from "@/model";
 import { parseMarkdown, type MessagePart } from "@/images";
 import { splitMessage } from "@/utils/message-splitter";
-import { dataPath } from "@/utils/path";
+import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
 import { imageGen } from "./tools/image-gen";
 
@@ -59,7 +59,7 @@ export async function runMain(userPrompt: string, onReply: (segments: MessagePar
 
   let usage: LanguageModelUsage | undefined;
 
-  const { default: replyPrompt } = await import("@prompts/role.txt");
+  const replyPrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
   const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
 
   const system = [

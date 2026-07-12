@@ -2,7 +2,7 @@ import { generateText, tool, type ModelMessage, type ToolSet } from "ai";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { getModel } from "@/model";
-import { dataPath } from "@/utils/path";
+import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
 import { imageGen } from "./tools/image-gen";
 
@@ -51,7 +51,7 @@ export async function runPlanner(userInputMessage: string): Promise<PlannerResul
 
   const { default: planPrompt } = await import("./prompts/plan.txt");
   const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
-  const { default: replyPrompt } = await import("@prompts/role.txt");
+  const replyPrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
 
   const system = [
     "<role>",

@@ -3,7 +3,7 @@ import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { getModel } from "@/model";
 import { parseMarkdown, type MessagePart } from "@/images";
 import { splitMessage } from "@/utils/message-splitter";
-import { dataPath } from "@/utils/path";
+import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
 
 async function loadExecutorHistory(): Promise<ModelMessage[]> {
@@ -70,7 +70,7 @@ export async function runReply(
   let usage: LanguageModelUsage | undefined;
   let replyText = "";
 
-  const { default: prompt } = await import("@prompts/role.txt");
+  const prompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
   const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
 
   const system = [

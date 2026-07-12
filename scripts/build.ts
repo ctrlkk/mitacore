@@ -7,6 +7,7 @@ import {
   readFileSync,
   writeFileSync,
   copyFileSync,
+  cpSync,
   chmodSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -141,11 +142,37 @@ async function copyBin() {
   }
 }
 
+/**
+ * 复制运行时资源：prompts 目录、config.example.toml、config.toml
+ */
+async function copyAssets() {
+  const targets: Array<{ src: string; dest: string; label: string }> = [
+    { src: join(root, "prompts"), dest: join(outDir, "prompts"), label: "prompts/" },
+    { src: join(root, "config.example.toml"), dest: join(outDir, "config.example.toml"), label: "config.example.toml" },
+    { src: join(root, "config.example.toml"), dest: join(outDir, "config.toml"), label: "config.toml" },
+  ];
+
+  for (const { src, dest, label } of targets) {
+    if (!existsSync(src)) {
+      console.warn(`跳过：${label}（源不存在 ${src}）`);
+      continue;
+    }
+    const stat = statSync(src);
+    if (stat.isDirectory()) {
+      cpSync(src, dest, { recursive: true });
+    } else {
+      mkdirSync(join(dest, ".."), { recursive: true });
+      copyFileSync(src, dest);
+    }
+    console.log(`复制 ${label} → ${dest}`);
+  }
+}
+
 // 准备输出目录
 mkdirSync(outDir, { recursive: true });
 
 // 并行构建
-await Promise.all([buildApp(), buildSidecar(), copyBin()]);
+await Promise.all([buildApp(), buildSidecar(), copyBin(), copyAssets()]);
 
 console.log("\n==> 构建完成：");
 for (const f of readdirSync(outDir)) {
