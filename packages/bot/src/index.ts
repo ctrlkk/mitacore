@@ -12,12 +12,12 @@ import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
 import { imageToText } from "@/multimedia";
 import { runReply } from "@/reply";
 import { runPlanner } from "@/planner";
-import { blobToDataURL } from "@/utils/blob";
 import { cache } from "@/utils/cache";
 import { downloadToCache } from "@/utils/image-cache";
 import { compressImage } from "@/utils/image-resize";
 import { config, type Config } from "@/config";
 import { runMain } from "./agent";
+import { dispatchMessage } from "./dispatcher";
 
 dayjs.locale("zh-cn");
 
@@ -54,9 +54,9 @@ interface UnifiedReplyMessage {
   type: "reply";
   data: { userId: string; nickname: string; segments: UnifiedInboundMessage[] }; // userId 为用户短号 u1、u2…
 }
-type UnifiedInboundMessage = UnifiedTextMessage | UnifiedAtMessage | UnifiedImageMessage | UnifiedReplyMessage;
+export type UnifiedInboundMessage = UnifiedTextMessage | UnifiedAtMessage | UnifiedImageMessage | UnifiedReplyMessage;
 
-interface PendingMessage {
+export interface PendingMessage {
   userId: string; // 短号 u1、u2…，来自 user_alias
   unifiedMessages: UnifiedInboundMessage[];
   nickname: string;
@@ -214,11 +214,17 @@ function buildPrompt(batch: PendingMessage[], imageMap: Map<string, { path: stri
 /**
  * 创建一个基于 debounce 的消息批处理调度器。
  *
- * 调度器维护一个缓存队列，仅当 shouldTrigger 函数返回 true 时才会触发处理流程：
- * - 触发消息唤醒运行循环并设置 armed 标志
- * - armed 期间到达的后续消息会延长 debounce，并入当前批次
+ * 调度器维护一个缓存队列，将"是否触发"的决策拆成两段：
+ * - hardTrigger：同步、廉价、每条消息都判断（如 at 机器人、管理员指令）
+ * - softTrigger：异步、昂贵，仅在 debounce 静默期结束后判断一次（如 LLM 调度）
+ *
+ * 关键语义：
+ * - 硬触发命中时立即 armed 并唤醒运行循环
+ * - 未 armed 时，调度器仅启动一次软触发；软触发进行中到达的新消息只标记 dirty，
+ *   等本轮决策完成后再自动重判（re-evaluate），保证整批至多触发一次昂贵判定
+ * - 软触发通过 dispatchInFlight 单飞，避免并发判定与重复回复
  * - 队列长度超过 maxQueue 时丢弃最旧的消息
- * - 当距离最后一条消息达到 debounceMs 后，将整批消息交给 process 函数处理
+ * - 距离最后一条消息达到 debounceMs 后，将整批消息交给 process 函数处理
  *
  * @param process - 批处理回调，接收一批消息与触发时保存的上下文
  * @param debounceMs - 静默等待时间，超过该时间后才处理当前批次，默认 1000ms
@@ -226,36 +232,76 @@ function buildPrompt(batch: PendingMessage[], imageMap: Map<string, { path: stri
  * @returns 暴露的 enqueue 与 run 方法
  */
 function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, debounceMs = 1000, maxQueue = 30) {
-  /** 缓存队列，存储待处理的消息 */
   const cache: T[] = [];
-  /** 唤醒挂起的运行循环 */
   let wake: (() => void) | null = null;
-  /** 最后一条消息到达的时间戳 */
   let lastMsgAt = 0;
-  /** 当前批次的上下文 */
   let currentCtx: C | null = null;
-  /** 是否已触发（收到 trigger 消息后为 true） */
   let armed = false;
+
+  let softTriggerFn: ((cache: T[], ctx: C) => Promise<boolean>) | null = null;
+  let dispatchInFlight = false;
+  let dispatchDirty = false;
+
+  /**
+   * 软触发决策循环：等待静默期 → 调用昂贵判定 → 若期间有新消息且仍未硬触发则重判。
+   * 用循环而非递归，避免与外层 finally 的执行顺序产生竞态。
+   */
+  async function softDecisionLoop(ctx: C) {
+    while (true) {
+      if (!softTriggerFn) return;
+      while (Date.now() - lastMsgAt < debounceMs) {
+        await Bun.sleep(100);
+      }
+      if (armed) return;
+      dispatchDirty = false;
+      const should = await softTriggerFn([...cache], ctx);
+      if (dispatchDirty && !armed) continue;
+      if (should && !armed) {
+        armed = true;
+        currentCtx = ctx;
+        if (wake) {
+          wake();
+          wake = null;
+        }
+      }
+      return;
+    }
+  }
+
+  function ensureSoftRunning(ctx: C) {
+    if (dispatchInFlight || !softTriggerFn) return;
+    dispatchInFlight = true;
+    softDecisionLoop(ctx)
+      .catch((err) => console.error("soft dispatch 失败:", err))
+      .finally(() => {
+        dispatchInFlight = false;
+      });
+  }
 
   /**
    * 将一条消息加入队列。
    *
    * @param item - 待入队的消息
-   * @param ctx - 当前事件上下文，触发消息会覆盖既有上下文
-   * @param options.shouldTrigger - 判断是否触发处理的函数，返回 true 时唤醒调度器并开启新批次
+   * @param ctx - 当前事件上下文，硬触发会覆盖既有上下文
+   * @param options.hardTrigger - 同步判断是否触发（如 at 机器人）
+   * @param options.softTrigger - 异步昂贵判断（如 LLM 调度），静默期结束后才被调用
    */
-  function enqueue(item: T, ctx: C, options?: { shouldTrigger?: (item: T, ctx: C) => boolean }) {
-    const shouldTrigger = options?.shouldTrigger?.(item, ctx) ?? false;
-    if (shouldTrigger) {
-      currentCtx = ctx;
-    } else if (!currentCtx) {
-      currentCtx = ctx;
-    }
+  async function enqueue(
+    item: T,
+    ctx: C,
+    options?: {
+      hardTrigger?: (cache: T[], item: T, ctx: C) => boolean;
+      softTrigger?: (cache: T[], ctx: C) => Promise<boolean>;
+    },
+  ) {
+    const hard = options?.hardTrigger?.(cache, item, ctx) ?? false;
+    if (hard) currentCtx = ctx;
+    else if (!currentCtx) currentCtx = ctx;
     while (cache.length > maxQueue) {
       cache.shift();
     }
     cache.push(item);
-    if (shouldTrigger) {
+    if (hard) {
       armed = true;
       lastMsgAt = Date.now();
       if (wake) {
@@ -264,8 +310,12 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, d
       }
       return;
     }
-    // 已 armed 时的后续消息延长 debounce，并入本批
-    if (armed) lastMsgAt = Date.now();
+    lastMsgAt = Date.now();
+    if (armed) return;
+    softTriggerFn = options?.softTrigger ?? softTriggerFn;
+    if (!softTriggerFn) return;
+    if (dispatchInFlight) dispatchDirty = true;
+    else ensureSoftRunning(ctx);
   }
 
   /**
@@ -336,20 +386,20 @@ function createBot(sessionId: string) {
     const prompt = buildPrompt(batch, imageMap).trim();
     console.log("用户输入", prompt);
 
-    // const { plan, submitReply } = await runPlanner(prompt);
-    // const { replyText } = await runReply(prompt, plan, async (segments) => {
-    //   for (const seg of segments) {
-    //     await ctx.reply(seg);
-    //     await Bun.sleep(500);
-    //   }
-    // });
-    // await submitReply(replyText);
-    await runMain(prompt, async (segments) => {
+    const { plan, submitReply } = await runPlanner(prompt);
+    const { replyText } = await runReply(prompt, plan, async (segments) => {
       for (const seg of segments) {
         await ctx.reply(seg);
         await Bun.sleep(500);
       }
     });
+    await submitReply(replyText);
+    // await runMain(prompt, async (segments) => {
+    //   for (const seg of segments) {
+    //     await ctx.reply(seg);
+    //     await Bun.sleep(500);
+    //   }
+    // });
   }
 
   const scheduler = createScheduler(processBatch);
@@ -522,9 +572,11 @@ if (import.meta.main) {
         isAt,
         isAdmin,
       };
-      getBot(sessionId).enqueue(message, ctx, {
-        shouldTrigger(item, ctx) {
-          return item.isAt;
+      await getBot(sessionId).enqueue(message, ctx, {
+        hardTrigger: (_cache, item) => item.isAt,
+        async softTrigger(cache) {
+          if (cache.length < 5) return false;
+          return await dispatchMessage(cache);
         },
       });
     } catch (error) {

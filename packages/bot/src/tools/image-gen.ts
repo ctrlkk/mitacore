@@ -1,12 +1,13 @@
 import type { ToolResultOutput } from "@ai-sdk/provider-utils";
 import type { LanguageModel, ToolSet } from "ai";
 import { z } from "zod";
-import { generateText, tool, Output, stepCountIs, jsonSchema } from "ai";
+import { generateText, tool } from "ai";
 import { basename } from "node:path";
 import { lookup } from "mime-types";
 import { imageToText } from "@/multimedia";
 import { sanitizeImagePath, virtualToRealPath, downloadToCache } from "@/utils/image-cache";
 import { setupImageGenerator } from "@/generate-image";
+import imageGenPromptTemplate from "./image-gen.txt";
 
 // 提取 type 为 'content' 的分支
 type ContentResult = Extract<ToolResultOutput, { type: "content" }>;
@@ -15,42 +16,44 @@ type ContentPart = ContentValue[number];
 
 const SUPPORTS_MULTIMODAL = false;
 
-/** 子代理最终输出的 JSON Schema（同时写入 prompt 与 Output.object） */
-const imageGenJsonSchema = {
-  type: "object",
-  properties: {
-    prompt: {
-      type: "string",
-      description: "用于生成图像的完整提示词，应具体、可直接交给绘图模型",
-    },
-    images: {
-      type: "array",
-      items: { type: "string" },
-      description: "可选的参考图路径（绝对路径或对话中出现的本地路径），无参考图时为空数组",
-      default: [],
-    },
-  },
-  required: ["prompt", "images"],
-  additionalProperties: false,
-} as const;
-
-type ImageGenDecision = {
-  prompt: string;
-  images: string[];
-};
-
-const imageGenOutputSchema = jsonSchema<ImageGenDecision>(imageGenJsonSchema, {
-  validate: (value) => {
-    const parsed = z
-      .object({
-        prompt: z.string().min(1),
-        images: z.array(z.string()).default([]),
-      })
-      .safeParse(value);
-    if (!parsed.success) return { success: false as const, error: parsed.error };
-    return { success: true as const, value: parsed.data };
-  },
+const zImageGenDecision = z.object({
+  prompt: z
+    .string()
+    .transform((prompt) => prompt.trim())
+    .pipe(z.string().min(1)),
+  images: z
+    .preprocess(
+      (value) =>
+        (Array.isArray(value) ? value : typeof value === "string" ? [value] : []).filter(
+          (image): image is string => typeof image === "string",
+        ),
+      z.array(z.string().transform((image) => image.trim())),
+    )
+    .transform((images) => images.filter(Boolean)),
 });
+
+function parseImageGenDecisionText(text: string) {
+  const candidates = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)]
+    .map((match) => match[1]?.trim() ?? "")
+    .filter(Boolean);
+  const jsonStart = text.indexOf("{");
+  const jsonEnd = text.lastIndexOf("}");
+  if (jsonStart >= 0 && jsonEnd > jsonStart) candidates.push(text.slice(jsonStart, jsonEnd + 1).trim());
+  candidates.push(text.trim());
+
+  let lastError = "未找到可解析的 JSON";
+  for (const candidate of candidates.filter((candidate, index, list) => list.indexOf(candidate) === index)) {
+    try {
+      const result = zImageGenDecision.safeParse(JSON.parse(candidate));
+      if (result.success) return result.data;
+      lastError = result.error.issues.map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`).join("；");
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  console.warn(["图像生成分支输出解析失败", `错误：${lastError}`, `输出：${text.slice(0, 500)}`].join("\n"));
+  return null;
+}
 
 // 懒加载 sidecar：只在首次 execute 时才启动浏览器（~10s），之后复用同一实例；
 // 子进程随父进程退出经 Windows Job Object 自动回收
@@ -68,43 +71,33 @@ export function imageGen(allTools: ToolSet, parentSystem: string, parentModel: L
     execute: async ({ task }, { messages, abortSignal, experimental_context }) => {
       const inBranch = (experimental_context as { inBranch?: boolean } | undefined)?.inBranch === true;
       if (inBranch) {
-        return "[image_gen] 图像生成分支不允许再次派生图像生成，已忽略本次调用。请直接完成手头的任务。";
+        return "图像生成分支不允许再次派生图像生成，已忽略本次调用。请直接完成手头的任务。";
       }
 
-      const branchInput = [
-        `<image_gen_task>`,
-        task,
-        ``,
-        `[身份] 你是当前对话派生出的图像生成分支代理，请独立完成本次视觉创作准备。`,
-        `[目标] 结合对话上下文与任务描述，确定最终用于图像生成的 prompt，以及可选的参考图路径列表。`,
-        `[输出] 最终必须输出且仅输出一个符合下列 JSON Schema 的 JSON 对象（不要附加解释、不要用 markdown 代码围栏包裹）：`,
-        JSON.stringify(imageGenJsonSchema, null, 2),
-        `[约束] 你不能再调用 image_gen 工具派生下一层分支。`,
-        `</image_gen_task>`,
-      ].join("\n");
+      const template = imageGenPromptTemplate;
+      const branchInput = template.replace("{task}", task);
 
       const branchAbort = abortSignal ?? AbortSignal.timeout(300_000);
-      const { output } = await generateText({
+      const { usage, text } = await generateText({
         model: parentModel,
         system: parentSystem,
         messages: [...messages, { role: "user", content: branchInput }],
         tools: allTools,
         abortSignal: branchAbort,
         experimental_context: { inBranch: true },
-        stopWhen: stepCountIs(5),
-        output: Output.object({
-          name: "image_gen_decision",
-          description: "图像生成决策：完整 prompt 与可选参考图路径",
-          schema: imageGenOutputSchema,
-        }),
       });
-
-      if (!output?.prompt?.trim()) {
-        return "图像生成分支未能产出有效的 prompt，请重试或调整任务描述。";
+      const inputTokens = usage.inputTokens ?? 0;
+      const cacheReadTokens = usage.inputTokenDetails?.cacheReadTokens ?? 0;
+      const cacheHitRate = inputTokens > 0 ? (cacheReadTokens / inputTokens) * 100 : 0;
+      if (cacheHitRate < 80) {
+        console.warn(
+          `图像生成分支缓存命中率低于 80%：${cacheHitRate.toFixed(1)}%，input=${inputTokens}，cached=${cacheReadTokens}，written=${usage.inputTokenDetails?.cacheWriteTokens ?? 0}，uncached=${usage.inputTokenDetails?.noCacheTokens ?? 0}`,
+        );
       }
 
-      const prompt = output.prompt.trim();
-      const images = output.images ?? [];
+      const decision = parseImageGenDecisionText(text);
+      if (!decision) return "图像生成分支输出解析失败，且原始任务为空，无法继续生成图像。";
+      const { prompt, images } = decision;
       console.log("生成图像：" + prompt + "，参考图：" + images.join(","));
 
       const files: File[] = [];
