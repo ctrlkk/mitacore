@@ -46,10 +46,7 @@
       "indexes": {
         "user_alias_platform_unique": {
           "name": "user_alias_platform_unique",
-          "columns": [
-            "platform",
-            "platform_id"
-          ],
+          "columns": ["platform", "platform_id"],
           "isUnique": true
         }
       },

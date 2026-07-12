@@ -25,7 +25,4 @@ export const VersionDataSchema = z.object({
 });
 
 /** 登录状态响应 data 结构：boolean | { isLogin: boolean } */
-export const LoginStatusDataSchema = z.union([
-  z.boolean(),
-  z.object({ isLogin: z.boolean() }),
-]);
+export const LoginStatusDataSchema = z.union([z.boolean(), z.object({ isLogin: z.boolean() })]);

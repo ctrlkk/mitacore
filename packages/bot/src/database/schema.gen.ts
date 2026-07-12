@@ -14,4 +14,4 @@ export default {
     `);
     tx.run(sql`CREATE UNIQUE INDEX \`user_alias_platform_unique\` ON \`user_alias\` (\`platform\`,\`platform_id\`);`);
   },
-} satisfies Omit<Migration, "id">
+} satisfies Omit<Migration, "id">;
