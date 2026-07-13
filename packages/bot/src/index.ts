@@ -3,6 +3,8 @@ import XMLBuilder from "fast-xml-builder";
 import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
 
+import { logger } from "@/logger";
+
 import type { OneBotMessageEvent, OneBotMessageSegment } from "@/onebot/websocket-client";
 import { OneBotClient, type OneBotEventContext } from "@/onebot/onebot-client";
 import { startBuiltinNapCat } from "@/napcat/loader";
@@ -115,7 +117,7 @@ async function processImageAssets(urls: string[]) {
         const blob = await compressImage(Bun.file(realPath));
         return { url, path: virtualPath, blob };
       } catch (error) {
-        console.error(`下载失败: ${url}`, error);
+        logger.error({ url, error }, "下载失败");
         return null;
       }
     }),
@@ -139,10 +141,10 @@ async function processImageAssets(urls: string[]) {
           description = await imageToText(blob);
           description = description.trim();
           cache.set(path, description).catch((err) => {
-            console.error("缓存图片描述失败", err);
+            logger.error({ error: err }, "缓存图片描述失败");
           });
         } catch (error) {
-          console.error(`转述失败: ${path}`, error);
+          logger.error({ path, error }, "转述失败");
           description = "图片转述失败";
         }
       }
@@ -272,7 +274,7 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, d
     if (dispatchInFlight || !softTriggerFn) return;
     dispatchInFlight = true;
     softDecisionLoop(ctx)
-      .catch((err) => console.error("soft dispatch 失败:", err))
+      .catch((err) => logger.error({ error: err }, "soft dispatch 失败"))
       .finally(() => {
         dispatchInFlight = false;
       });
@@ -343,7 +345,7 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, d
       try {
         await process(batch, ctx);
       } catch (error) {
-        console.error("处理批次出错:", error);
+        logger.error({ error }, "处理批次出错");
       }
     }
   }
@@ -364,6 +366,8 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, d
  * @returns 暴露的 enqueue 方法，用于将新消息加入调度队列
  */
 function createBot(sessionId: string) {
+  const log = logger.child({ sessionId });
+
   /**
    * 处理一批待处理消息：提取图片、构建 prompt、执行规划与回复。
    *
@@ -384,9 +388,9 @@ function createBot(sessionId: string) {
     }
     const imageMap = await processImageAssets(Array.from(urls));
     const prompt = buildPrompt(batch, imageMap).trim();
-    console.log("用户输入", prompt);
+    log.info({ prompt }, "用户输入");
 
-    const { plan, submitReply } = await runPlanner(prompt);
+    const { plan, submitReply } = await runPlanner(prompt, log);
     const { replyText } = await runReply(prompt, plan, async (segments) => {
       for (const seg of segments) {
         await ctx.reply(seg);
@@ -403,7 +407,7 @@ function createBot(sessionId: string) {
   }
 
   const scheduler = createScheduler(processBatch);
-  scheduler.run().catch(console.error);
+  scheduler.run().catch((error) => log.error({ error }, "scheduler 运行失败"));
 
   return { enqueue: scheduler.enqueue };
 }
@@ -454,19 +458,19 @@ if (import.meta.main) {
     wsUrl = result.wsUrl;
     accessToken = result.accessToken;
     process.on("SIGINT", async () => {
-      console.log("\n接收到中断信号，正在关闭 NapCat…");
+      logger.info("接收到中断信号，正在关闭 NapCat…");
       await result.stop();
       process.exit(0);
     });
     process.on("SIGTERM", async () => {
-      console.log("\n接收到终止信号，正在关闭 NapCat…");
+      logger.info("接收到终止信号，正在关闭 NapCat…");
       await result.stop();
       process.exit(0);
     });
   } else {
     wsUrl = config.napcat.ws_url!;
     accessToken = config.napcat.token ?? "";
-    console.log(`使用外置 NapCat: ${wsUrl}`);
+    logger.info({ wsUrl }, "使用外置 NapCat");
   }
 
   // 创建 OneBot 客户端并连接
@@ -482,7 +486,7 @@ if (import.meta.main) {
   const user = await bot.getLoginInfo();
   const selfId = String(user.user_id);
 
-  console.log(`Bot 已连接并运行，ID: ${user.user_id}，昵称: ${user.nickname}`);
+  logger.info({ selfId: String(user.user_id), nickname: user.nickname }, "Bot 已连接并运行");
 
   function getBot(sessionId: string) {
     let bot = botMap.get(sessionId);
@@ -551,7 +555,7 @@ if (import.meta.main) {
       );
 
       if (unified.length === 0) {
-        console.log("没有可解析的消息内容，跳过当前输入");
+        logger.debug({ sessionId, messageType: event.message_type }, "没有可解析的消息内容，跳过当前输入");
         return;
       }
 
@@ -580,7 +584,7 @@ if (import.meta.main) {
         },
       });
     } catch (error) {
-      console.error("消息解析或入队失败:", error);
+      logger.error({ sessionId, error }, "消息解析或入队失败");
     }
   });
 }

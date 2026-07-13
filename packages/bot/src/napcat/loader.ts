@@ -17,6 +17,7 @@ import { downloadNapcat } from "./download";
 import { OneBotClient } from "../onebot/onebot-client";
 import { formatBytes } from "../utils/format";
 import { dataPath } from "../utils/path";
+import { logger } from "@/logger";
 
 const sleep = Bun.sleep;
 
@@ -110,9 +111,8 @@ const win32Adapter: PlatformAdapter = {
 
     const launcher = resolve(napcatDir, "NapCatWinBootMain.exe");
     const spawnArgs = [resolve(dirname(qqExe), "QQ.exe"), resolve(napcatDir, "NapCatWinBootHook.dll"), qqId];
-    console.log(` > ${launcher}`);
-    console.log(` > 参数: ${spawnArgs.join(" ")}`);
-    const proc = spawn(launcher, spawnArgs, { env, stdio: ["ignore", "pipe", "pipe"] });
+    logger.info({ launcher, args: spawnArgs }, "启动 NapCat launcher (win32)");
+    const proc = spawn(launcher, spawnArgs, { env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     const handle: NapcatHandle = {
       proc,
       qqPid: 0,
@@ -125,7 +125,7 @@ const win32Adapter: PlatformAdapter = {
   async stop(handle) {
     const pid = handle.proc.pid;
     if (!pid) return;
-    console.log(` > 正在停止 NapCat (PID=${pid}) …`);
+    logger.info({ pid, platform: "win32" }, "正在停止 NapCat");
     try {
       await restartNapcatApi("127.0.0.1", handle.webuiPort || 6099);
     } catch {}
@@ -142,7 +142,7 @@ const win32Adapter: PlatformAdapter = {
 
     const qqAlive = handle.qqPid && handle.qqPid !== pid;
     if (!launcherExited || qqAlive) {
-      if (!launcherExited) console.log(" … 优雅退出超时，强制终止");
+      if (!launcherExited) logger.warn("优雅退出超时，强制终止");
       if (qqAlive) {
         try {
           execSync(`taskkill /F /PID ${handle.qqPid} /T 2>nul`, { timeout: 5000 });
@@ -153,7 +153,7 @@ const win32Adapter: PlatformAdapter = {
       } catch {}
       await sleep(1000);
     }
-    console.log(" ✓ NapCat 已停止");
+    logger.info("NapCat 已停止 (win32)");
   },
 };
 
@@ -188,8 +188,8 @@ const posixAdapter: PlatformAdapter = {
     const useXvfb = !process.env.DISPLAY && existsSync("/usr/bin/xvfb-run");
     const cmd = useXvfb ? "xvfb-run" : qqExe;
     const spawnArgs = useXvfb ? ["-a", qqExe, "--no-sandbox", "-q", qqId] : ["--no-sandbox", "-q", qqId];
-    console.log(` > ${cmd} ${spawnArgs.join(" ")}`);
-    const proc = spawn(cmd, spawnArgs, { env, stdio: ["ignore", "pipe", "pipe"] });
+    logger.info({ cmd, args: spawnArgs }, "启动 NapCat launcher (posix)");
+    const proc = spawn(cmd, spawnArgs, { env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     const handle: NapcatHandle = {
       proc,
       qqPid: 0,
@@ -202,7 +202,7 @@ const posixAdapter: PlatformAdapter = {
   async stop(handle) {
     const pid = handle.proc.pid;
     if (!pid) return;
-    console.log(` > 正在停止 NapCat (PID=${pid}) …`);
+    logger.info({ pid, platform: "posix" }, "正在停止 NapCat");
     try {
       execSync(`pkill -TERM -P ${pid} 2>/dev/null; kill -TERM ${pid} 2>/dev/null`, { timeout: 3000 });
     } catch {}
@@ -210,7 +210,7 @@ const posixAdapter: PlatformAdapter = {
     try {
       execSync(`pkill -KILL -P ${pid} 2>/dev/null; kill -KILL ${pid} 2>/dev/null`, { timeout: 3000 });
     } catch {}
-    console.log(" ✓ NapCat 已停止");
+    logger.info("NapCat 已停止 (posix)");
   },
 };
 
@@ -302,16 +302,16 @@ export async function ensureNapcat(napcatDir: string): Promise<void> {
 
   const missing = required.filter((f) => !existsSync(resolve(napcatDir, f)));
   if (missing.length === 0) {
-    console.log("napcat 文件完整，跳过下载");
+    logger.info("napcat 文件完整，跳过下载");
     return;
   }
 
-  console.log(`缺少 napcat.mjs 文件: ${missing.join(", ")}，开始下载…`);
+  logger.info({ missing }, "缺少 NapCat 文件，开始下载");
   let totalSize = 0;
   await downloadNapcat(napcatDir, (received, total) => {
     if (total && !totalSize) {
       totalSize = total;
-      console.log(`总大小: ${formatBytes(total)}`);
+      logger.info({ totalBytes: total }, `总大小: ${formatBytes(total)}`);
     }
     if (total) {
       process.stdout.write(
@@ -321,19 +321,18 @@ export async function ensureNapcat(napcatDir: string): Promise<void> {
       process.stdout.write(`\r已下载: ${formatBytes(received)}`);
     }
   });
-  if (totalSize) console.log();
+  if (totalSize) process.stdout.write("\n");
 
   const stillMissing = required.filter((f) => !existsSync(resolve(napcatDir, f)));
   if (stillMissing.length > 0) {
     throw new Error(`下载后仍缺少文件: ${stillMissing.join(", ")}`);
   }
-  console.log("napcat 已就绪");
+  logger.info("napcat 已就绪");
 }
 
 /** 启动 NapCat 实例，返回操作句柄 */
 export async function launchNapCat(config: NapCatConfig) {
-  console.log(`QQ ID: ${config.qqId}`);
-  console.log(`NapCat 路径: ${config.napcatDir}`);
+  logger.info({ qqId: config.qqId, napcatDir: config.napcatDir }, "准备启动 NapCat");
 
   await ensureNapcat(config.napcatDir);
   const qqExe = resolveQQPath(config.qqPath);
@@ -367,6 +366,9 @@ export async function launchNapCat(config: NapCatConfig) {
   handle.proc.stdout!.pipe(stdoutTee);
   stdoutTee.on("data", (d: Buffer) => {
     const text = d.toString();
+    for (const line of text.split(/\r?\n/)) {
+      if (line) logger.debug({ line }, "napcat stdout");
+    }
     if (!handle.qqPid) {
       const m = text.match(MAIN_PID_RE);
       if (m) handle.qqPid = parseInt(m[1]!, 10);
@@ -382,13 +384,18 @@ export async function launchNapCat(config: NapCatConfig) {
     if (text.match(ADAPTER_READY_RE)) resolveReady();
   });
 
-  handle.proc.stderr!.on("data", (d: Buffer) => process.stderr.write("NAPCAT ERROR:" + d));
+  handle.proc.stderr!.on("data", (d: Buffer) => {
+    const text = d.toString();
+    for (const line of text.split(/\r?\n/)) {
+      if (line) logger.error({ line }, "napcat stderr");
+    }
+  });
   handle.proc.on("error", (err) => {
-    console.error(" ✗ 启动进程失败:", err.message);
+    logger.error({ error: err }, "启动进程失败");
     rejectApi(err);
   });
   handle.proc.on("exit", (code) => {
-    console.log(` ⏹ NapCat 进程退出 (code=${code})`);
+    logger.info({ code }, "NapCat 进程退出");
     rejectApi(new Error(`NapCat 进程已退出 (code=${code})`));
   });
 
@@ -450,25 +457,28 @@ export async function startBuiltinNapCat(qqId: string) {
     qqPath: "",
   };
 
-  console.log("启动内置 NapCat...");
+  logger.info("启动内置 NapCat");
   const napcat = await launchNapCat(napcatConfig);
   const api = await napcat.waitForWebUI();
-  console.log(`NapCat WebUI 端口: http://localhost:${napcat.webuiPort}/webui?token=${napcat.webuiToken}`);
+  logger.info(
+    { port: napcat.webuiPort, url: `http://localhost:${napcat.webuiPort}/webui?token=${napcat.webuiToken}` },
+    "NapCat WebUI 就绪",
+  );
 
   const version = await api.getNapCatVersion();
-  console.log(`NapCat 版本: ${version}`);
+  logger.info({ version }, `NapCat 版本: ${version}`);
 
   await napcat.waitForReady();
-  console.log("NapCat 协议适配器已就绪");
+  logger.info("NapCat 协议适配器已就绪");
 
   const isLoggedIn = await api.checkLoginStatus();
-  console.log(`QQ 登录状态: ${isLoggedIn ? "已登录" : "未登录"}`);
+  logger.info({ loggedIn: isLoggedIn }, `QQ 登录状态: ${isLoggedIn ? "已登录" : "未登录"}`);
 
   const wsPort = await acquireEphemeralPort();
-  console.log(`临时 WebSocket 端口: ${wsPort}`);
+  logger.info({ port: wsPort }, `临时 WebSocket 端口: ${wsPort}`);
 
   await api.setOB11Config(oneBotConfig(wsPort));
-  console.log("OneBot 配置已推送");
+  logger.info("OneBot 配置已推送");
 
   return {
     wsUrl: `ws://127.0.0.1:${wsPort}`,
@@ -485,7 +495,7 @@ if (import.meta.main) {
     reconnect: true,
   });
   client.onMessage((msg) => {
-    console.log(msg);
+    logger.debug({ msg }, "收到 OneBot 消息");
   });
   await client.connect();
   // 保持程序运行，等待信号

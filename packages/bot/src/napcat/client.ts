@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { logger } from "@/logger";
 import {
   WebUIEnvelopeSchema,
   LoginCredentialSchema,
@@ -70,9 +71,9 @@ async function loginWebUI(port: number, token: string): Promise<WebUIConnection>
           const { Credential } = LoginCredentialSchema.parse(envelope.data);
           return { host, port, credential: Credential };
         }
-        console.log(`host=${host} 尝试 ${attempt + 1}: ${envelope.message ?? "未知错误"}`);
+        logger.warn({ host, attempt: attempt + 1, message: envelope.message }, "WebUI 登录尝试失败");
       } catch {
-        console.log(`host=${host} 尝试 ${attempt + 1} 不可达`);
+        logger.warn({ host, attempt: attempt + 1 }, "WebUI 不可达");
       }
       if (attempt < 2) await sleep(1000 * (attempt + 1));
     }

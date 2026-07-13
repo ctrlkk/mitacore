@@ -1,10 +1,12 @@
 import pino, { type LoggerOptions, type Logger as PinoLogger } from "pino";
 
+export type { PinoLogger, LoggerOptions };
+
 const prettyEnabled =
   process.env.LOG_PRETTY === "1" || (process.stdout.isTTY === true && process.env.LOG_PRETTY !== "0");
 
 const options: LoggerOptions = {
-  level: process.env.LOG_LEVEL ?? "debug",
+  level: process.env.LOG_LEVEL ?? "info",
 };
 
 if (prettyEnabled) {

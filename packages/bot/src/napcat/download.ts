@@ -2,6 +2,8 @@ import { mkdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import AdmZip from "adm-zip";
 
+import { logger } from "@/logger";
+
 /**
  * 从 GitHub Releases 下载 NapCat.Shell.zip，镜像回退避免 GFW 干扰。
  * 后置条件：解压完成后删除临时 zip 文件，不保留残留。
@@ -26,11 +28,11 @@ export async function downloadNapcat(
 
   for (const url of candidates) {
     try {
-      console.log(`下载中: ${url}`);
+      logger.info({ url }, "下载 NapCat");
       const resp = await fetch(url);
       if (!resp.ok || !resp.body) {
         lastError = `HTTP ${resp.status}`;
-        console.log(`HTTP ${resp.status}，切换镜像`);
+        logger.warn({ url, status: resp.status }, "下载源返回非 OK，切换镜像");
         continue;
       }
 
@@ -50,21 +52,21 @@ export async function downloadNapcat(
       }
       writer.end();
       downloaded = true;
-      console.log(`下载完成 (${(received / 1024 / 1024).toFixed(1)} MB)`);
+      logger.info({ url, receivedMB: Number((received / 1024 / 1024).toFixed(1)) }, "下载完成");
       break;
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e);
-      console.log(`下载失败: ${lastError}`);
+      logger.error({ url, error: lastError }, "下载失败");
     }
   }
 
   if (!downloaded) throw new Error("所有下载源均不可用");
 
   try {
-    console.log("解压中…");
+    logger.info("解压 NapCat 安装包");
     const zip = new AdmZip(zipPath);
     zip.extractAllTo(targetDir, true);
-    console.log("解压完成");
+    logger.info("解压完成");
   } finally {
     // 确保删除临时 zip 文件
     try {

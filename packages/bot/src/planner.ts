@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { getModel } from "@/model";
 import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
+import { logger, type PinoLogger } from "@/logger";
 import { imageGen } from "./tools/image-gen";
 
 const submitPlanTool = tool({
@@ -21,12 +22,12 @@ async function loadPlannerHistory(): Promise<ModelMessage[]> {
   }
 }
 
-async function savePlannerHistory(history: ModelMessage[]) {
+async function savePlannerHistory(history: ModelMessage[], log: PinoLogger = logger) {
   try {
     await mkdir(dataPath(), { recursive: true });
     await writeFile(dataPath("planner.json"), JSON.stringify(history, null, 2));
   } catch (error) {
-    console.error("保存规划层历史失败:", error);
+    log.error({ error }, "保存规划层历史失败");
   }
 }
 
@@ -41,7 +42,7 @@ interface PlannerResult {
  * @param userInputMessage 已用 <user_input> 标签包好的用户消息
  * @returns plan + submitReply 回调（调用后把完整 messages 持久化到 .cache/planner.json）
  */
-export async function runPlanner(userInputMessage: string): Promise<PlannerResult> {
+export async function runPlanner(userInputMessage: string, log: PinoLogger = logger): Promise<PlannerResult> {
   const history = await loadPlannerHistory();
   const messages: ModelMessage[] = [...history, { role: "user", content: userInputMessage }];
   const model = getModel(config.models.plan);
@@ -79,8 +80,8 @@ export async function runPlanner(userInputMessage: string): Promise<PlannerResul
       tools,
     });
 
-    if (result.reasoning) console.log("内部思考: ", result.reasoningText);
-    if (result.text) console.log("助手响应: ", result.text);
+    if (result.reasoning) log.debug({ reasoning: result.reasoningText, step }, "内部思考");
+    if (result.text) log.debug({ text: result.text, step }, "助手响应");
 
     messages.push(...result.response.messages);
 
@@ -94,7 +95,7 @@ export async function runPlanner(userInputMessage: string): Promise<PlannerResul
     if (result.toolCalls.length === 0) break;
   }
 
-  console.log("规划层 plan:", planText);
+  log.info({ plan: planText }, "规划层 plan");
 
   const submitReply = async (replyText: string): Promise<void> => {
     const finalMessages: ModelMessage[] = messages;
@@ -112,7 +113,7 @@ export async function runPlanner(userInputMessage: string): Promise<PlannerResul
       },
       { role: "assistant", content: "[Done]" },
     );
-    await savePlannerHistory(finalMessages);
+    await savePlannerHistory(finalMessages, log);
   };
 
   return { plan: planText, submitReply };

@@ -5,6 +5,7 @@ import { parseMarkdown, type MessagePart } from "@/images";
 import { splitMessage } from "@/utils/message-splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
+import { logger, type PinoLogger } from "@/logger";
 
 async function loadExecutorHistory(): Promise<ModelMessage[]> {
   try {
@@ -15,12 +16,12 @@ async function loadExecutorHistory(): Promise<ModelMessage[]> {
   }
 }
 
-async function saveExecutorHistory(history: ModelMessage[]) {
+async function saveExecutorHistory(history: ModelMessage[], log: PinoLogger = logger) {
   try {
     await mkdir(dataPath(), { recursive: true });
     await writeFile(dataPath("chat.json"), JSON.stringify(history, null, 2));
   } catch (error) {
-    console.error("保存执行层历史失败:", error);
+    log.error({ error }, "保存执行层历史失败");
   }
 }
 
@@ -50,6 +51,7 @@ export async function runReply(
   userPrompt: string,
   plan: string,
   onReply: (segments: MessagePart[]) => Promise<void>,
+  log: PinoLogger = logger,
 ): Promise<{ replyText: string; usage: LanguageModelUsage | undefined }> {
   const historyMessages: ModelMessage[] = await loadExecutorHistory();
   historyMessages.push(
@@ -90,8 +92,8 @@ export async function runReply(
       messages: [...historyMessages, ...runtimeMessages],
     });
 
-    if (result.reasoning) console.log("内部思考: ", result.reasoningText);
-    if (result.text) console.log("助手响应: ", result.text);
+    if (result.reasoning) log.debug({ reasoning: result.reasoningText, step }, "内部思考");
+    if (result.text) log.debug({ text: result.text, step }, "助手响应");
     if (result.text) {
       const segments = await sliceReply(result.text);
       await onReply(segments);
@@ -114,6 +116,6 @@ export async function runReply(
   }
 
   // 保存：historyMessages 去掉结尾的 plan + runtimeMessages
-  await saveExecutorHistory([...historyMessages.slice(0, -1), ...runtimeMessages]);
+  await saveExecutorHistory([...historyMessages.slice(0, -1), ...runtimeMessages], log);
   return { replyText, usage };
 }

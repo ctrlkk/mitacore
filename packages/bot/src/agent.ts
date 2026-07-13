@@ -5,6 +5,7 @@ import { parseMarkdown, type MessagePart } from "@/images";
 import { splitMessage } from "@/utils/message-splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
+import { logger, type PinoLogger } from "@/logger";
 import { imageGen } from "./tools/image-gen";
 
 async function loadMainHistory(): Promise<ModelMessage[]> {
@@ -16,12 +17,12 @@ async function loadMainHistory(): Promise<ModelMessage[]> {
   }
 }
 
-async function saveMainHistory(history: ModelMessage[]) {
+async function saveMainHistory(history: ModelMessage[], log: PinoLogger = logger) {
   try {
     await mkdir(dataPath(), { recursive: true });
     await writeFile(dataPath("history.json"), JSON.stringify(history, null, 2));
   } catch (error) {
-    console.error("保存单 agent 历史失败:", error);
+    log.error({ error }, "保存单 agent 历史失败");
   }
 }
 
@@ -46,7 +47,11 @@ async function sliceReply(chunk: string): Promise<MessagePart[]> {
  * @param onReply 实际发送消息的回调
  * @returns replyText（拼接所有 step 的文本）+ usage
  */
-export async function runMain(userPrompt: string, onReply: (segments: MessagePart[]) => Promise<void>) {
+export async function runMain(
+  userPrompt: string,
+  onReply: (segments: MessagePart[]) => Promise<void>,
+  log: PinoLogger = logger,
+) {
   const mainAlias = config.models.main;
   if (!mainAlias) {
     throw new Error("未配置 models.main，无法使用单 agent 模式");
@@ -82,8 +87,8 @@ export async function runMain(userPrompt: string, onReply: (segments: MessagePar
       messages: [...historyMessages, ...runtimeMessages],
     });
 
-    if (result.reasoning) console.log("内部思考: ", result.reasoningText);
-    if (result.text) console.log("助手响应: ", result.text);
+    if (result.reasoning) log.debug({ reasoning: result.reasoningText, step }, "内部思考");
+    if (result.text) log.debug({ text: result.text, step }, "助手响应");
     if (result.text) {
       const segments = await sliceReply(result.text);
       await onReply(segments);
@@ -94,6 +99,6 @@ export async function runMain(userPrompt: string, onReply: (segments: MessagePar
     if (result.toolCalls.length === 0) break;
   }
 
-  await saveMainHistory([...historyMessages, ...runtimeMessages]);
+  await saveMainHistory([...historyMessages, ...runtimeMessages], log);
   return { usage };
 }
