@@ -17,6 +17,7 @@ import { runPlanner } from "@/planner";
 import { cache } from "@/utils/cache";
 import { downloadToCache } from "@/utils/image-cache";
 import { compressImage } from "@/utils/image-resize";
+import { registerShutdownHook } from "@/utils/shutdown";
 import { config, type Config } from "@/config";
 import { runMain } from "./agent";
 import { dispatchMessage } from "./dispatcher";
@@ -457,16 +458,7 @@ if (import.meta.main) {
     const result = await startBuiltinNapCat(config.napcat.qq_id);
     wsUrl = result.wsUrl;
     accessToken = result.accessToken;
-    process.on("SIGINT", async () => {
-      logger.info("接收到中断信号，正在关闭 NapCat…");
-      await result.stop();
-      process.exit(0);
-    });
-    process.on("SIGTERM", async () => {
-      logger.info("接收到终止信号，正在关闭 NapCat…");
-      await result.stop();
-      process.exit(0);
-    });
+    registerShutdownHook("NapCat", () => result.stop());
   } else {
     wsUrl = config.napcat.ws_url!;
     accessToken = config.napcat.token ?? "";
@@ -479,6 +471,8 @@ if (import.meta.main) {
     accessToken,
     reconnect: true,
   });
+
+  registerShutdownHook("OneBot", () => bot.close());
 
   await bot.connect();
 
