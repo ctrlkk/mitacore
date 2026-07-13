@@ -2,6 +2,7 @@ import type { BunFile } from "bun";
 import { resolve, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { formatBytes } from "./format";
+import { logger } from "@/logger";
 
 const MAX_DIM = 1024;
 
@@ -22,7 +23,7 @@ function findFfmpeg(): string | null {
 async function resizeGif(file: BunFile): Promise<Blob> {
   const ffmpeg = findFfmpeg();
   if (!ffmpeg) {
-    console.warn("未找到 ffmpeg，GIF 将不压缩直接使用");
+    logger.warn("未找到 ffmpeg，GIF 将不压缩直接使用");
     return file;
   }
 
@@ -43,12 +44,18 @@ async function resizeGif(file: BunFile): Promise<Blob> {
   ]);
 
   if (exitCode !== 0) {
-    console.warn(`ffmpeg 缩放 GIF 失败 (退出码 ${exitCode}): ${stderr.slice(0, 200)}`);
+    logger.warn({ exitCode, stderrPreview: stderr.slice(0, 200) }, "ffmpeg 缩放 GIF 失败");
     return file;
   }
 
-  console.log(
-    `${file.name} GIF压缩: ${formatBytes(file.size)} → ${formatBytes(stdout.size)} (${((1 - stdout.size / file.size) * 100).toFixed(1)}%)`,
+  logger.debug(
+    {
+      file: file.name,
+      originalBytes: file.size,
+      compressedBytes: stdout.size,
+      savedPercent: Number(((1 - stdout.size / file.size) * 100).toFixed(1)),
+    },
+    "GIF 压缩",
   );
   return stdout.size < file.size ? stdout : file;
 }
@@ -91,13 +98,19 @@ export async function compressImage(file: BunFile): Promise<Blob> {
     }
 
     const result = await img.blob();
-    console.log(
-      `${file.name} 图片压缩: ${formatBytes(file.size)} → ${formatBytes(result.size)} (${((1 - result.size / file.size) * 100).toFixed(1)}%)`,
+    logger.debug(
+      {
+        file: file.name,
+        originalBytes: file.size,
+        compressedBytes: result.size,
+        savedPercent: Number(((1 - result.size / file.size) * 100).toFixed(1)),
+      },
+      "图片压缩",
     );
 
     return result.size < file.size ? result : file;
   } catch (error) {
-    console.warn(`图片处理失败: ${error}`);
+    logger.warn({ error }, "图片处理失败");
     return file;
   }
 }

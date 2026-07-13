@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "./db";
 import { userAlias } from "./schema.sql";
+import { logger } from "@/logger";
 
 /**
  * 确保 (platform, platformId) 在映射表中，返回行（含自增 id）。
@@ -16,14 +17,17 @@ export function ensureUserAlias(platform: string, platformId: string, nickname?:
   if (existing) {
     if (nickname && nickname !== existing.nickname) {
       const updated = db.update(userAlias).set({ nickname }).where(eq(userAlias.id, existing.id)).returning().get();
-      console.log(`用户昵称更新：${shortIdFor(existing.id)} ${existing.nickname ?? "未知昵称"} -> ${nickname}`);
+      logger.debug(
+        { shortId: shortIdFor(existing.id), oldNickname: existing.nickname ?? "未知昵称", newNickname: nickname },
+        "用户昵称更新",
+      );
       return updated;
     }
     return existing;
   }
 
   const row = db.insert(userAlias).values({ platform, platformId, nickname, createdAt: Date.now() }).returning().get();
-  console.log(`新用户入缓存：${shortIdFor(row.id)} -> ${platform}/${platformId} (${nickname ?? "未知昵称"})`);
+  logger.debug({ shortId: shortIdFor(row.id), platform, platformId, nickname: nickname ?? "未知昵称" }, "新用户入缓存");
   return row;
 }
 

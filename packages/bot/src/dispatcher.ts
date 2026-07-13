@@ -4,6 +4,7 @@ import { dataPath, projectPath } from "./utils/path";
 import { readFile } from "node:fs/promises";
 import { getModel } from "./model";
 import { z } from "zod";
+import { logger } from "@/logger";
 import dayjs from "dayjs";
 
 const formatSegments = (segments: UnifiedInboundMessage[]): string => {
@@ -59,7 +60,7 @@ function parseTriggerDecisionText(text: string) {
       lastError = error instanceof Error ? error.message : String(error);
     }
   }
-  console.warn(["触发判定输出解析失败", `错误：${lastError}`, `输出：${text.slice(0, 500)}`].join("\n"));
+  logger.warn({ error: lastError, outputPreview: text.slice(0, 500) }, "触发判定输出解析失败");
   return null;
 }
 
@@ -97,7 +98,7 @@ export async function dispatchMessage(cache: PendingMessage[]) {
     system: rolePrompt.trim(),
     prompt,
   });
-  console.log("触发判定输出:", text);
+  logger.debug({ text }, "触发判定输出");
   const decision = parseTriggerDecisionText(text);
   if (!decision) return false;
   return decision.should_reply;

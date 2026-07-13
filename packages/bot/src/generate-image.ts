@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { binPath, projectPath, sidecarPath } from "@/utils/path";
+import { logger } from "@/logger";
 
 const localNodePath = process.platform === "win32" ? binPath("node.exe") : binPath("node");
 
@@ -51,7 +52,7 @@ export async function setupImageGenerator() {
   // 子进程提前非正常退出，父进程也别卡着
   child.on("exit", (code) => {
     if (!killed && code !== 0) {
-      console.error(`playwright 异常退出，code=${code}`);
+      logger.error({ code }, "playwright 异常退出");
       process.exit(code ?? 1);
     }
   });
@@ -100,5 +101,5 @@ export async function setupImageGenerator() {
 if (import.meta.main) {
   const { generate } = await setupImageGenerator();
   const urls = await generate("一张基于《贤惠幼妻仙狐小姐》的二次创作，仙狐小姐和用户（不显示在镜头中）在沙滩玩耍");
-  console.log(urls);
+  logger.info({ urls }, "图像生成结果");
 }

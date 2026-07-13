@@ -4,6 +4,7 @@ import { config } from "./config";
 import { dataPath } from "./utils/path";
 import { blobToDataURL } from "./utils/blob";
 import { z } from "zod";
+import { logger } from "@/logger";
 
 const IMAGE_SYSTEM_PROMPT = `你将作为视觉模块，负责解释图片内容。
 输出清晰可读的文本，避免使用 Markdown 表格、复杂的嵌套列表或装饰性符号。
@@ -117,5 +118,5 @@ export async function videoToText(blob: Blob): Promise<string> {
 
 if (import.meta.main) {
   const text = await videoToText(Bun.file(dataPath("video.mp4")));
-  console.log(text);
+  logger.info({ text }, "video 转述结果");
 }

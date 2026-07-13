@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { parse } from "smol-toml";
 import { z } from "zod";
 import { projectPath } from "./utils/path";
+import { logger } from "@/logger";
 
 /** 范围配置 Schema */
 const scopeConfig = z.object({
@@ -143,6 +144,5 @@ function loadConfig(path = projectPath("config.toml")): Config {
 export const config = loadConfig();
 
 if (import.meta.main) {
-  console.log("配置加载成功:");
-  console.log(JSON.stringify(config, null, 2));
+  logger.info({ config }, "配置加载成功");
 }

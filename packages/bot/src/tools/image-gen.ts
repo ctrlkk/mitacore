@@ -7,6 +7,7 @@ import { lookup } from "mime-types";
 import { imageToText } from "@/multimedia";
 import { sanitizeImagePath, virtualToRealPath, downloadToCache } from "@/utils/image-cache";
 import { setupImageGenerator } from "@/generate-image";
+import { logger, type PinoLogger } from "@/logger";
 import imageGenPromptTemplate from "./image-gen.txt";
 
 // 提取 type 为 'content' 的分支
@@ -51,7 +52,7 @@ function parseImageGenDecisionText(text: string) {
       lastError = error instanceof Error ? error.message : String(error);
     }
   }
-  console.warn(["图像生成分支输出解析失败", `错误：${lastError}`, `输出：${text.slice(0, 500)}`].join("\n"));
+  logger.warn({ error: lastError, outputPreview: text.slice(0, 500) }, "图像生成分支输出解析失败");
   return null;
 }
 
@@ -59,7 +60,12 @@ function parseImageGenDecisionText(text: string) {
 // 子进程随父进程退出经 Windows Job Object 自动回收
 let generatorPromise: Promise<Awaited<ReturnType<typeof setupImageGenerator>>> | null = null;
 
-export function imageGen(allTools: ToolSet, parentSystem: string, parentModel: LanguageModel) {
+export function imageGen(
+  allTools: ToolSet,
+  parentSystem: string,
+  parentModel: LanguageModel,
+  log: PinoLogger = logger,
+) {
   return tool({
     description:
       "派生图像生成分支完成视觉创作。" +
@@ -90,15 +96,22 @@ export function imageGen(allTools: ToolSet, parentSystem: string, parentModel: L
       const cacheReadTokens = usage.inputTokenDetails?.cacheReadTokens ?? 0;
       const cacheHitRate = inputTokens > 0 ? (cacheReadTokens / inputTokens) * 100 : 0;
       if (cacheHitRate < 80) {
-        console.warn(
-          `图像生成分支缓存命中率低于 80%：${cacheHitRate.toFixed(1)}%，input=${inputTokens}，cached=${cacheReadTokens}，written=${usage.inputTokenDetails?.cacheWriteTokens ?? 0}，uncached=${usage.inputTokenDetails?.noCacheTokens ?? 0}`,
+        log.warn(
+          {
+            cacheHitRate: Number(cacheHitRate.toFixed(1)),
+            inputTokens,
+            cacheReadTokens,
+            cacheWriteTokens: usage.inputTokenDetails?.cacheWriteTokens ?? 0,
+            uncachedTokens: usage.inputTokenDetails?.noCacheTokens ?? 0,
+          },
+          "图像生成分支缓存命中率低于 80%",
         );
       }
 
       const decision = parseImageGenDecisionText(text);
       if (!decision) return "图像生成分支输出解析失败，且原始任务为空，无法继续生成图像。";
       const { prompt, images } = decision;
-      console.log("生成图像：" + prompt + "，参考图：" + images.join(","));
+      log.info({ prompt, images }, "生成图像");
 
       const files: File[] = [];
       for (const ref of images) {
@@ -127,7 +140,7 @@ export function imageGen(allTools: ToolSet, parentSystem: string, parentModel: L
           };
         }),
       );
-      console.log("图像已生成");
+      log.info({ count: results.length }, "图像已生成");
       return results;
     },
     async toModelOutput({ output }): Promise<ToolResultOutput> {
@@ -156,13 +169,13 @@ export function imageGen(allTools: ToolSet, parentSystem: string, parentModel: L
       const descriptions = await Promise.all(
         output.map(async ({ path, image }) => {
           const description = await imageToText(image).catch(() => {
-            console.error("图像生成工具：对输出图片转述失败", path);
+            log.error({ path }, "图像生成工具：对输出图片转述失败");
             return "图片转述失败";
           });
           return ["<image>", `<path>${path}</path>`, description.trim(), "</image>"].join("\n");
         }),
       );
-      console.log("图像描述完成");
+      log.info({ count: descriptions.length }, "图像描述完成");
       return {
         type: "content",
         value: [

@@ -397,7 +397,10 @@ export async function launchNapCat(config: NapCatConfig) {
         }
         // 路径 3：端口反查 — 上面两条都漏掉的极端情况（QQ 自身监听 webui 时有效）
         if (handle.webuiPort > 0) {
-          await killProcessOnPort(handle.webuiPort, IS_WIN ? ["QQ.exe", "node.exe", "NapCatWinBootMain.exe"] : ["qq", "node"]);
+          await killProcessOnPort(
+            handle.webuiPort,
+            IS_WIN ? ["QQ.exe", "node.exe", "NapCatWinBootMain.exe"] : ["qq", "node"],
+          );
         }
       } catch (err) {
         logger.warn({ error: err }, "NapCat 退出清理异常");
