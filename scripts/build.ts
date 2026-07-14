@@ -11,7 +11,7 @@ import {
   chmodSync,
 } from "node:fs";
 import { join } from "node:path";
-import { requirePkgs } from "../packages/playwright/externals.ts";
+import { requirePkgs } from "../packages/playwright/scripts/build";
 
 const root = join(import.meta.dir, "..");
 const outDir = join(root, "dist");
