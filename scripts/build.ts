@@ -1,17 +1,6 @@
-import {
-  existsSync,
-  rmSync,
-  mkdirSync,
-  statSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-  copyFileSync,
-  cpSync,
-  chmodSync,
-} from "node:fs";
 import { join } from "node:path";
 import { requirePkgs } from "../packages/playwright/scripts/build";
+import fs from "node:fs";
 
 const root = join(import.meta.dir, "..");
 const outDir = join(root, "dist");
@@ -20,7 +9,7 @@ const exeExt = process.platform === "win32" ? ".exe" : "";
 
 // 清理路径（删除目录或文件）
 function clean(p: string) {
-  if (existsSync(p)) rmSync(p, { recursive: true, force: true });
+  if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
 }
 
 /**
@@ -31,7 +20,7 @@ async function buildApp() {
 
   // 从 package.json 读 main 入口
   const botDir = join(root, "packages", "bot");
-  const pkg = JSON.parse(readFileSync(join(botDir, "package.json"), "utf-8"));
+  const pkg = JSON.parse(fs.readFileSync(join(botDir, "package.json"), "utf-8"));
   const bunEntry = join(botDir, pkg.module ?? "src/index.ts");
 
   clean(join(outDir, bunBin));
@@ -59,7 +48,7 @@ async function buildSidecar() {
   const bundleOut = join(sidecarDir, "playwright.cjs");
 
   clean(join(sidecarDir, "node_modules"));
-  mkdirSync(sidecarDir, { recursive: true });
+  fs.mkdirSync(sidecarDir, { recursive: true });
 
   // 子包自管打包：产物输出到 packages/playwright/dist/playwright.cjs
   const buildProc = Bun.spawn({
@@ -71,12 +60,12 @@ async function buildSidecar() {
   if (buildCode !== 0) throw new Error(`子包 build 失败，退出码 ${buildCode}`);
 
   const bundleSrc = join(pkgDir, "dist", "playwright.cjs");
-  if (!existsSync(bundleSrc)) throw new Error(`找不到子包 build 产物：${bundleSrc}`);
-  copyFileSync(bundleSrc, bundleOut);
+  if (!fs.existsSync(bundleSrc)) throw new Error(`找不到子包 build 产物：${bundleSrc}`);
+  fs.copyFileSync(bundleSrc, bundleOut);
 
   // 生成最小 package.json：只包含 esbuild externalize 的直接依赖
   // 它们的传递依赖（clone-deep / lazy-cache / kind-of / chromium-bidi / ...）bun install 自动解析
-  const sidecarPkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf-8")) as {
+  const sidecarPkg = JSON.parse(fs.readFileSync(join(pkgDir, "package.json"), "utf-8")) as {
     type?: string;
     dependencies?: Record<string, string>;
   };
@@ -85,7 +74,7 @@ async function buildSidecar() {
     const ver = sidecarPkg.dependencies?.[name];
     if (ver) runtimeDeps[name] = ver;
   }
-  writeFileSync(
+  fs.writeFileSync(
     join(sidecarDir, "package.json"),
     JSON.stringify(
       {
@@ -119,13 +108,13 @@ async function copyBin() {
     console.warn("找不到系统 node，跳过复制。请确保目标环境有 node。");
     return;
   }
-  mkdirSync(outBinDir, { recursive: true });
+  fs.mkdirSync(outBinDir, { recursive: true });
   const targetNodePath = join(outBinDir, `node${exeExt}`);
   console.log(`复制 ${nodeBin} → ${targetNodePath}`);
-  copyFileSync(nodeBin, targetNodePath);
+  fs.copyFileSync(nodeBin, targetNodePath);
   // 非 Windows 环境补充执行权限 (rwxr-xr-x)
   if (process.platform !== "win32") {
-    chmodSync(targetNodePath, 0o755);
+    fs.chmodSync(targetNodePath, 0o755);
   }
 
   // 复制 ffmpeg 到输出目录（用于 GIF 压缩）
@@ -133,9 +122,9 @@ async function copyBin() {
   if (ffmpegBin) {
     const targetFfmpegPath = join(outBinDir, `ffmpeg${exeExt}`);
     console.log(`复制 ${ffmpegBin} → ${targetFfmpegPath}`);
-    copyFileSync(ffmpegBin, targetFfmpegPath);
+    fs.copyFileSync(ffmpegBin, targetFfmpegPath);
     if (process.platform !== "win32") {
-      chmodSync(targetFfmpegPath, 0o755);
+      fs.chmodSync(targetFfmpegPath, 0o755);
     }
   } else {
     console.warn("找不到系统 ffmpeg，跳过复制。请确保目标环境有 ffmpeg。");
@@ -153,31 +142,31 @@ async function copyAssets() {
   ];
 
   for (const { src, dest, label } of targets) {
-    if (!existsSync(src)) {
+    if (!fs.existsSync(src)) {
       console.warn(`跳过：${label}（源不存在 ${src}）`);
       continue;
     }
-    const stat = statSync(src);
+    const stat = fs.statSync(src);
     if (stat.isDirectory()) {
-      cpSync(src, dest, { recursive: true });
+      fs.cpSync(src, dest, { recursive: true });
     } else {
-      mkdirSync(join(dest, ".."), { recursive: true });
-      copyFileSync(src, dest);
+      fs.mkdirSync(join(dest, ".."), { recursive: true });
+      fs.copyFileSync(src, dest);
     }
     console.log(`复制 ${label} → ${dest}`);
   }
 }
 
 // 准备输出目录
-mkdirSync(outDir, { recursive: true });
+fs.mkdirSync(outDir, { recursive: true });
 
 // 并行构建
 await Promise.all([buildApp(), buildSidecar(), copyBin(), copyAssets()]);
 
 console.log("\n==> 构建完成：");
-for (const f of readdirSync(outDir)) {
+for (const f of fs.readdirSync(outDir)) {
   const p = join(outDir, f);
-  if (!statSync(p).isFile()) continue;
-  const mb = (statSync(p).size / 1024 / 1024).toFixed(2);
+  if (!fs.statSync(p).isFile()) continue;
+  const mb = (fs.statSync(p).size / 1024 / 1024).toFixed(2);
   console.log(` ${f.padEnd(15)} ${mb} MB`);
 }
