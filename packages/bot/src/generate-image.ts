@@ -3,95 +3,137 @@ import { existsSync } from "node:fs";
 import { binPath, projectPath, sidecarPath } from "@/utils/path";
 import { logger } from "@/logger";
 
-const localNodePath = process.platform === "win32" ? binPath("node.exe") : binPath("node");
+interface ReadyMessage {
+  type: string;
+  port: number;
+}
 
-export async function setupImageGenerator() {
+interface GenerateResult {
+  urls?: string[];
+  error?: string;
+}
+
+async function setupImageGenerator() {
+  const localNodePath = process.platform === "win32" ? binPath("node.exe") : binPath("node");
+
   let nodeBin: string | null = null;
   if (existsSync(localNodePath)) {
     nodeBin = localNodePath;
   } else {
     nodeBin = Bun.which("node");
   }
+
   if (!nodeBin) {
     throw new Error("找不到 node 可执行文件，请在 bin 目录下放置 node.exe，或安装 Node.js");
   }
 
-  // 优先用打包产物（<installRoot>/sidecar/playwright.cjs），开发时 fallback 到源码
   const bundled = sidecarPath("playwright.cjs");
   const source = projectPath("packages", "playwright", "main.ts");
   const childPath = existsSync(bundled) ? bundled : source;
+
   const child = spawn(nodeBin, [childPath], {
-    stdio: ["inherit", "inherit", "inherit", "ipc"],
-    // 不要 detached: Windows 上 detached 会让子进程脱离父 Job Object，反而泄漏
-    // 默认行为：子进程加入父 Job，父死时 Job 关闭自动回收子进程
+    stdio: ["inherit", "pipe", "pipe", "ipc"],
     windowsHide: true,
   });
+  child.stdout?.on("data", (data) => {
+    logger.info({ data: data.toString() }, "playwright stdout");
+  });
+  child.stderr?.on("data", (data) => {
+    logger.error({ data: data.toString() }, "playwright stderr");
+  });
 
-  // 父进程任何形式的退出都要保证子进程被回收
-  let killed = false;
-  const killChild = (sig: NodeJS.Signals = "SIGTERM") => {
-    if (killed || child.killed) return;
-    killed = true;
+  process.on("exit", (sig) => {
+    if (child.killed) return;
     child.kill(sig);
-    // 兜底强杀
-    setTimeout(() => {
-      if (child.exitCode === null) child.kill("SIGKILL");
-    }, 3000).unref();
-  };
+  });
 
-  process.on("exit", () => killChild());
-
-  // 子进程提前非正常退出，父进程也别卡着
   child.on("exit", (code) => {
-    if (!killed && code !== 0) {
-      logger.error({ code }, "playwright 异常退出");
-      process.exit(code ?? 1);
-    }
+    if (code === 0) return;
+    logger.error({ code }, "playwright 异常退出");
   });
 
   const port = await new Promise<number>((resolve, reject) => {
-    child.on("message", (msg: unknown) => {
-      if (typeof msg === "object" && msg !== null && "type" in msg && "port" in msg) {
-        const m = msg as { type: string; port: number };
-        if (m.type === "ready" && typeof m.port === "number") {
-          resolve(m.port);
-        }
+    const onMessage = (msg: ReadyMessage) => {
+      if (msg.type === "ready" && typeof msg.port === "number") {
+        cleanupListeners();
+        resolve(msg.port);
       }
-    });
-    child.on("error", (e: Error) => {
+    };
+
+    const onError = (e: Error) => {
+      cleanupListeners();
       reject(e);
-    });
-    child.on("exit", (code: number | null) => {
+    };
+
+    const onExit = (code: number | null) => {
       if (code !== 0) {
+        cleanupListeners();
         reject(new Error(`playwright 启动失败，exit code=${code}`));
       }
-    });
+    };
+
+    const cleanupListeners = () => {
+      child.off("message", onMessage);
+      child.off("error", onError);
+      child.off("exit", onExit);
+    };
+
+    child.on("message", onMessage);
+    child.on("error", onError);
+    child.on("exit", onExit);
   });
 
   const baseUrl = `http://127.0.0.1:${port}`;
 
   return {
-    /** GET /page/screenshot，返回 JPEG 图片 Blob */
+    /**
+     * GET /page/screenshot，返回 JPEG 图片 Blob
+     * @param full 是否获取全屏截图
+     * @returns JPEG 图片 Blob
+     * */
     screenshot: async (full = false) => {
       const res = await fetch(`${baseUrl}/page/screenshot?full=${full}`);
       return await res.blob();
     },
 
-    /** POST /generate，返回生成的图片 URL 列表 */
+    /**
+     * POST /generate，返回生成的图片 URL 列表
+     * @param prompt 生成提示
+     * @param images 生成时需要的图片
+     * @returns 生成的图片 URL 列表
+     * */
     generate: async (prompt: string, images: File[] = []) => {
       const form = new FormData();
       form.append("prompt", prompt);
       for (const img of images) form.append("images", img);
-      const res = await fetch(`${baseUrl}/generate`, { method: "POST", body: form });
-      const data = (await res.json()) as { urls?: string[]; error?: string };
+
+      const res = await fetch(`${baseUrl}/generate`, {
+        method: "POST",
+        body: form,
+      });
+      const data = (await res.json()) as GenerateResult;
       if (!res.ok) throw new Error(`生成失败 (HTTP ${res.status}): ${JSON.stringify(data)}`);
       return data.urls ?? [];
     },
   };
 }
 
+type ImageGenerator = Awaited<ReturnType<typeof setupImageGenerator>>;
+let _instancePromise: Promise<ImageGenerator> | null = null;
+
+/**
+ * 获取唯一的 ImageGenerator 实例
+ * @returns 返回唯一的 ImageGenerator 实例
+ */
+export async function getImageGenerator() {
+  if (!_instancePromise) {
+    _instancePromise = setupImageGenerator();
+  }
+  return _instancePromise;
+}
+
 if (import.meta.main) {
-  const { generate } = await setupImageGenerator();
+  const { generate } = await getImageGenerator();
   const urls = await generate("一张基于《贤惠幼妻仙狐小姐》的二次创作，仙狐小姐和用户（不显示在镜头中）在沙滩玩耍");
   logger.info({ urls }, "图像生成结果");
 }

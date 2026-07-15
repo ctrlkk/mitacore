@@ -6,7 +6,7 @@ import { basename } from "node:path";
 import { lookup } from "mime-types";
 import { imageToText } from "@/multimedia";
 import { sanitizeImagePath, virtualToRealPath, downloadToCache } from "@/utils/image-cache";
-import { setupImageGenerator } from "@/generate-image";
+import { getImageGenerator } from "@/generate-image";
 import { logger, type PinoLogger } from "@/logger";
 import imageGenPromptTemplate from "./image-gen.txt";
 
@@ -49,10 +49,6 @@ function parseImageGenDecisionText(text: string) {
   }
   return decision;
 }
-
-// 懒加载 sidecar：只在首次 execute 时才启动浏览器（~10s），之后复用同一实例；
-// 子进程随父进程退出经 Windows Job Object 自动回收
-let generatorPromise: Promise<Awaited<ReturnType<typeof setupImageGenerator>>> | null = null;
 
 export function imageGen(
   allTools: ToolSet,
@@ -120,7 +116,7 @@ export function imageGen(
         files.push(new File([file], basename(filePath), { type: mime }));
       }
 
-      const { generate } = await (generatorPromise ??= setupImageGenerator());
+      const { generate } = await getImageGenerator();
       const urls = await generate(prompt, files);
 
       const results = await Promise.all(
