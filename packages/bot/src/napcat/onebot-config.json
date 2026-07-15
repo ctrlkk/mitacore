@@ -1,0 +1,26 @@
+{
+  "network": {
+    "httpServers": [],
+    "httpClients": [],
+    "httpSseServers": [],
+    "websocketServers": [
+      {
+        "enable": true,
+        "name": "websocket-server",
+        "host": "127.0.0.1",
+        "port": 0,
+        "messagePostFormat": "array",
+        "reportSelfMessage": false,
+        "token": "",
+        "enableForcePushEvent": true,
+        "debug": false,
+        "heartInterval": 30000
+      }
+    ],
+    "websocketClients": [],
+    "plugins": []
+  },
+  "musicSignUrl": "",
+  "enableLocalFile2Url": false,
+  "parseMultMsg": false
+}

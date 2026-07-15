@@ -11,6 +11,7 @@ import { formatBytes } from "@/utils/format";
 import { dataPath } from "@/utils/path";
 import { logger } from "@/logger";
 import { registerShutdownHook } from "@/utils/shutdown";
+import config from "./onebot-config.json";
 
 const LOAD_SCRIPT_FILE = "loadNapCat.js";
 const WEBUI_TOKEN_DEFAULT = Math.random().toString(36).substring(2, 15);
@@ -289,21 +290,30 @@ export async function ensureNapcat(napcatDir: string): Promise<void> {
   }
 
   logger.info({ missing }, "缺少 NapCat 文件，开始下载");
-  let totalSize = 0;
-  await downloadNapcat(napcatDir, (received, total) => {
-    if (total && !totalSize) {
-      totalSize = total;
-      logger.info({ totalBytes: total }, `总大小: ${formatBytes(total)}`);
-    }
-    if (total) {
-      process.stdout.write(
-        `\r下载进度: ${formatBytes(received)}/${formatBytes(total)} (${Math.round((received / total) * 100)}%)`,
-      );
-    } else {
-      process.stdout.write(`\r已下载: ${formatBytes(received)}`);
-    }
-  });
-  if (totalSize) process.stdout.write("\n");
+  const BAR_WIDTH = 20;
+  let hasLoggedSize = false;
+  let prevLineLength = 0;
+  await downloadNapcat(
+    napcatDir,
+    (received, total) => {
+      if (total && !hasLoggedSize) {
+        hasLoggedSize = true;
+        logger.info({ totalBytes: total }, `总大小: ${formatBytes(total)}`);
+      }
+      let line: string;
+      if (total) {
+        const pct = Math.round((received / total) * 100);
+        const filled = Math.round((BAR_WIDTH * pct) / 100);
+        const bar = "█".repeat(filled) + "░".repeat(BAR_WIDTH - filled);
+        line = `\r下载中 [${bar}] ${formatBytes(received)}/${formatBytes(total)} (${pct}%)`;
+      } else {
+        line = `\r已下载: ${formatBytes(received)}`;
+      }
+      prevLineLength = Math.max(prevLineLength, line.length);
+      process.stderr.write(line.padEnd(prevLineLength));
+    },
+    () => process.stderr.write("\n"),
+  );
 
   const stillMissing = required.filter((f) => !existsSync(resolve(napcatDir, f)));
   if (stillMissing.length > 0) {
@@ -417,32 +427,8 @@ export async function launchNapCat(config: NapCatConfig) {
 }
 
 function oneBotConfig(wsPort: number) {
-  return {
-    network: {
-      httpServers: [],
-      httpClients: [],
-      httpSseServers: [],
-      websocketServers: [
-        {
-          enable: true,
-          name: "websocket-server",
-          host: "127.0.0.1",
-          port: wsPort,
-          messagePostFormat: "array",
-          reportSelfMessage: false,
-          token: "",
-          enableForcePushEvent: true,
-          debug: false,
-          heartInterval: 30000,
-        },
-      ],
-      websocketClients: [],
-      plugins: [],
-    },
-    musicSignUrl: "",
-    enableLocalFile2Url: false,
-    parseMultMsg: false,
-  };
+  config.network.websocketServers[0]!.port = wsPort;
+  return config;
 }
 
 /**
