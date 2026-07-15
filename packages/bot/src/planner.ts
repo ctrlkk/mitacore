@@ -80,8 +80,8 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
       tools,
     });
 
-    if (result.reasoning) log.debug({ reasoning: result.reasoningText, step }, "内部思考");
-    if (result.text) log.debug({ text: result.text, step }, "助手响应");
+    if (result.reasoning) log.info({ reasoning: result.reasoningText, step }, "内部思考");
+    if (result.text) log.info({ text: result.text, step }, "助手响应");
 
     messages.push(...result.response.messages);
 

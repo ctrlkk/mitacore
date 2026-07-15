@@ -17,43 +17,31 @@ type ContentPart = ContentValue[number];
 
 const SUPPORTS_MULTIMODAL = false;
 
-const zImageGenDecision = z.object({
-  prompt: z
-    .string()
-    .transform((prompt) => prompt.trim())
-    .pipe(z.string().min(1)),
-  images: z
-    .preprocess(
-      (value) =>
-        (Array.isArray(value) ? value : typeof value === "string" ? [value] : []).filter(
-          (image): image is string => typeof image === "string",
-        ),
-      z.array(z.string().transform((image) => image.trim())),
-    )
-    .transform((images) => images.filter(Boolean)),
-});
+function parseImageGenDecisionXml(xml: string): { prompt: string; images: string[] } | null {
+  const promptMatch = xml.match(/<prompt>([\s\S]*?)<\/prompt>/i);
+  if (!promptMatch || promptMatch[1] === undefined) return null;
+  const prompt = promptMatch[1].trim();
+  if (!prompt) return null;
+  const images = [...xml.matchAll(/<image>([\s\S]*?)<\/image>/gi)]
+    .map((match) => match[1]?.trim() ?? "")
+    .filter((image) => image.length > 0);
+  return { prompt, images };
+}
 
 function parseImageGenDecisionText(text: string) {
-  const candidates = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)]
-    .map((match) => match[1]?.trim() ?? "")
-    .filter(Boolean);
-  const jsonStart = text.indexOf("{");
-  const jsonEnd = text.lastIndexOf("}");
-  if (jsonStart >= 0 && jsonEnd > jsonStart) candidates.push(text.slice(jsonStart, jsonEnd + 1).trim());
-  candidates.push(text.trim());
-
-  let lastError = "未找到可解析的 JSON";
-  for (const candidate of candidates.filter((candidate, index, list) => list.indexOf(candidate) === index)) {
-    try {
-      const result = zImageGenDecision.safeParse(JSON.parse(candidate));
-      if (result.success) return result.data;
-      lastError = result.error.issues.map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`).join("；");
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
-    }
+  const xmlStart = text.indexOf("<image_decision");
+  const xmlEnd = text.lastIndexOf("</image_decision>");
+  if (xmlStart < 0 || xmlEnd <= xmlStart) {
+    logger.warn({ error: "未找到 <image_decision> 根标签", outputPreview: text.slice(0, 500) }, "图像生成分支输出解析失败");
+    return null;
   }
-  logger.warn({ error: lastError, outputPreview: text.slice(0, 500) }, "图像生成分支输出解析失败");
-  return null;
+  const block = text.slice(xmlStart, xmlEnd + "</image_decision>".length);
+  const decision = parseImageGenDecisionXml(block);
+  if (!decision) {
+    logger.warn({ error: "候选 XML 缺少 <prompt> 字段", outputPreview: text.slice(0, 500) }, "图像生成分支输出解析失败");
+    return null;
+  }
+  return decision;
 }
 
 // 懒加载 sidecar：只在首次 execute 时才启动浏览器（~10s），之后复用同一实例；

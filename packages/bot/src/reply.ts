@@ -54,18 +54,6 @@ export async function runReply(
   log: PinoLogger = logger,
 ): Promise<{ replyText: string; usage: LanguageModelUsage | undefined }> {
   const historyMessages: ModelMessage[] = await loadExecutorHistory();
-  historyMessages.push(
-    { role: "user", content: userPrompt },
-    {
-      role: "user",
-      content:
-        "你正在聊天，上面是正在聊的内容，其中包含聊天记录和聊天中的图片。\n" +
-        "回复尽量简短一些。请注意把握聊天内容。\n" +
-        "请考虑对方的发言频率，想法，思考自己何时回复以及回复内容。\n\n" +
-        "参考下方plan信息进行回复，但视情况而定，无需完全遵守.\n" +
-        `<reply_plan>\n${plan}\n</reply_plan>`,
-    },
-  );
   const runtimeMessages: ModelMessage[] = [];
   const model = getModel(config.models.reply);
 
@@ -74,6 +62,8 @@ export async function runReply(
 
   const prompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
   const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
+  const { default: replyGroupPrompt } = await import("./prompts/reply-group.txt");
+  // const { default: replyPrompt } = await import("./prompts/reply.txt");
 
   const system = [
     "<role>",
@@ -85,6 +75,14 @@ export async function runReply(
     "</capabilities>",
   ].join("\n");
 
+  historyMessages.push(
+    { role: "user", content: userPrompt },
+    {
+      role: "user",
+      content: `${replyGroupPrompt.trim()}\n\n<reply_plan>\n${plan}\n</reply_plan>`,
+    },
+  );
+
   for (let step = 0; step < 20; step++) {
     const result = await generateText({
       model,
@@ -92,8 +90,8 @@ export async function runReply(
       messages: [...historyMessages, ...runtimeMessages],
     });
 
-    if (result.reasoning) log.debug({ reasoning: result.reasoningText, step }, "内部思考");
-    if (result.text) log.debug({ text: result.text, step }, "助手响应");
+    if (result.reasoning) log.info({ reasoning: result.reasoningText, step }, "内部思考");
+    if (result.text) log.info({ text: result.text, step }, "助手响应");
     if (result.text) {
       const segments = await sliceReply(result.text);
       await onReply(segments);

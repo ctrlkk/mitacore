@@ -3,7 +3,6 @@ import { generateText, type ModelMessage } from "ai";
 import { dataPath, projectPath } from "./utils/path";
 import { readFile } from "node:fs/promises";
 import { getModel } from "./model";
-import { z } from "zod";
 import { logger } from "@/logger";
 import dayjs from "dayjs";
 
@@ -36,37 +35,53 @@ async function loadMainHistory(): Promise<ModelMessage[]> {
   }
 }
 
-const zTriggerDecision = z.object({
-  should_reply: z.boolean().describe("是否应当触发角色回复"),
-  reason: z.string().describe("简短的判定理由"),
-});
+function parseTriggerDecisionXml(xml: string): { should_reply: boolean; reason: string } | null {
+  const shouldReplyMatch = xml.match(/<should_reply>\s*(true|false)\s*<\/should_reply>/i);
+  if (!shouldReplyMatch || shouldReplyMatch[1] === undefined) return null;
+  const reasonMatch = xml.match(/<reason>([\s\S]*?)<\/reason>/i);
+  const reason = reasonMatch?.[1]?.trim() ?? "";
+  return {
+    should_reply: shouldReplyMatch[1].toLowerCase() === "true",
+    reason,
+  };
+}
 
 function parseTriggerDecisionText(text: string) {
-  const candidates = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)]
-    .map((match) => match[1]?.trim() ?? "")
-    .filter(Boolean);
-  const jsonStart = text.indexOf("{");
-  const jsonEnd = text.lastIndexOf("}");
-  if (jsonStart >= 0 && jsonEnd > jsonStart) candidates.push(text.slice(jsonStart, jsonEnd + 1).trim());
-  candidates.push(text.trim());
-
-  let lastError = "未找到可解析的 JSON";
-  for (const candidate of candidates.filter((candidate, index, list) => list.indexOf(candidate) === index)) {
-    try {
-      const result = zTriggerDecision.safeParse(JSON.parse(candidate));
-      if (result.success) return result.data;
-      lastError = result.error.issues.map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`).join("；");
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
-    }
+  const xmlStart = text.indexOf("<trigger_decision");
+  const xmlEnd = text.lastIndexOf("</trigger_decision>");
+  if (xmlStart < 0 || xmlEnd <= xmlStart) {
+    logger.warn({ error: "未找到 <trigger_decision> 根标签", outputPreview: text.slice(0, 500) }, "触发判定输出解析失败");
+    return null;
   }
-  logger.warn({ error: lastError, outputPreview: text.slice(0, 500) }, "触发判定输出解析失败");
-  return null;
+  const block = text.slice(xmlStart, xmlEnd + "</trigger_decision>".length);
+  const decision = parseTriggerDecisionXml(block);
+  if (!decision) {
+    logger.warn({ error: "候选 XML 缺少 <should_reply> 字段", outputPreview: text.slice(0, 500) }, "触发判定输出解析失败");
+    return null;
+  }
+  return decision;
 }
 
 export async function dispatchMessage(cache: PendingMessage[]) {
   const rolePrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
   const { default: triggerPrompt } = await import("./prompts/trigger.txt");
+  const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
+
+  const system = [
+    "<capabilities>",
+    capabilitiesPrompt.trim(),
+    "</capabilities>",
+    "",
+    "<role>",
+    "你是「对话触发判定 agent」，你的唯一职责是判断是否应当触发角色回复。",
+    "你的判定必须基于客观信号，禁止凭空猜测用户的意图，禁止为了显得热情而触发回复。",
+    "</role>",
+    "",
+    "当前角色设定为：",
+    "<character>",
+    rolePrompt.trim(),
+    "</character>",
+  ].join("\n");
 
   const conversation = cache
     .map((msg) => {
@@ -78,11 +93,10 @@ export async function dispatchMessage(cache: PendingMessage[]) {
   const history = await loadMainHistory();
 
   const historyText: string[] = [];
-  for (const [index, msg] of history.entries()) {
-    if (msg.content instanceof Array) continue;
-    if (historyText.length > 20) break;
-    historyText.push(`<message role="${msg.role}">\n${msg.content}\n</message>`);
-  }
+  history.slice(-20).forEach((msg) => {
+    if (msg.content instanceof Array) return;
+    historyText.push(`<message role="${msg.role === "assistant" ? "你" : msg.role}">\n${msg.content}\n</message>`);
+  });
 
   const prompt =
     `${triggerPrompt.trim()}\n\n` +
@@ -95,11 +109,10 @@ export async function dispatchMessage(cache: PendingMessage[]) {
 
   const { text } = await generateText({
     model: getModel("deepseek-v4-flash"),
-    system: rolePrompt.trim(),
+    system,
     prompt,
   });
   logger.debug({ text }, "触发判定输出");
   const decision = parseTriggerDecisionText(text);
-  if (!decision) return false;
-  return decision.should_reply;
+  return decision?.should_reply ?? false;
 }
