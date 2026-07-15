@@ -2,7 +2,7 @@ import { generateText, type LanguageModelUsage, type ModelMessage } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { getModel } from "@/model";
 import { parseMarkdown, type MessagePart } from "@/images";
-import { splitMessage } from "@/utils/message-splitter";
+import { splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
