@@ -83,6 +83,24 @@ async function maybeStartXvfb(): Promise<void> {
 }
 
 /**
+ * 关闭页面上可能出现的弹窗
+ * 用 aria-label="关闭" 定位弹窗的关闭按钮；500ms 内找不到则直接返回
+ * @param page 页面对象
+ * @returns 是否成功关闭
+ */
+async function closePromptIfPresent(page: Page): Promise<boolean> {
+  try {
+    const closeBtn = page.locator('button[aria-label="关闭"]').first();
+    await closeBtn.waitFor({ state: "visible", timeout: 500 });
+    await closeBtn.click();
+    console.log("已关闭弹窗");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 设置浏览器上下文和页面
  * @param headless 是否无头模式
  * @param clean 是否清除持久上下文
@@ -128,6 +146,8 @@ async function uploadImage(page: Page, file: File): Promise<void> {
     buffer: Buffer.from(await file.arrayBuffer()),
   };
 
+  await closePromptIfPresent(page);
+
   const addBtn = page.locator('button:has(svg path[d^="M12.0005"])').first();
   await addBtn.click();
 
@@ -150,16 +170,25 @@ async function navigateAndSendPrompt(page: Page, prompt: string, images?: File[]
   try {
     await page.waitForSelector('textarea, [contenteditable="true"]', { timeout: 120_000, state: "visible" });
   } catch (e) {
-    console.error(`!! 找不到输入框。url=${page.url()} title=${await page.title()}`);
-    console.error(
-      "textarea 数量:",
-      await page.locator("textarea").count(),
-      "contenteditable 数量:",
-      await page.locator("[contenteditable]").count(),
-    );
-    await page.screenshot({ path: "debug/headless_no_input.png", fullPage: true });
-    throw e;
+    await closePromptIfPresent(page);
+    // 弹窗可能盖住输入框导致超时，关掉重试一次
+    try {
+      await page.waitForSelector('textarea, [contenteditable="true"]', { timeout: 10_000, state: "visible" });
+    } catch (e2) {
+      console.error(`!! 找不到输入框。url=${page.url()} title=${await page.title()}`);
+      console.error(
+        "textarea 数量:",
+        await page.locator("textarea").count(),
+        "contenteditable 数量:",
+        await page.locator("[contenteditable]").count(),
+      );
+      await page.screenshot({ path: "debug/headless_no_input.png", fullPage: true });
+      throw e2;
+    }
+    return;
   }
+
+  await closePromptIfPresent(page);
 
   if (images?.length) {
     for (const img of images) {
@@ -252,6 +281,7 @@ async function generateImages(page: Page, prompt: string, images?: File[]): Prom
   page.on("response", onResponse);
   try {
     await navigateAndSendPrompt(page, prompt, images);
+    await closePromptIfPresent(page);
 
     const deadline = Date.now() + GENERATION_TIMEOUT_MS;
     let checks = 0;
@@ -284,9 +314,8 @@ async function clickMenuAndDelete(page: Page): Promise<void> {
  * @param page 页面对象
  */
 async function deleteCurrentConversation(page: Page): Promise<void> {
+  await closePromptIfPresent(page);
   console.log("开始清理当前对话...");
-
-  // 策略 1: hover 活跃会话项，点击三点菜单按钮
   try {
     const active = page.locator('div[data-empty-conversation] a[aria-current="page"]').first();
     await active.waitFor({ state: "visible", timeout: 3000 });
@@ -300,36 +329,6 @@ async function deleteCurrentConversation(page: Page): Promise<void> {
   } catch (e) {
     console.warn(`策略1 失败: ${(e as Error).message ?? e}`);
   }
-
-  // 策略 2: 右键活跃会话项，打开上下文菜单
-  try {
-    const active = page.locator('div[data-empty-conversation] a[aria-current="page"]').first();
-    await active.waitFor({ state: "visible", timeout: 3000 });
-    await active.click({ button: "right" });
-    await page.waitForTimeout(300);
-    await clickMenuAndDelete(page);
-    console.log("对话删除完成 (策略2: 右键菜单)");
-    await page.waitForTimeout(1000);
-    return;
-  } catch (e) {
-    console.warn(`策略2 失败: ${(e as Error).message ?? e}`);
-  }
-
-  // 策略 3: 兜底，用 e2e-test-active class 定位
-  try {
-    const active = page.locator("a.e2e-test-active").first();
-    await active.waitFor({ state: "visible", timeout: 3000 });
-    await active.hover();
-    await page.waitForTimeout(300);
-    await active.locator("button").first().click({ force: true });
-    await clickMenuAndDelete(page);
-    console.log("对话删除完成 (策略3: e2e class)");
-    await page.waitForTimeout(1000);
-    return;
-  } catch (e) {
-    console.warn(`策略3 失败: ${(e as Error).message ?? e}`);
-  }
-
   console.warn("删除对话失败，所有策略均未命中，但不影响图片获取");
 }
 
