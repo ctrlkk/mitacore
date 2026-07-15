@@ -40,14 +40,6 @@ export async function setupImageGenerator() {
   };
 
   process.on("exit", () => killChild());
-  process.on("SIGINT", () => {
-    killChild();
-    process.exit(130);
-  });
-  process.on("SIGTERM", () => {
-    killChild();
-    process.exit(143);
-  });
 
   // 子进程提前非正常退出，父进程也别卡着
   child.on("exit", (code) => {

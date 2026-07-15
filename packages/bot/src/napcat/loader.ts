@@ -1,12 +1,3 @@
-#!/usr/bin/env bun
-/**
- * napcat-loader — NapCat 编程式控制器（跨平台）
- *
- * API 操作：import { createNapCatApi, restartNapcatApi } from "./napcat-api/client"
- *
- * 可作为模块导入：import { launchNapCat } from "./napcat-loader"
- * 也可独立运行：bun run napcat-loader.ts
- */
 import { existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { createNapCatApi, restartNapcatApi } from "./client";
 import { resolve, dirname } from "node:path";
@@ -15,11 +6,11 @@ import { createServer } from "node:net";
 import { PassThrough } from "node:stream";
 import { downloadNapcat } from "./download";
 import { readPidFile, writePidFile } from "./pid-file";
-import { buildPidGraph, killTree, killProcessOnPort, isLauncherAlive, isPidAlive } from "./process-tree";
-import { OneBotClient } from "../onebot/onebot-client";
-import { formatBytes } from "../utils/format";
-import { dataPath } from "../utils/path";
+import { OneBotClient } from "@/onebot/onebot-client";
+import { formatBytes } from "@/utils/format";
+import { dataPath } from "@/utils/path";
 import { logger } from "@/logger";
+import { registerShutdownHook } from "@/utils/shutdown";
 
 const LOAD_SCRIPT_FILE = "loadNapCat.js";
 const WEBUI_TOKEN_DEFAULT = Math.random().toString(36).substring(2, 15);
@@ -27,6 +18,37 @@ const IS_WIN = process.platform === "win32";
 
 const WEBUI_URL_RE = /WebUi User Panel Url: http:\/\/127\.0\.0\.1:(\d+)\/webui\?token=(\S+)/;
 const MAIN_PID_RE = /Main Process ID:(\d+)/;
+
+/** 检查进程是否存活 */
+function isPidAlive(pid: number): boolean {
+  if (!pid) return false;
+  try {
+    if (IS_WIN) {
+      const out = execSync(`tasklist /NH /FI "PID eq ${pid}" /FO CSV`, {
+        encoding: "utf-8",
+        timeout: 2000,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      return !out.includes("INFO:") && out.includes(`"${pid}"`);
+    }
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 强制结束进程 */
+function forceKill(pid: number): void {
+  if (!pid) return;
+  try {
+    if (IS_WIN) {
+      execSync(`taskkill /F /PID ${pid}`, { stdio: "ignore" });
+    } else {
+      process.kill(pid, "SIGKILL");
+    }
+  } catch {}
+}
 
 type NapCatApi = Awaited<ReturnType<typeof createNapCatApi>>;
 
@@ -81,20 +103,16 @@ const win32Adapter: PlatformAdapter = {
     }
   },
 
-  async cleanOrphans(qqId) {
+  async cleanOrphans(qqId: string): Promise<void> {
     const rec = readPidFile(qqId);
     if (!rec) return;
-    const graph = buildPidGraph();
-    if (rec.launcher > 0 && isLauncherAlive(graph, rec.launcher)) {
-      logger.info({ qqId, launcher: rec.launcher }, "检测到残留 launcher，正在清理");
-      await killTree(rec.launcher);
-    }
     if (rec.qq > 0 && isPidAlive(rec.qq)) {
-      logger.info({ qqId, qq: rec.qq }, "检测到残留 QQ.exe，正在清理");
-      await killTree(rec.qq);
+      logger.info({ qqId, qq: rec.qq }, "检测到残留 QQ 进程，正在清理");
+      forceKill(rec.qq);
     }
-    if (rec.port > 0) {
-      await killProcessOnPort(rec.port, ["QQ.exe", "node.exe", "NapCatWinBootMain.exe"]);
+    if (rec.launcher > 0 && isPidAlive(rec.launcher)) {
+      logger.info({ qqId, launcher: rec.launcher }, "检测到残留 launcher，正在清理");
+      forceKill(rec.launcher);
     }
   },
 
@@ -140,20 +158,16 @@ const posixAdapter: PlatformAdapter = {
     return null;
   },
 
-  async cleanOrphans(qqId) {
+  async cleanOrphans(qqId: string): Promise<void> {
     const rec = readPidFile(qqId);
     if (!rec) return;
-    const graph = buildPidGraph();
-    if (rec.launcher > 0 && isLauncherAlive(graph, rec.launcher)) {
-      logger.info({ qqId, launcher: rec.launcher }, "检测到残留 launcher，正在清理");
-      await killTree(rec.launcher);
-    }
     if (rec.qq > 0 && isPidAlive(rec.qq)) {
-      logger.info({ qqId, qq: rec.qq }, "检测到残留 qq，正在清理");
-      await killTree(rec.qq);
+      logger.info({ qqId, qq: rec.qq }, "检测到残留 QQ 进程，正在清理");
+      forceKill(rec.qq);
     }
-    if (rec.port > 0) {
-      await killProcessOnPort(rec.port, ["qq", "node"]);
+    if (rec.launcher > 0 && isPidAlive(rec.launcher)) {
+      logger.info({ qqId, launcher: rec.launcher }, "检测到残留 launcher，正在清理");
+      forceKill(rec.launcher);
     }
   },
 
@@ -345,15 +359,16 @@ export async function launchNapCat(config: NapCatConfig) {
     for (const line of text.split(/\r?\n/)) {
       if (line) logger.debug({ line }, "napcat stdout");
     }
+    // 记录 PID
     if (!handle.qqPid) {
       const m = text.match(MAIN_PID_RE);
       if (m) {
         handle.qqPid = parseInt(m[1]!, 10);
-        // 回写 PID 文件：qq 字段首次解析到后落盘
         const rec = readPidFile(config.qqId);
         if (rec) writePidFile(config.qqId, { ...rec, qq: handle.qqPid });
       }
     }
+    // 创建 API 实例
     if (!handle.webuiPort) {
       const m = text.match(WEBUI_URL_RE);
       if (m) {
@@ -362,6 +377,7 @@ export async function launchNapCat(config: NapCatConfig) {
         createNapCatApi(handle.webuiPort, handle.webuiToken).then(resolveApi).catch(rejectApi);
       }
     }
+    // 通知准备就绪
     if (text.match(ADAPTER_READY_RE)) resolveReady();
   });
 
@@ -376,42 +392,10 @@ export async function launchNapCat(config: NapCatConfig) {
     rejectApi(err);
   });
 
-  // 共享清理 Promise：stop() 与 proc.on('exit') 都复用同一个清理任务，
-  // 避免 race + 重复 killTree。第一个调用方 await 到真完成为止。
-  let cleanupPromise: Promise<void> | null = null;
-  const ensureCleanup = (): Promise<void> => {
-    cleanupPromise ??= (async () => {
-      try {
-        // 路径 1：launcher 还活着 → 优雅 stop（重启 API + killTree 整树）
-        if (handle.proc.pid && isPidAlive(handle.proc.pid)) {
-          try {
-            await restartNapcatApi("127.0.0.1", handle.webuiPort || 6099);
-          } catch {}
-          await killTree(handle.proc.pid);
-        }
-        // 路径 2：qqPid 兜底 — dll 注入可能让 QQ.exe 脱离 launcher 进程树
-        // （QQ.exe 继续运行但 launcher 已死 / reparent），用解析到的 Main Process ID 直接杀
-        if (handle.qqPid > 0 && isPidAlive(handle.qqPid)) {
-          logger.info({ qqPid: handle.qqPid }, "QQ.exe 脱离进程树，单独强杀");
-          await killTree(handle.qqPid);
-        }
-        // 路径 3：端口反查 — 上面两条都漏掉的极端情况（QQ 自身监听 webui 时有效）
-        if (handle.webuiPort > 0) {
-          await killProcessOnPort(
-            handle.webuiPort,
-            IS_WIN ? ["QQ.exe", "node.exe", "NapCatWinBootMain.exe"] : ["qq", "node"],
-          );
-        }
-      } catch (err) {
-        logger.warn({ error: err }, "NapCat 退出清理异常");
-      }
-    })();
-    return cleanupPromise;
-  };
-
   handle.proc.on("exit", (code) => {
     logger.info({ code }, "NapCat 进程退出");
-    ensureCleanup();
+    if (handle.proc.pid) forceKill(handle.proc.pid);
+    forceKill(handle.qqPid);
     rejectApi(new Error(`NapCat 进程已退出 (code=${code})`));
   });
 
@@ -425,7 +409,10 @@ export async function launchNapCat(config: NapCatConfig) {
     },
     waitForWebUI: () => apiPromise,
     waitForReady: () => readyPromise,
-    stop: ensureCleanup,
+    stop: () => {
+      if (handle.proc.pid) forceKill(handle.proc.pid);
+      forceKill(handle.qqPid);
+    },
   };
 }
 
@@ -514,6 +501,9 @@ if (import.meta.main) {
     logger.debug({ msg }, "收到 OneBot 消息");
   });
   await client.connect();
-  // 保持程序运行，等待信号
-  await new Promise(() => {});
+  await Bun.sleep(1000);
+  registerShutdownHook("NapCat", async () => {
+    napcat.stop();
+    logger.info("NapCat 进程已关闭");
+  });
 }

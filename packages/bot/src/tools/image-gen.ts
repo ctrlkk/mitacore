@@ -32,13 +32,19 @@ function parseImageGenDecisionText(text: string) {
   const xmlStart = text.indexOf("<image_decision");
   const xmlEnd = text.lastIndexOf("</image_decision>");
   if (xmlStart < 0 || xmlEnd <= xmlStart) {
-    logger.warn({ error: "未找到 <image_decision> 根标签", outputPreview: text.slice(0, 500) }, "图像生成分支输出解析失败");
+    logger.warn(
+      { error: "未找到 <image_decision> 根标签", outputPreview: text.slice(0, 500) },
+      "图像生成分支输出解析失败",
+    );
     return null;
   }
   const block = text.slice(xmlStart, xmlEnd + "</image_decision>".length);
   const decision = parseImageGenDecisionXml(block);
   if (!decision) {
-    logger.warn({ error: "候选 XML 缺少 <prompt> 字段", outputPreview: text.slice(0, 500) }, "图像生成分支输出解析失败");
+    logger.warn(
+      { error: "候选 XML 缺少 <prompt> 字段", outputPreview: text.slice(0, 500) },
+      "图像生成分支输出解析失败",
+    );
     return null;
   }
   return decision;
@@ -71,13 +77,12 @@ export function imageGen(
       const template = imageGenPromptTemplate;
       const branchInput = template.replace("{task}", task);
 
-      const branchAbort = abortSignal ?? AbortSignal.timeout(300_000);
       const { usage, text } = await generateText({
         model: parentModel,
         system: parentSystem,
         messages: [...messages, { role: "user", content: branchInput }],
         tools: allTools,
-        abortSignal: branchAbort,
+        abortSignal,
         experimental_context: { inBranch: true },
       });
       const inputTokens = usage.inputTokens ?? 0;

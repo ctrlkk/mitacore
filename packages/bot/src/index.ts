@@ -472,8 +472,6 @@ if (import.meta.main) {
     reconnect: true,
   });
 
-  registerShutdownHook("OneBot", () => bot.close());
-
   await bot.connect();
 
   const botMap = new Map<string, ReturnType<typeof createBot>>();
