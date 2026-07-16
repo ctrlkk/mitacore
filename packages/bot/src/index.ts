@@ -317,8 +317,8 @@ function createBot(sessionId: string) {
     const prompt = buildPrompt(batch, imageMap).trim();
     log.info({ prompt }, "用户输入");
 
-    const { plan, submitReply } = await runPlanner(prompt, log);
-    const { replyText } = await runReply(prompt, plan, async (segments) => {
+    const { plan, reasoning, submitReply } = await runPlanner(prompt, log);
+    const { replyText } = await runReply(prompt, plan, reasoning, async (segments) => {
       for (const seg of segments) {
         await ctx.reply(seg);
         await Bun.sleep(500);

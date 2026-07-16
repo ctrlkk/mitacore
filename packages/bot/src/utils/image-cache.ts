@@ -122,7 +122,11 @@ export async function downloadToCache(url: string, option: { limit?: number } = 
     const finalFilename = `${encoded}.${ext}`;
     const finalPath = resolve(IMAGE_CACHE_DIR, finalFilename);
 
-    await rename(tempPath, finalPath);
+    try {
+      await rename(tempPath, finalPath);
+    } catch {
+      await unlink(tempPath);
+    }
     return {
       virtualPath: realToVirtualPath(finalFilename),
       realPath: finalPath,

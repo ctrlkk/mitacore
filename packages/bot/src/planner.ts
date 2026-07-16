@@ -33,6 +33,7 @@ async function savePlannerHistory(history: ModelMessage[], log: PinoLogger = log
 
 interface PlannerResult {
   plan: string;
+  reasoning: string;
   /** 由执行层调用：用实际回复替换规划结束标记并落盘 */
   submitReply: (replyText: string) => Promise<void>;
 }
@@ -48,6 +49,7 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
   const model = getModel(config.models.plan);
 
   let planText = "";
+  let reasoningText = "";
   let toolCallId: string | undefined;
 
   const { default: planPrompt } = await import("./prompts/plan.txt");
@@ -80,7 +82,10 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
       tools,
     });
 
-    if (result.reasoning) log.info({ reasoning: result.reasoningText, step }, "内部思考");
+    if (result.reasoning) {
+      log.info({ reasoning: result.reasoningText, step }, "内部思考");
+      if (result.reasoningText) reasoningText += (reasoningText ? "\n\n" : "") + result.reasoningText;
+    }
     if (result.text) log.info({ text: result.text, step }, "助手响应");
 
     messages.push(...result.response.messages);
@@ -116,5 +121,5 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
     await savePlannerHistory(finalMessages, log);
   };
 
-  return { plan: planText, submitReply };
+  return { plan: planText, reasoning: reasoningText, submitReply };
 }

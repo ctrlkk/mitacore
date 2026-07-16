@@ -44,12 +44,14 @@ async function sliceReply(chunk: string): Promise<MessagePart[]> {
  * 运行回复层（仙狐小姐 persona）
  * @param userPrompt 已用 <user_input> 标签包好的用户消息
  * @param plan 规划层生成的策略
+ * @param reasoning 规划层的思考过程
  * @param onReply 实际发送消息的回调
  * @returns replyText（拼接所有 step 的文本）+ usage
  */
 export async function runReply(
   userPrompt: string,
   plan: string,
+  reasoning: string,
   onReply: (segments: MessagePart[]) => Promise<void>,
   log: PinoLogger = logger,
 ): Promise<{ replyText: string; usage: LanguageModelUsage | undefined }> {
@@ -75,12 +77,13 @@ export async function runReply(
     "</capabilities>",
   ].join("\n");
 
+  const planContent = reasoning
+    ? `${replyGroupPrompt.trim()}\n\n<reply_plan>\n${plan}\n</reply_plan>\n\n<reply_reasoning>\n${reasoning}\n</reply_reasoning>`
+    : `${replyGroupPrompt.trim()}\n\n<reply_plan>\n${plan}\n</reply_plan>`;
+
   historyMessages.push(
     { role: "user", content: userPrompt },
-    {
-      role: "user",
-      content: `${replyGroupPrompt.trim()}\n\n<reply_plan>\n${plan}\n</reply_plan>`,
-    },
+    { role: "user", content: planContent },
   );
 
   for (let step = 0; step < 20; step++) {
