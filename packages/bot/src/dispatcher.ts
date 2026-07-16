@@ -4,13 +4,16 @@ import { dataPath, projectPath } from "./utils/path";
 import { readFile } from "node:fs/promises";
 import { getModel } from "./model";
 import { downloadToCache } from "@/utils/image-cache";
-import { blobToDataURL } from "./utils/blob";
+import { compressImage } from "@/utils/image-resize";
+import { imageToText } from "@/multimedia";
+import { cache } from "@/utils/cache";
 import { logger } from "@/logger";
 import dayjs from "dayjs";
+import XMLBuilder from "fast-xml-builder";
 
 const formatSegments = (
   segments: UnifiedInboundMessage[],
-  imageMap: Map<string, { path: string; blob: Blob }>,
+  imageMap: Map<string, { path: string; description: string }>,
 ): string => {
   const parts: string[] = [];
   for (const seg of segments) {
@@ -78,7 +81,7 @@ function parseTriggerDecisionText(text: string) {
   return decision;
 }
 
-export async function dispatchMessage(cache: PendingMessage[]) {
+export async function dispatchMessage(pendingMessages: PendingMessage[]) {
   const rolePrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
   const { default: triggerPrompt } = await import("./prompts/trigger.txt");
   const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
@@ -90,20 +93,53 @@ export async function dispatchMessage(cache: PendingMessage[]) {
       else if (seg.type === "reply") extractImage(seg.data.segments);
     }
   };
-  for (const msg of cache) {
+  for (const msg of pendingMessages) {
     extractImage(msg.unifiedMessages);
   }
 
-  const imageMap = new Map<string, { path: string; blob: Blob }>();
+  const imageMap = new Map<string, { path: string; description: string }>();
   if (urls.size > 0) {
-    await Promise.all(
+    const downloaded = await Promise.all(
       Array.from(urls).map(async (url) => {
         try {
           const { virtualPath, realPath } = await downloadToCache(url);
-          const compressed = await new Bun.Image(Bun.file(realPath)).webp({ quality: 80 }).blob();
-          imageMap.set(url, { path: virtualPath, blob: compressed });
-        } catch {
-          // skip
+          return { url, virtualPath, realPath };
+        } catch (error) {
+          logger.error({ url, error }, "下载失败");
+          return null;
+        }
+      }),
+    );
+
+    const pathMap = new Map<string, { realPath: string; sourceUrls: string[] }>();
+    for (const item of downloaded) {
+      if (!item) continue;
+      const group = pathMap.get(item.virtualPath);
+      if (group) {
+        group.sourceUrls.push(item.url);
+      } else {
+        pathMap.set(item.virtualPath, { realPath: item.realPath, sourceUrls: [item.url] });
+      }
+    }
+
+    await Promise.all(
+      Array.from(pathMap.entries()).map(async ([path, { realPath, sourceUrls }]) => {
+        let description = await cache.get<string>(path);
+        if (!description) {
+          try {
+            const blob = await compressImage(Bun.file(realPath));
+            description = (await imageToText(blob)).trim();
+            cache.set(path, description).catch((err) => {
+              logger.error({ error: err }, "缓存图片描述失败");
+            });
+          } catch (error) {
+            logger.error({ path, error }, "转述失败");
+            description = "图片转述失败";
+          }
+        }
+
+        for (const url of sourceUrls) {
+          imageMap.set(url, { path, description });
         }
       }),
     );
@@ -125,7 +161,7 @@ export async function dispatchMessage(cache: PendingMessage[]) {
     "</character>",
   ].join("\n");
 
-  const conversation = cache
+  const conversation = pendingMessages
     .map((msg) => {
       const text = formatSegments(msg.unifiedMessages, imageMap);
       return `<message user_id="${msg.userId}" nickname="${msg.nickname}" date="${dayjs(msg.date).format("MM-DD HH:mm")}">\n${text}\n</message>`;
@@ -140,7 +176,7 @@ export async function dispatchMessage(cache: PendingMessage[]) {
     historyText.push(`<message role="${msg.role === "assistant" ? "你" : msg.role}">\n${msg.content}\n</message>`);
   });
 
-  const prompt =
+  let finalPrompt =
     `${triggerPrompt.trim()}\n\n` +
     `<history>\n` +
     `  ${historyText.join("\n\n").trim()}\n` +
@@ -149,26 +185,28 @@ export async function dispatchMessage(cache: PendingMessage[]) {
     `  ${conversation.trim()}\n` +
     `</conversation>`;
 
-  const labeledImages = await Promise.all(
-    Array.from(imageMap.entries()).map(async ([url, { path, blob }]) => ({
-      path,
-      data: await blobToDataURL(blob),
-    })),
-  );
-
-  const content: UserContent = [];
-  for (const { path, data } of labeledImages) {
-    content.push({ type: "text", text: `图片: ${path}` });
-    content.push({ type: "image", image: data });
+  // 去重并格式化图片描述，与 index.ts 中的 buildPrompt 逻辑保持一致
+  const uniqueImages = Array.from(new Map(imageMap.values().map((img) => [img.path, img])).values());
+  if (uniqueImages.length > 0) {
+    const builder = new XMLBuilder({ format: true, ignoreAttributes: false });
+    const reminder = builder
+      .build({
+        system_reminder: {
+          image: uniqueImages,
+        },
+      })
+      .trim();
+    finalPrompt = `${reminder}\n\n${finalPrompt}`;
   }
-  content.push({ type: "text", text: prompt });
 
-  const { text } = await generateText({
-    model: getModel("mimo-v2.5"),
+  const content: UserContent = [{ type: "text", text: finalPrompt }];
+
+  const { text, reasoningText } = await generateText({
+    model: getModel("deepseek-v4-flash"),
     system,
     messages: [{ role: "user", content }],
   });
-  logger.info({ text }, "触发判定输出");
+  logger.info({ reasoningText, text }, "触发判定输出");
   const decision = parseTriggerDecisionText(text);
   return decision?.should_reply ?? false;
 }

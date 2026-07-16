@@ -112,36 +112,36 @@ async function processImageAssets(urls: string[]) {
   const resultMap = new Map<string, { path: string; description: string }>();
   if (urls.length === 0) return resultMap;
 
-  const assets = await Promise.all(
+  const downloaded = await Promise.all(
     urls.map(async (url) => {
       try {
         const { virtualPath, realPath } = await downloadToCache(url);
-        const blob = await compressImage(Bun.file(realPath));
-        return { url, path: virtualPath, blob };
+        return { url, virtualPath, realPath };
       } catch (error) {
         logger.error({ url, error }, "下载失败");
         return null;
       }
     }),
-  ).then((items) => items.filter((item) => item !== null));
+  );
 
-  const pathGroups = new Map<string, { blob: Blob; sourceUrls: string[] }>();
-  for (const asset of assets) {
-    const group = pathGroups.get(asset.path);
+  const pathMap = new Map<string, { realPath: string; sourceUrls: string[] }>();
+  for (const item of downloaded) {
+    if (!item) continue;
+    const group = pathMap.get(item.virtualPath);
     if (group) {
-      group.sourceUrls.push(asset.url);
+      group.sourceUrls.push(item.url);
     } else {
-      pathGroups.set(asset.path, { blob: asset.blob, sourceUrls: [asset.url] });
+      pathMap.set(item.virtualPath, { realPath: item.realPath, sourceUrls: [item.url] });
     }
   }
 
   await Promise.all(
-    Array.from(pathGroups.entries()).map(async ([path, { blob, sourceUrls }]) => {
+    Array.from(pathMap.entries()).map(async ([path, { realPath, sourceUrls }]) => {
       let description = await cache.get<string>(path);
       if (!description) {
         try {
-          description = await imageToText(blob);
-          description = description.trim();
+          const blob = await compressImage(Bun.file(realPath));
+          description = (await imageToText(blob)).trim();
           cache.set(path, description).catch((err) => {
             logger.error({ error: err }, "缓存图片描述失败");
           });
