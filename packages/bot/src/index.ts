@@ -215,134 +215,40 @@ function buildPrompt(batch: PendingMessage[], imageMap: Map<string, { path: stri
 }
 
 /**
- * 创建一个基于 debounce 的消息批处理调度器。
+ * 创建一个任务调度器。
+ * 只关心三件事：收集任务、收到 arm 信号时执行、对外提供队列快照。
+ * 防抖、触发条件判定等业务逻辑全部由调用方负责。
  *
- * 调度器维护一个缓存队列，将"是否触发"的决策拆成两段：
- * - hardTrigger：同步、廉价、每条消息都判断（如 at 机器人、管理员指令）
- * - softTrigger：异步、昂贵，仅在 debounce 静默期结束后判断一次（如 LLM 调度）
- *
- * 关键语义：
- * - 硬触发命中时立即 armed 并唤醒运行循环
- * - 未 armed 时，调度器仅启动一次软触发；软触发进行中到达的新消息只标记 dirty，
- *   等本轮决策完成后再自动重判（re-evaluate），保证整批至多触发一次昂贵判定
- * - 软触发通过 dispatchInFlight 单飞，避免并发判定与重复回复
- * - 队列长度超过 maxQueue 时丢弃最旧的消息
- * - 距离最后一条消息达到 debounceMs 后，将整批消息交给 process 函数处理
- *
- * @param process - 批处理回调，接收一批消息与触发时保存的上下文
- * @param debounceMs - 静默等待时间，超过该时间后才处理当前批次，默认 1000ms
- * @param maxQueue - 缓存队列最大长度，默认 30
- * @returns 暴露的 enqueue 与 run 方法
+ * @param process - 批处理回调，接收一批任务与触发时保存的上下文
+ * @param options.maxQueue - 队列最大长度，超容时丢弃最旧任务，默认 30
  */
-function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, debounceMs = 1000, maxQueue = 30) {
-  const cache: T[] = [];
+function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, options: { maxQueue?: number } = {}) {
+  const { maxQueue = 30 } = options;
+  const queue: T[] = [];
+
   let wake: (() => void) | null = null;
-  let lastMsgAt = 0;
-  let currentCtx: C | null = null;
   let armed = false;
-
-  let softTriggerFn: ((cache: T[], ctx: C) => Promise<boolean>) | null = null;
-  let dispatchInFlight = false;
-  let dispatchDirty = false;
+  let currentCtx: C | null = null;
 
   /**
-   * 软触发决策循环：等待静默期 → 调用昂贵判定 → 若期间有新消息且仍未硬触发则重判。
-   * 用循环而非递归，避免与外层 finally 的执行顺序产生竞态。
-   */
-  async function softDecisionLoop(ctx: C) {
-    while (true) {
-      if (!softTriggerFn) return;
-      while (Date.now() - lastMsgAt < debounceMs) {
-        await Bun.sleep(100);
-      }
-      if (armed) return;
-      dispatchDirty = false;
-      const should = await softTriggerFn([...cache], ctx);
-      if (dispatchDirty && !armed) continue;
-      if (should && !armed) {
-        armed = true;
-        currentCtx = ctx;
-        if (wake) {
-          wake();
-          wake = null;
-        }
-      }
-      return;
-    }
-  }
-
-  function ensureSoftRunning(ctx: C) {
-    if (dispatchInFlight || !softTriggerFn) return;
-    dispatchInFlight = true;
-    softDecisionLoop(ctx)
-      .catch((err) => logger.error({ error: err }, "soft dispatch 失败"))
-      .finally(() => {
-        dispatchInFlight = false;
-      });
-  }
-
-  /**
-   * 将一条消息加入队列。
-   *
-   * @param item - 待入队的消息
-   * @param ctx - 当前事件上下文，硬触发会覆盖既有上下文
-   * @param options.hardTrigger - 同步判断是否触发（如 at 机器人）
-   * @param options.softTrigger - 异步昂贵判断（如 LLM 调度），静默期结束后才被调用
-   */
-  async function enqueue(
-    item: T,
-    ctx: C,
-    options?: {
-      hardTrigger?: (cache: T[], item: T, ctx: C) => boolean;
-      softTrigger?: (cache: T[], ctx: C) => Promise<boolean>;
-    },
-  ) {
-    const hard = options?.hardTrigger?.(cache, item, ctx) ?? false;
-    if (hard) currentCtx = ctx;
-    else if (!currentCtx) currentCtx = ctx;
-    while (cache.length > maxQueue) {
-      cache.shift();
-    }
-    cache.push(item);
-    if (hard) {
-      armed = true;
-      lastMsgAt = Date.now();
-      if (wake) {
-        wake();
-        wake = null;
-      }
-      return;
-    }
-    lastMsgAt = Date.now();
-    if (armed) return;
-    softTriggerFn = options?.softTrigger ?? softTriggerFn;
-    if (!softTriggerFn) return;
-    if (dispatchInFlight) dispatchDirty = true;
-    else ensureSoftRunning(ctx);
-  }
-
-  /**
-   * 启动调度器主循环。
-   *
-   * 当队列空或未 armed 时挂起等待唤醒；armed 后等待 debounce 静默期，
-   * 随后将整批消息连同上下文交给 process 处理，处理异常会被捕获并记录。
+   * 主循环：未 armed 时挂起等待；收到 arm 后取出整批任务交给 process 处理。
    */
   async function run() {
     while (true) {
-      if (cache.length === 0 || !armed) {
+      if (!armed) {
         await new Promise<void>((r) => {
           wake = r;
         });
       }
-      while (Date.now() - lastMsgAt < debounceMs) {
-        await Bun.sleep(100);
-      }
-      if (!armed) continue;
-      const batch = cache.splice(0);
+
+      const batch = queue.splice(0);
       const ctx = currentCtx;
-      currentCtx = null;
+
       armed = false;
+      currentCtx = null;
+
       if (batch.length === 0 || !ctx) continue;
+
       try {
         await process(batch, ctx);
       } catch (error) {
@@ -351,7 +257,33 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, d
     }
   }
 
-  return { enqueue, run };
+  function enqueue(item: T, ctx: C) {
+    while (queue.length >= maxQueue) {
+      queue.shift();
+    }
+    queue.push(item);
+  }
+
+  /**
+   * 触发执行：通知调度器消费当前队列中的全部消息。
+   */
+  function arm(ctx: C) {
+    armed = true;
+    currentCtx = ctx;
+    if (wake) {
+      wake();
+      wake = null;
+    }
+  }
+
+  /**
+   * 返回当前队列的只读快照，供调用方异步判定是否满足触发条件。
+   */
+  function snapshot() {
+    return [...queue];
+  }
+
+  return { enqueue, arm, snapshot, run };
 }
 
 /**
@@ -369,12 +301,6 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, d
 function createBot(sessionId: string) {
   const log = logger.child({ sessionId });
 
-  /**
-   * 处理一批待处理消息：提取图片、构建 prompt、执行规划与回复。
-   *
-   * @param batch - 当前批次中待处理的消息集合
-   * @param ctx - OneBot 事件上下文，用于回复消息
-   */
   async function processBatch(batch: PendingMessage[], ctx: OneBotEventContext<OneBotMessageEvent>) {
     const urls = new Set<string>();
 
@@ -399,18 +325,76 @@ function createBot(sessionId: string) {
       }
     });
     await submitReply(replyText);
-    // await runMain(prompt, async (segments) => {
-    //   for (const seg of segments) {
-    //     await ctx.reply(seg);
-    //     await Bun.sleep(500);
-    //   }
-    // });
   }
 
-  const scheduler = createScheduler(processBatch);
+  const scheduler = createScheduler(processBatch, { maxQueue: 30 });
   scheduler.run().catch((error) => log.error({ error }, "scheduler 运行失败"));
 
-  return { enqueue: scheduler.enqueue };
+  const debounceMs = 1000;
+  let lastMsgAt = Date.now();
+  let dirty = false;
+  let evaluating = false;
+  let forceArm = false;
+
+  /**
+   * 统一的防抖与评估循环：
+   * 1. 等待防抖静默期
+   * 2. 若 forceArm 为 true，直接 arm 执行
+   * 3. 否则进行软触发评估（dispatchMessage）
+   * 4. 若期间有新消息到达，重新评估
+   *
+   * 通过 evaluating 互斥锁保证至多一个评估循环在运行，避免并发判定。
+   */
+  async function evaluationLoop(ctx: OneBotEventContext<OneBotMessageEvent>) {
+    if (evaluating) {
+      dirty = true;
+      return;
+    }
+    evaluating = true;
+
+    try {
+      while (true) {
+        while (Date.now() - lastMsgAt < debounceMs) {
+          await Bun.sleep(100);
+        }
+
+        dirty = false;
+        const queueSnapshot = scheduler.snapshot();
+        if (queueSnapshot.length === 0) break;
+
+        if (forceArm) {
+          forceArm = false;
+          scheduler.arm(ctx);
+          break;
+        }
+
+        const shouldTrigger = queueSnapshot.length >= 5 && (await dispatchMessage(queueSnapshot));
+
+        if (shouldTrigger) {
+          scheduler.arm(ctx);
+          break;
+        }
+
+        if (dirty || forceArm) continue;
+        break;
+      }
+    } catch (err) {
+      log.error({ error: err }, "触发判定失败");
+    } finally {
+      evaluating = false;
+    }
+  }
+
+  return {
+    enqueue: (message: PendingMessage, ctx: OneBotEventContext<OneBotMessageEvent>) => {
+      scheduler.enqueue(message, ctx);
+      lastMsgAt = Date.now();
+
+      if (message.isAt) forceArm = true;
+
+      evaluationLoop(ctx).catch((err) => log.error({ error: err }, "dispatch 失败"));
+    },
+  };
 }
 
 async function handleCommand(
@@ -568,13 +552,7 @@ if (import.meta.main) {
         isAt,
         isAdmin,
       };
-      await getBot(sessionId).enqueue(message, ctx, {
-        hardTrigger: (_cache, item) => item.isAt,
-        async softTrigger(cache) {
-          if (cache.length < 5) return false;
-          return await dispatchMessage(cache);
-        },
-      });
+      getBot(sessionId).enqueue(message, ctx);
     } catch (error) {
       logger.error({ sessionId, error }, "消息解析或入队失败");
     }
