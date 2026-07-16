@@ -170,20 +170,20 @@ export async function dispatchMessage(pendingMessages: PendingMessage[]) {
 
   const history = await loadMainHistory();
 
-  const historyText: string[] = [];
-  history.slice(-20).forEach((msg) => {
-    if (msg.content instanceof Array) return;
-    historyText.push(`<message role="${msg.role === "assistant" ? "你" : msg.role}">\n${msg.content}\n</message>`);
-  });
+  const filteredHistory: ModelMessage[] = [];
+  const maxHistoryCount = 20;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (filteredHistory.length >= maxHistoryCount) break;
+    const msg = history[i]!;
+    if (msg.role === "assistant") {
+      if (typeof msg.content === "string") filteredHistory.push(msg);
+    } else if (msg.role === "user") {
+      filteredHistory.push(msg);
+    }
+  }
+  filteredHistory.reverse();
 
-  let finalPrompt =
-    `${triggerPrompt.trim()}\n\n` +
-    `<history>\n` +
-    `  ${historyText.join("\n\n").trim()}\n` +
-    `</history>\n` +
-    `<conversation>\n` +
-    `  ${conversation.trim()}\n` +
-    `</conversation>`;
+  let finalPrompt = `${triggerPrompt.trim()}\n\n<conversation>\n${conversation.trim()}\n</conversation>`;
 
   // 去重并格式化图片描述，与 index.ts 中的 buildPrompt 逻辑保持一致
   const uniqueImages = Array.from(new Map(imageMap.values().map((img) => [img.path, img])).values());
@@ -204,7 +204,7 @@ export async function dispatchMessage(pendingMessages: PendingMessage[]) {
   const { text, reasoningText } = await generateText({
     model: getModel("deepseek-v4-flash"),
     system,
-    messages: [{ role: "user", content }],
+    messages: [...filteredHistory, { role: "user", content }],
   });
   logger.info({ reasoningText, text }, "触发判定输出");
   const decision = parseTriggerDecisionText(text);
