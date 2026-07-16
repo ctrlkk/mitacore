@@ -1,32 +1,13 @@
-/**
- * 豆包 AI — 图片生成 HTTP 服务
- *
- * 用 Playwright 驱动真实浏览器访问 https://www.doubao.com/chat/，
- * 拦截 /chat/completion 的 SSE 响应，从中提取生成的图片 URL。
- *
- * 启动：
- *   node server.ts                    # 本地模式（Windows / 桌面 Linux）
- *   NOVNC=1 node server.ts            # VNC 模式：自动拉起 Xvfb，浏览器不最小化
- *
- * 调优（/page/screenshot 慢的时候）：
- *   VIEW_QUALITY=40          JPEG 质量（默认 55，30-75）
- *
- * API：
- *   GET  /health
- *   GET  /page/screenshot?full=false   JPEG 截图
- *   POST /generate  form: prompt, images...   生成图片
- */
-
+import type { BrowserContext, Page } from "playwright";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { serve } from "@hono/node-server";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import type { BrowserContext, Page } from "playwright";
 import { chromium } from "playwright-extra";
+import { z } from "zod";
 import stealth from "puppeteer-extra-plugin-stealth";
 import PQueue from "p-queue";
-import { z } from "zod";
 
 chromium.use(stealth());
 
@@ -335,9 +316,7 @@ async function deleteCurrentConversation(page: Page): Promise<void> {
 async function main(): Promise<void> {
   await maybeStartXvfb();
 
-  const browserStuff = await setupBrowser(false, false);
-  const context = browserStuff.context;
-  const page = browserStuff.page;
+  const { context, page } = await setupBrowser(false, false);
 
   // 用 init_script 注入强杀动画 CSS，每次跳转/刷新都自动生效
   if (INJECT_NO_ANIM) {
