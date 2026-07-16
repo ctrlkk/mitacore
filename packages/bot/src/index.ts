@@ -66,6 +66,7 @@ export interface PendingMessage {
   date: Date;
   isAt: boolean;
   isAdmin: boolean;
+  evaluated?: boolean;
 }
 
 /**
@@ -336,15 +337,6 @@ function createBot(sessionId: string) {
   let evaluating = false;
   let forceArm = false;
 
-  /**
-   * 统一的防抖与评估循环：
-   * 1. 等待防抖静默期
-   * 2. 若 forceArm 为 true，直接 arm 执行
-   * 3. 否则进行软触发评估（dispatchMessage）
-   * 4. 若期间有新消息到达，重新评估
-   *
-   * 通过 evaluating 互斥锁保证至多一个评估循环在运行，避免并发判定。
-   */
   async function evaluationLoop(ctx: OneBotEventContext<OneBotMessageEvent>) {
     if (evaluating) {
       dirty = true;
@@ -358,24 +350,33 @@ function createBot(sessionId: string) {
           await Bun.sleep(100);
         }
 
-        dirty = false;
-        const queueSnapshot = scheduler.snapshot();
-        if (queueSnapshot.length === 0) break;
-
         if (forceArm) {
           forceArm = false;
           scheduler.arm(ctx);
           break;
         }
 
-        const shouldTrigger = queueSnapshot.length >= 5 && (await dispatchMessage(queueSnapshot));
+        const queueSnapshot = scheduler.snapshot();
+        if (queueSnapshot.length === 0) break;
 
-        if (shouldTrigger) {
-          scheduler.arm(ctx);
-          break;
+        const unprocessed = queueSnapshot.filter((msg) => !msg.evaluated);
+        if (unprocessed.length >= 5) {
+          for (const msg of unprocessed) {
+            msg.evaluated = true;
+          }
+
+          log.info("触发判定输入");
+          const shouldTrigger = await dispatchMessage(queueSnapshot);
+          if (shouldTrigger) {
+            scheduler.arm(ctx);
+            break;
+          }
         }
 
-        if (dirty || forceArm) continue;
+        if (dirty) {
+          dirty = false;
+          continue;
+        }
         break;
       }
     } catch (err) {
@@ -387,8 +388,10 @@ function createBot(sessionId: string) {
 
   return {
     enqueue: (message: PendingMessage, ctx: OneBotEventContext<OneBotMessageEvent>) => {
+      message.evaluated = false;
       scheduler.enqueue(message, ctx);
       lastMsgAt = Date.now();
+      dirty = true;
 
       if (message.isAt) forceArm = true;
 

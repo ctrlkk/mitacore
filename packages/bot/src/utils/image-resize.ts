@@ -21,43 +21,7 @@ function findFfmpeg(): string | null {
  * 使用 ffmpeg 缩放 GIF，保留动画
  */
 async function resizeGif(file: BunFile): Promise<Blob> {
-  const ffmpeg = findFfmpeg();
-  if (!ffmpeg) {
-    logger.warn("未找到 ffmpeg，GIF 将不压缩直接使用");
-    return file;
-  }
-
-  const scaleFilter = `scale='if(gt(iw,${MAX_DIM}),${MAX_DIM},iw)':-1`;
-  const filterComplex = `[0:v] ${scaleFilter},split [a][b];[a] palettegen [p];[b][p] paletteuse`;
-
-  const proc = Bun.spawn({
-    cmd: [ffmpeg, "-i", "pipe:0", "-lavfi", filterComplex, "-f", "gif", "pipe:1"],
-    stdin: file, // 直接将 BunFile 作为输入流，零拷贝传给 ffmpeg
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  const [exitCode, stdout, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).blob(),
-    new Response(proc.stderr).text(),
-  ]);
-
-  if (exitCode !== 0) {
-    logger.warn({ exitCode, stderrPreview: stderr.slice(0, 200) }, "ffmpeg 缩放 GIF 失败");
-    return file;
-  }
-
-  logger.debug(
-    {
-      file: file.name,
-      originalBytes: file.size,
-      compressedBytes: stdout.size,
-      savedPercent: Number(((1 - stdout.size / file.size) * 100).toFixed(1)),
-    },
-    "GIF 压缩",
-  );
-  return stdout.size < file.size ? stdout : file;
+  return file;
 }
 
 /**

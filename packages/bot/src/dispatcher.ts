@@ -1,12 +1,17 @@
 import type { PendingMessage, UnifiedInboundMessage } from ".";
-import { generateText, type ModelMessage } from "ai";
+import { generateText, type ModelMessage, type UserContent } from "ai";
 import { dataPath, projectPath } from "./utils/path";
 import { readFile } from "node:fs/promises";
 import { getModel } from "./model";
+import { downloadToCache } from "@/utils/image-cache";
+import { blobToDataURL } from "./utils/blob";
 import { logger } from "@/logger";
 import dayjs from "dayjs";
 
-const formatSegments = (segments: UnifiedInboundMessage[]): string => {
+const formatSegments = (
+  segments: UnifiedInboundMessage[],
+  imageMap: Map<string, { path: string; blob: Blob }>,
+): string => {
   const parts: string[] = [];
   for (const seg of segments) {
     if (seg.type === "text") {
@@ -14,9 +19,14 @@ const formatSegments = (segments: UnifiedInboundMessage[]): string => {
     } else if (seg.type === "at") {
       if (seg.data.nickname) parts.push(`@${seg.data.nickname}`);
     } else if (seg.type === "image") {
-      parts.push("[图片]");
+      const img = imageMap.get(seg.data.url);
+      if (img && img.path) {
+        parts.push(`\`${img.path}\``);
+      } else {
+        parts.push("[图片]");
+      }
     } else if (seg.type === "reply") {
-      const inner = formatSegments(seg.data.segments);
+      const inner = formatSegments(seg.data.segments, imageMap);
       parts.push(`<reply nickname="${seg.data.nickname}">${inner}</reply>`);
     }
   }
@@ -50,13 +60,19 @@ function parseTriggerDecisionText(text: string) {
   const xmlStart = text.indexOf("<trigger_decision");
   const xmlEnd = text.lastIndexOf("</trigger_decision>");
   if (xmlStart < 0 || xmlEnd <= xmlStart) {
-    logger.warn({ error: "未找到 <trigger_decision> 根标签", outputPreview: text.slice(0, 500) }, "触发判定输出解析失败");
+    logger.warn(
+      { error: "未找到 <trigger_decision> 根标签", outputPreview: text.slice(0, 500) },
+      "触发判定输出解析失败",
+    );
     return null;
   }
   const block = text.slice(xmlStart, xmlEnd + "</trigger_decision>".length);
   const decision = parseTriggerDecisionXml(block);
   if (!decision) {
-    logger.warn({ error: "候选 XML 缺少 <should_reply> 字段", outputPreview: text.slice(0, 500) }, "触发判定输出解析失败");
+    logger.warn(
+      { error: "候选 XML 缺少 <should_reply> 字段", outputPreview: text.slice(0, 500) },
+      "触发判定输出解析失败",
+    );
     return null;
   }
   return decision;
@@ -66,6 +82,32 @@ export async function dispatchMessage(cache: PendingMessage[]) {
   const rolePrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
   const { default: triggerPrompt } = await import("./prompts/trigger.txt");
   const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
+
+  const urls = new Set<string>();
+  const extractImage = (segments: UnifiedInboundMessage[]) => {
+    for (const seg of segments) {
+      if (seg.type === "image") urls.add(seg.data.url);
+      else if (seg.type === "reply") extractImage(seg.data.segments);
+    }
+  };
+  for (const msg of cache) {
+    extractImage(msg.unifiedMessages);
+  }
+
+  const imageMap = new Map<string, { path: string; blob: Blob }>();
+  if (urls.size > 0) {
+    await Promise.all(
+      Array.from(urls).map(async (url) => {
+        try {
+          const { virtualPath, realPath } = await downloadToCache(url);
+          const compressed = await new Bun.Image(Bun.file(realPath)).webp({ quality: 80 }).blob();
+          imageMap.set(url, { path: virtualPath, blob: compressed });
+        } catch {
+          // skip
+        }
+      }),
+    );
+  }
 
   const system = [
     "<capabilities>",
@@ -85,7 +127,7 @@ export async function dispatchMessage(cache: PendingMessage[]) {
 
   const conversation = cache
     .map((msg) => {
-      const text = formatSegments(msg.unifiedMessages);
+      const text = formatSegments(msg.unifiedMessages, imageMap);
       return `<message user_id="${msg.userId}" nickname="${msg.nickname}" date="${dayjs(msg.date).format("MM-DD HH:mm")}">\n${text}\n</message>`;
     })
     .join("\n\n");
@@ -107,12 +149,26 @@ export async function dispatchMessage(cache: PendingMessage[]) {
     `  ${conversation.trim()}\n` +
     `</conversation>`;
 
+  const labeledImages = await Promise.all(
+    Array.from(imageMap.entries()).map(async ([url, { path, blob }]) => ({
+      path,
+      data: await blobToDataURL(blob),
+    })),
+  );
+
+  const content: UserContent = [];
+  for (const { path, data } of labeledImages) {
+    content.push({ type: "text", text: `图片: ${path}` });
+    content.push({ type: "image", image: data });
+  }
+  content.push({ type: "text", text: prompt });
+
   const { text } = await generateText({
-    model: getModel("deepseek-v4-flash"),
+    model: getModel("mimo-v2.5"),
     system,
-    prompt,
+    messages: [{ role: "user", content }],
   });
-  logger.debug({ text }, "触发判定输出");
+  logger.info({ text }, "触发判定输出");
   const decision = parseTriggerDecisionText(text);
   return decision?.should_reply ?? false;
 }
