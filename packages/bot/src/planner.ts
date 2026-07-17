@@ -1,4 +1,5 @@
-import { generateText, tool, type ModelMessage, type ToolSet } from "ai";
+import { type ChatHistory, migrateHistory, toModelMessages } from "@/types/chat-history";
+import { generateText, tool, type LanguageModelUsage, type ToolSet } from "ai";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { getModel } from "@/model";
@@ -6,6 +7,7 @@ import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { imageGen } from "./tools/image-gen";
+import { compactHistory, isOverflow } from "./compaction";
 
 const submitPlanTool = tool({
   description: "提交本轮回复策略，包含语气、角度、要点、长度、工具调用等",
@@ -14,15 +16,16 @@ const submitPlanTool = tool({
   }),
 });
 
-async function loadPlannerHistory(): Promise<ModelMessage[]> {
+async function loadPlannerHistory(): Promise<ChatHistory> {
   try {
-    return JSON.parse(await readFile(dataPath("planner.json"), "utf8"));
+    const raw = JSON.parse(await readFile(dataPath("planner.json"), "utf8"));
+    return migrateHistory(raw);
   } catch {
     return [];
   }
 }
 
-async function savePlannerHistory(history: ModelMessage[], log: PinoLogger = logger) {
+async function savePlannerHistory(history: ChatHistory, log: PinoLogger = logger) {
   try {
     await mkdir(dataPath(), { recursive: true });
     await writeFile(dataPath("planner.json"), JSON.stringify(history, null, 2));
@@ -44,13 +47,20 @@ interface PlannerResult {
  * @returns plan + submitReply 回调（调用后把完整 messages 持久化到 .cache/planner.json）
  */
 export async function runPlanner(userInputMessage: string, log: PinoLogger = logger): Promise<PlannerResult> {
-  const history = await loadPlannerHistory();
-  const messages: ModelMessage[] = [...history, { role: "user", content: userInputMessage }];
+  let messages: ChatHistory = await loadPlannerHistory();
+
+  // 新增本次用户输入作为一条 record
+  messages.push({
+    message: { role: "user", content: userInputMessage },
+    timestamp: Date.now(),
+  });
   const model = getModel(config.models.plan);
 
   let planText = "";
-  let reasoningText = "";
+  let reasoning: string[] = [];
   let toolCallId: string | undefined;
+
+  let usage: LanguageModelUsage | undefined;
 
   const { default: planPrompt } = await import("./prompts/plan.txt");
   const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
@@ -78,17 +88,23 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
     const result = await generateText({
       model,
       system,
-      messages,
+      messages: toModelMessages(messages),
       tools,
     });
 
-    if (result.reasoning) {
-      log.info({ reasoning: result.reasoningText, step }, "内部思考");
-      if (result.reasoningText) reasoningText += (reasoningText ? "\n\n" : "") + result.reasoningText;
-    }
-    if (result.text) log.info({ text: result.text, step }, "助手响应");
+    log.info({ reasoningText: result.reasoningText, text: result.text, step }, "plan响应");
+    if (result.reasoningText) reasoning.push(result.reasoningText);
+    usage = result.usage;
 
-    messages.push(...result.response.messages);
+    // 把该 step 产出的消息追加为 ChatRecord，首条带 usage
+    const stepMsgs = result.response.messages;
+    stepMsgs.forEach((msg, i) => {
+      messages.push({
+        message: msg,
+        timestamp: Date.now(),
+        usage: i === 0 ? result.usage : undefined,
+      });
+    });
 
     const submitCall = result.toolCalls.find((tc) => tc.toolName === "submit_plan");
     if (submitCall) {
@@ -103,23 +119,33 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
   log.info({ plan: planText }, "规划层 plan");
 
   const submitReply = async (replyText: string): Promise<void> => {
-    const finalMessages: ModelMessage[] = messages;
-    finalMessages.push(
+    messages.push(
       {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: toolCallId ?? "submit_plan",
-            toolName: "submit_plan",
-            output: { type: "text", value: replyText },
-          },
-        ],
+        message: {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: toolCallId ?? "submit_plan",
+              toolName: "submit_plan",
+              output: { type: "text", value: replyText },
+            },
+          ],
+        },
+        timestamp: Date.now(),
       },
-      { role: "assistant", content: "[Done]" },
+      {
+        message: { role: "assistant", content: "[Done]" },
+        timestamp: Date.now(),
+      },
     );
-    await savePlannerHistory(finalMessages, log);
+
+    if (isOverflow(usage)) {
+      log.info("检测到上下文溢出，开始执行压缩...");
+      messages = await compactHistory(model, system, messages, undefined, log);
+    }
+    await savePlannerHistory(messages, log);
   };
 
-  return { plan: planText, reasoning: reasoningText, submitReply };
+  return { plan: planText, reasoning: reasoning.join("\n"), submitReply };
 }
