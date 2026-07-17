@@ -123,7 +123,7 @@ async function processImageAssets(urls: string[]): Promise<ImageMap> {
   const downloaded = await Promise.all(
     urls.map(async (url) => {
       try {
-        const { virtualPath, realPath } = await downloadToCache(url);
+        const { virtualPath, realPath } = await downloadToCache(url, { limit: 5 * 1024 * 1024 });
         return { url, virtualPath, realPath };
       } catch (error) {
         logger.error({ url, error }, "下载失败");

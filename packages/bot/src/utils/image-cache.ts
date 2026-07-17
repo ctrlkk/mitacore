@@ -1,10 +1,11 @@
-import { readFile, mkdir, rename, unlink } from "node:fs/promises";
-import { resolve, parse, basename, posix, join } from "node:path";
+import { mkdir, rename, unlink } from "node:fs/promises";
+import { resolve, basename, posix, join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { extension } from "mime-types";
-import { download, blobToDataURL } from "./blob";
 import { dataPath } from "./path";
 import bs58 from "bs58";
+import { createWriteStream } from "node:fs";
+import { finished } from "node:stream/promises";
 
 /** 图片缓存的真实文件系统目录 */
 const IMAGE_CACHE_DIR = dataPath("images");
@@ -37,85 +38,56 @@ function realToVirtualPath(filename: string): string {
 }
 
 /**
- * Buffer → Base64 Data URL
- * 统一的 base64 编码逻辑，替换 images.ts 中贴纸/缓存图片两处重复代码
+ * 类型守卫：判断未知错误是否为 Node.js 文件系统冲突错误 (EPERM / EEXIST)
  */
-function bufferToDataUrl(buffer: Buffer, filename: string): string {
-  const ext = parse(filename).ext.slice(1); // "png" | "jpg" | ...
-  const mime = ext === "jpg" ? "jpeg" : ext;
-  return `data:image/${mime};base64,${buffer.toString("base64")}`;
-}
-
-/**
- * 从缓存目录读取图片并转为 Data URL
- * 若文件不存在返回 null
- */
-export async function readCachedImageAsDataUrl(virtualPath: string): Promise<string | null> {
-  const realPath = virtualToRealPath(virtualPath);
-  try {
-    const buffer = await readFile(realPath);
-    const filename = basename(virtualPath);
-    return bufferToDataUrl(buffer, filename);
-  } catch {
-    return null;
+function isFsConflictError(err: unknown): boolean {
+  if (err instanceof Error && "code" in err) {
+    const sysErr = err as NodeJS.ErrnoException;
+    return sysErr.code === "EPERM" || sysErr.code === "EEXIST";
   }
-}
-
-/**
- * 下载远程图片并转换为 base64 Data URL
- * @param url 远程图片链接
- * @returns base64 Data URL，失败返回 null
- */
-export async function downloadImageAsDataUrl(url: string): Promise<string | null> {
-  try {
-    const blob = await download(url, { limit: 3 * 1024 * 1024 });
-    const dataUrl = await blobToDataURL(blob);
-    return dataUrl;
-  } catch {
-    return null;
-  }
+  return false;
 }
 
 export async function downloadToCache(url: string, option: { limit?: number } = {}) {
   const limit = option.limit ?? 20 * 1024 * 1024; // 20 MB
 
   const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
-  if (!response.body) {
-    throw new Error("空的响应体");
-  }
+  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+  if (!response.body) throw new Error("空的响应体");
 
   const contentType = response.headers.get("content-type") || undefined;
   const ext = (contentType ? extension(contentType) : false) || "jpg";
 
   await mkdir(IMAGE_CACHE_DIR, { recursive: true });
-  const tempFilename = `${randomUUID()}.download`;
+  const tempFilename = `${randomUUID()}.${ext}.tmp`;
   const tempPath = join(IMAGE_CACHE_DIR, tempFilename);
 
-  const sink = Bun.file(tempPath).writer();
+  const stream = createWriteStream(tempPath);
   const hasher = createHash("sha256");
-  const reader = response.body.getReader();
   let receivedLength = 0;
 
+  let isStreamFinished = false; // 标记网络流和文件流是否正常结束
+  let isFileFinalized = false; // 标记临时文件是否已成功处理(rename 或 冲突清理)
+
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    for await (const chunk of response.body) {
+      receivedLength += chunk.length;
 
-      // 边写盘边算 hash
-      sink.write(value);
-      hasher.update(value);
-
-      receivedLength += value.length;
       if (receivedLength > limit) {
-        await reader.cancel();
+        if (response.body.cancel) {
+          await response.body.cancel("文件大小超过限制");
+        }
+        stream.destroy(new Error(`下载大小超过限制: ${receivedLength} > ${limit}`));
         throw new Error(`下载大小超过限制: ${receivedLength} > ${limit}`);
       }
+
+      stream.write(chunk);
+      hasher.update(chunk);
     }
 
-    await sink.end();
+    // 确保数据完全刷入磁盘
+    await finished(stream.end());
+    isStreamFinished = true;
 
     const hashHex = hasher.digest("hex").slice(0, 12);
     const encoded = bs58.encode(Buffer.from(hashHex, "hex"));
@@ -124,16 +96,29 @@ export async function downloadToCache(url: string, option: { limit?: number } = 
 
     try {
       await rename(tempPath, finalPath);
-    } catch {
+    } catch (err: unknown) {
+      if (!isFsConflictError(err)) {
+        throw err;
+      }
       await unlink(tempPath);
     }
+
+    // 只有执行到这里（rename 成功，或冲突被妥善处理），文件才算真正落地
+    isFileFinalized = true;
+
     return {
       virtualPath: realToVirtualPath(finalFilename),
       realPath: finalPath,
     };
-  } catch (err) {
-    await sink.end();
-    await unlink(tempPath);
+  } catch (err: unknown) {
+    if (!isStreamFinished) {
+      const destroyErr = err instanceof Error ? err : undefined;
+      stream.destroy(destroyErr);
+    }
     throw err;
+  } finally {
+    if (!isFileFinalized) {
+      await unlink(tempPath);
+    }
   }
 }

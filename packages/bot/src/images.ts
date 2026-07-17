@@ -1,6 +1,8 @@
 import { marked, type Token } from "marked";
-import { sanitizeImagePath, readCachedImageAsDataUrl, downloadImageAsDataUrl } from "./utils/image-cache";
+import { sanitizeImagePath, virtualToRealPath } from "./utils/image-cache";
 import { resolveStickerImage } from "./utils/stickers";
+import { blobToDataURL, download } from "./utils/blob";
+import { pathToFileURL } from "node:url";
 
 interface ImagePart {
   type: "image";
@@ -53,14 +55,17 @@ async function resolveImage(href: string, alt?: string): Promise<ImagePart | nul
   if (href.startsWith("sticker:")) {
     return resolveStickerImage(href, alt);
   } else if (/^https?:\/\//i.test(href)) {
-    const dataUrl = await downloadImageAsDataUrl(href);
+    const dataUrl = await download(href, { limit: 3 * 1024 * 1024 })
+      .then(blobToDataURL)
+      .catch(() => null);
     if (dataUrl) {
       return { type: "image", raw: `![${alt ?? ""}](${href})`, data: { file: dataUrl, url: dataUrl } };
     }
     return null;
   } else {
     const virtualPath = sanitizeImagePath(href);
-    const dataUrl = await readCachedImageAsDataUrl(virtualPath);
+    const blob = await fetch(pathToFileURL(virtualToRealPath(virtualPath))).then((r) => r.blob());
+    const dataUrl = await blobToDataURL(blob);
     if (dataUrl) {
       return { type: "image", raw: `![${alt ?? ""}](${virtualPath})`, data: { file: dataUrl, url: dataUrl } };
     }
