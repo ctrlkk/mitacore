@@ -1,15 +1,23 @@
 import { join } from "node:path";
 import { requirePkgs } from "../packages/playwright/scripts/build";
-import fs from "node:fs";
+import { rm, mkdir, copyFile, readFile, writeFile, access, stat, chmod, readdir, cp } from "node:fs/promises";
 
 const root = join(import.meta.dir, "..");
 const outDir = join(root, "dist");
 
 const exeExt = process.platform === "win32" ? ".exe" : "";
 
-// 清理路径（删除目录或文件）
-function clean(p: string) {
-  if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+/**
+ * 执行子进程，如果退出码非 0 则抛出异常
+ */
+async function runCmd(cmd: string[], cwd: string) {
+  const proc = Bun.spawn({
+    cmd,
+    cwd,
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+  const code = await proc.exited;
+  if (code !== 0) throw new Error(`命令执行失败: ${cmd.join(" ")} (退出码: ${code})`);
 }
 
 /**
@@ -17,25 +25,23 @@ function clean(p: string) {
  */
 async function buildApp() {
   const bunBin = `app${exeExt}`;
+  const botDir = join(root, "packages", "bot");
 
   // 从 package.json 读 main 入口
-  const botDir = join(root, "packages", "bot");
-  const pkg = JSON.parse(fs.readFileSync(join(botDir, "package.json"), "utf-8"));
+  const pkgRaw = await readFile(join(botDir, "package.json"), "utf-8");
+  const pkg = JSON.parse(pkgRaw);
   const bunEntry = join(botDir, pkg.module ?? "src/index.ts");
 
-  clean(join(outDir, bunBin));
+  // 清理旧产物 (force: true 确保路径不存在时不报错，省去 existsSync 判断)
+  await rm(join(outDir, bunBin), { force: true });
+  await rm(join(root, "build"), { recursive: true, force: true });
+  await rm(join(root, "pyrpc.spec"), { force: true });
 
-  const proc = Bun.spawn({
-    cmd: ["bun", "build", "--compile", "--define", "__STANDALONE__=true", "--outfile", join(outDir, bunBin), bunEntry],
-    cwd: root,
-    stdio: ["ignore", "inherit", "inherit"],
-  });
-  const code = await proc.exited;
-  if (code !== 0) throw new Error(`Bun 失败，退出码 ${code}`);
-
-  // 清理中间产物
-  clean(join(root, "build"));
-  clean(join(root, "pyrpc.spec"));
+  // 执行 Bun 编译
+  await runCmd(
+    ["bun", "build", "--compile", "--define", "__STANDALONE__=true", "--outfile", join(outDir, bunBin), bunEntry],
+    root,
+  );
 }
 
 /**
@@ -47,34 +53,36 @@ async function buildSidecar() {
   const pkgDir = join(root, "packages", "playwright");
   const bundleOut = join(sidecarDir, "playwright.cjs");
 
-  clean(join(sidecarDir, "node_modules"));
-  fs.mkdirSync(sidecarDir, { recursive: true });
+  // 清理旧依赖并创建目录
+  await rm(join(sidecarDir, "node_modules"), { recursive: true, force: true });
+  await mkdir(sidecarDir, { recursive: true });
 
-  // 子包自管打包：产物输出到 packages/playwright/dist/playwright.cjs
-  const buildProc = Bun.spawn({
-    cmd: ["bun", "run", "build"],
-    cwd: pkgDir,
-    stdio: ["ignore", "inherit", "inherit"],
-  });
-  const buildCode = await buildProc.exited;
-  if (buildCode !== 0) throw new Error(`子包 build 失败，退出码 ${buildCode}`);
+  // 子包自管打包
+  await runCmd(["bun", "run", "build"], pkgDir);
 
+  // 复制产物
   const bundleSrc = join(pkgDir, "dist", "playwright.cjs");
-  if (!fs.existsSync(bundleSrc)) throw new Error(`找不到子包 build 产物：${bundleSrc}`);
-  fs.copyFileSync(bundleSrc, bundleOut);
+  try {
+    await access(bundleSrc);
+  } catch {
+    throw new Error(`找不到子包 build 产物：${bundleSrc}`);
+  }
+  await copyFile(bundleSrc, bundleOut);
 
-  // 生成最小 package.json：只包含 esbuild externalize 的直接依赖
-  // 它们的传递依赖（clone-deep / lazy-cache / kind-of / chromium-bidi / ...）bun install 自动解析
-  const sidecarPkg = JSON.parse(fs.readFileSync(join(pkgDir, "package.json"), "utf-8")) as {
+  // 生成最小 package.json
+  const pkgRaw = await readFile(join(pkgDir, "package.json"), "utf-8");
+  const sidecarPkg = JSON.parse(pkgRaw) as {
     type?: string;
     dependencies?: Record<string, string>;
   };
+
   const runtimeDeps: Record<string, string> = {};
   for (const name of [...requirePkgs, "playwright"]) {
     const ver = sidecarPkg.dependencies?.[name];
     if (ver) runtimeDeps[name] = ver;
   }
-  fs.writeFileSync(
+
+  await writeFile(
     join(sidecarDir, "package.json"),
     JSON.stringify(
       {
@@ -89,45 +97,37 @@ async function buildSidecar() {
   );
 
   // 安装运行时依赖
-  const installCmd = ["bun", "install", "--linker=hoisted", "--omit=dev", "--omit=peer"];
-  const installProc = Bun.spawn({
-    cmd: installCmd,
-    cwd: sidecarDir,
-    stdio: ["ignore", "inherit", "inherit"],
-  });
-  const installCode = await installProc.exited;
-  if (installCode !== 0) throw new Error(`Install 失败，退出码 ${installCode}`);
+  await runCmd(["bun", "install", "--linker=hoisted", "--omit=dev", "--omit=peer"], sidecarDir);
 }
 
+/**
+ * 复制所需的外部二进制文件到输出目录的 bin 子目录
+ */
 async function copyBin() {
   const outBinDir = join(outDir, "bin");
+  const bins = ["node", "ffmpeg", "gifsicle"];
 
-  // 复制 Node 运行时到输出目录
-  const nodeBin = Bun.which("node");
-  if (!nodeBin) {
-    console.warn("找不到系统 node，跳过复制。请确保目标环境有 node。");
-    return;
-  }
-  fs.mkdirSync(outBinDir, { recursive: true });
-  const targetNodePath = join(outBinDir, `node${exeExt}`);
-  console.log(`复制 ${nodeBin} → ${targetNodePath}`);
-  fs.copyFileSync(nodeBin, targetNodePath);
-  // 非 Windows 环境补充执行权限 (rwxr-xr-x)
-  if (process.platform !== "win32") {
-    fs.chmodSync(targetNodePath, 0o755);
-  }
+  await mkdir(outBinDir, { recursive: true });
 
-  // 复制 ffmpeg 到输出目录（用于 GIF 压缩）
-  const ffmpegBin = Bun.which("ffmpeg");
-  if (ffmpegBin) {
-    const targetFfmpegPath = join(outBinDir, `ffmpeg${exeExt}`);
-    console.log(`复制 ${ffmpegBin} → ${targetFfmpegPath}`);
-    fs.copyFileSync(ffmpegBin, targetFfmpegPath);
-    if (process.platform !== "win32") {
-      fs.chmodSync(targetFfmpegPath, 0o755);
+  for (const name of bins) {
+    const srcPath = Bun.which(name);
+    if (!srcPath) {
+      console.warn(`找不到系统 ${name}，跳过复制。请确保目标环境有 ${name}。`);
+      continue;
     }
-  } else {
-    console.warn("找不到系统 ffmpeg，跳过复制。请确保目标环境有 ffmpeg。");
+
+    const targetPath = join(outBinDir, `${name}${exeExt}`);
+    console.log(`复制 ${srcPath} → ${targetPath}`);
+
+    try {
+      await copyFile(srcPath, targetPath);
+      // 非 Windows 环境补充执行权限
+      if (process.platform !== "win32") {
+        await chmod(targetPath, 0o755);
+      }
+    } catch (error) {
+      console.warn(`复制 ${name} 失败:`, error);
+    }
   }
 }
 
@@ -142,31 +142,30 @@ async function copyAssets() {
   ];
 
   for (const { src, dest, label } of targets) {
-    if (!fs.existsSync(src)) {
+    try {
+      const stats = await stat(src);
+      // 确保目标父目录存在
+      await mkdir(join(dest, ".."), { recursive: true });
+      // node:fs/promises 的 cp 方法原生支持递归目录拷贝和文件拷贝，无需分类讨论
+      await cp(src, dest, { recursive: stats.isDirectory() });
+      console.log(`复制 ${label} → ${dest}`);
+    } catch {
       console.warn(`跳过：${label}（源不存在 ${src}）`);
-      continue;
     }
-    const stat = fs.statSync(src);
-    if (stat.isDirectory()) {
-      fs.cpSync(src, dest, { recursive: true });
-    } else {
-      fs.mkdirSync(join(dest, ".."), { recursive: true });
-      fs.copyFileSync(src, dest);
-    }
-    console.log(`复制 ${label} → ${dest}`);
   }
 }
 
-// 准备输出目录
-fs.mkdirSync(outDir, { recursive: true });
+console.log("==> 开始并行构建...\n");
+await mkdir(outDir, { recursive: true });
 
-// 并行构建
 await Promise.all([buildApp(), buildSidecar(), copyBin(), copyAssets()]);
 
 console.log("\n==> 构建完成：");
-for (const f of fs.readdirSync(outDir)) {
+const files = await readdir(outDir);
+for (const f of files) {
   const p = join(outDir, f);
-  if (!fs.statSync(p).isFile()) continue;
-  const mb = (fs.statSync(p).size / 1024 / 1024).toFixed(2);
+  const stats = await stat(p);
+  if (!stats.isFile()) continue;
+  const mb = (stats.size / 1024 / 1024).toFixed(2);
   console.log(` ${f.padEnd(15)} ${mb} MB`);
 }

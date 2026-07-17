@@ -1,20 +1,13 @@
-import type { PendingMessage, UnifiedInboundMessage } from ".";
+import type { ImageMap, PendingMessage, UnifiedInboundMessage } from ".";
 import { generateText, type ModelMessage, type UserContent } from "ai";
 import { dataPath, projectPath } from "./utils/path";
 import { readFile } from "node:fs/promises";
 import { getModel } from "./model";
-import { downloadToCache } from "@/utils/image-cache";
-import { compressImage } from "@/utils/image-resize";
-import { imageToText } from "@/multimedia";
-import { cache } from "@/utils/cache";
 import { logger } from "@/logger";
 import dayjs from "dayjs";
 import XMLBuilder from "fast-xml-builder";
 
-const formatSegments = (
-  segments: UnifiedInboundMessage[],
-  imageMap: Map<string, { path: string; description: string }>,
-): string => {
+const formatSegments = (segments: UnifiedInboundMessage[], imageMap: ImageMap): string => {
   const parts: string[] = [];
   for (const seg of segments) {
     if (seg.type === "text") {
@@ -81,69 +74,10 @@ function parseTriggerDecisionText(text: string) {
   return decision;
 }
 
-export async function dispatchMessage(pendingMessages: PendingMessage[]) {
+export async function dispatchMessage(pendingMessages: PendingMessage[], imageMap: ImageMap) {
   const rolePrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
   const { default: triggerPrompt } = await import("./prompts/trigger.txt");
   const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
-
-  const urls = new Set<string>();
-  const extractImage = (segments: UnifiedInboundMessage[]) => {
-    for (const seg of segments) {
-      if (seg.type === "image") urls.add(seg.data.url);
-      else if (seg.type === "reply") extractImage(seg.data.segments);
-    }
-  };
-  for (const msg of pendingMessages) {
-    extractImage(msg.unifiedMessages);
-  }
-
-  const imageMap = new Map<string, { path: string; description: string }>();
-  if (urls.size > 0) {
-    const downloaded = await Promise.all(
-      Array.from(urls).map(async (url) => {
-        try {
-          const { virtualPath, realPath } = await downloadToCache(url);
-          return { url, virtualPath, realPath };
-        } catch (error) {
-          logger.error({ url, error }, "下载失败");
-          return null;
-        }
-      }),
-    );
-
-    const pathMap = new Map<string, { realPath: string; sourceUrls: string[] }>();
-    for (const item of downloaded) {
-      if (!item) continue;
-      const group = pathMap.get(item.virtualPath);
-      if (group) {
-        group.sourceUrls.push(item.url);
-      } else {
-        pathMap.set(item.virtualPath, { realPath: item.realPath, sourceUrls: [item.url] });
-      }
-    }
-
-    await Promise.all(
-      Array.from(pathMap.entries()).map(async ([path, { realPath, sourceUrls }]) => {
-        let description = await cache.get<string>(path);
-        if (!description) {
-          try {
-            const blob = await compressImage(Bun.file(realPath));
-            description = (await imageToText(blob)).trim();
-            cache.set(path, description).catch((err) => {
-              logger.error({ error: err }, "缓存图片描述失败");
-            });
-          } catch (error) {
-            logger.error({ path, error }, "转述失败");
-            description = "图片转述失败";
-          }
-        }
-
-        for (const url of sourceUrls) {
-          imageMap.set(url, { path, description });
-        }
-      }),
-    );
-  }
 
   const system = [
     "<capabilities>",

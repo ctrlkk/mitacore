@@ -59,6 +59,8 @@ interface UnifiedReplyMessage {
 }
 export type UnifiedInboundMessage = UnifiedTextMessage | UnifiedAtMessage | UnifiedImageMessage | UnifiedReplyMessage;
 
+export type ImageMap = Map<string, { path: string; description: string }>;
+
 export interface PendingMessage {
   userId: string; // 短号 u1、u2…，来自 user_alias
   unifiedMessages: UnifiedInboundMessage[];
@@ -67,6 +69,12 @@ export interface PendingMessage {
   isAt: boolean;
   isAdmin: boolean;
   evaluated?: boolean;
+
+  /**
+   * 资源准备 Promise，在入队时立即启动下载与转述；
+   * 不阻塞入队，对同一 URL 仅下载一次，对同一 path 仅转述一次。
+   */
+  resourcesPromise?: Promise<ImageMap>;
 }
 
 /**
@@ -108,8 +116,8 @@ async function parseOneBotMessage(
  * @param urls 图片URL列表
  * @returns 图片路径和描述的映射
  */
-async function processImageAssets(urls: string[]) {
-  const resultMap = new Map<string, { path: string; description: string }>();
+async function processImageAssets(urls: string[]): Promise<ImageMap> {
+  const resultMap: ImageMap = new Map();
   if (urls.length === 0) return resultMap;
 
   const downloaded = await Promise.all(
@@ -159,7 +167,7 @@ async function processImageAssets(urls: string[]) {
   return resultMap;
 }
 
-function buildPrompt(batch: PendingMessage[], imageMap: Map<string, { path: string; description: string }>) {
+function buildPrompt(batch: PendingMessage[], imageMap: ImageMap) {
   const promptParts: string[] = [];
 
   const formatMessage = (segments: UnifiedInboundMessage[]) => {
@@ -303,18 +311,13 @@ function createBot(sessionId: string) {
   const log = logger.child({ sessionId });
 
   async function processBatch(batch: PendingMessage[], ctx: OneBotEventContext<OneBotMessageEvent>) {
-    const urls = new Set<string>();
-
-    const extractImage = (segments: UnifiedInboundMessage[]) => {
-      for (const seg of segments) {
-        if (seg.type === "image") urls.add(seg.data.url);
-        else if (seg.type === "reply") extractImage(seg.data.segments);
+    const imageMaps = await Promise.all(batch.map((m) => m.resourcesPromise!));
+    const imageMap: ImageMap = new Map();
+    for (const map of imageMaps) {
+      for (const [url, info] of map) {
+        imageMap.set(url, info);
       }
-    };
-    for (const msg of batch) {
-      extractImage(msg.unifiedMessages);
     }
-    const imageMap = await processImageAssets(Array.from(urls));
     const prompt = buildPrompt(batch, imageMap).trim();
     log.info({ prompt }, "用户输入");
 
@@ -365,8 +368,17 @@ function createBot(sessionId: string) {
             msg.evaluated = true;
           }
 
-          log.info("触发判定输入");
-          const shouldTrigger = await dispatchMessage(queueSnapshot);
+          log.info("开始等待资源就绪并进行触发判定...");
+          const resolvedImageMaps = await Promise.all(unprocessed.map((msg) => msg.resourcesPromise!));
+
+          const globalImageMap: ImageMap = new Map();
+          for (const map of resolvedImageMaps) {
+            for (const [url, info] of map) {
+              globalImageMap.set(url, info);
+            }
+          }
+
+          const shouldTrigger = await dispatchMessage(unprocessed, globalImageMap);
           if (shouldTrigger) {
             scheduler.arm(ctx);
             break;
@@ -388,8 +400,20 @@ function createBot(sessionId: string) {
 
   return {
     enqueue: (message: PendingMessage, ctx: OneBotEventContext<OneBotMessageEvent>) => {
+      message.resourcesPromise = (async () => {
+        const urls = new Set<string>();
+        const extractImage = (segments: UnifiedInboundMessage[]) => {
+          for (const seg of segments) {
+            if (seg.type === "image") urls.add(seg.data.url);
+            else if (seg.type === "reply") extractImage(seg.data.segments);
+          }
+        };
+        extractImage(message.unifiedMessages);
+        return await processImageAssets(Array.from(urls));
+      })();
       message.evaluated = false;
       scheduler.enqueue(message, ctx);
+
       lastMsgAt = Date.now();
       dirty = true;
 
