@@ -400,6 +400,10 @@ function createBot(sessionId: string) {
 
   return {
     enqueue: (message: PendingMessage, ctx: OneBotEventContext<OneBotMessageEvent>) => {
+      /**
+       * 允许列收到消息后立即进行处理，当处理“下载”、“转述”这类耗时的任务，它不会阻止队列继续获取信息。
+       * 也就是说这类耗时的预处理任务本身也可以是一种防抖，当全部消息处理结束后，在经历代码硬防抖，然后再进行软触发与硬触发判定。
+       */
       message.resourcesPromise = (async () => {
         const urls = new Set<string>();
         const extractImage = (segments: UnifiedInboundMessage[]) => {
