@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { formatBytes } from "./format";
 import { logger } from "@/logger";
 
-const MAX_DIM = 1024;
+const MAX_DIM = 720;
 
 /**
  * 查找 gifsicle 可执行文件

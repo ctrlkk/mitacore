@@ -55,19 +55,21 @@ async function resolveImage(href: string, alt?: string): Promise<ImagePart | nul
   if (href.startsWith("sticker:")) {
     return resolveStickerImage(href, alt);
   } else if (/^https?:\/\//i.test(href)) {
-    const dataUrl = await download(href, { limit: 3 * 1024 * 1024 })
+    const url = await download(href, { limit: 3 * 1024 * 1024 })
       .then(blobToDataURL)
       .catch(() => null);
-    if (dataUrl) {
-      return { type: "image", raw: `![${alt ?? ""}](${href})`, data: { file: dataUrl, url: dataUrl } };
+    if (url) {
+      return { type: "image", raw: `![${alt ?? ""}](${href})`, data: { file: url, url } };
     }
     return null;
   } else {
     const virtualPath = sanitizeImagePath(href);
-    const blob = await fetch(pathToFileURL(virtualToRealPath(virtualPath))).then((r) => r.blob());
-    const dataUrl = await blobToDataURL(blob);
-    if (dataUrl) {
-      return { type: "image", raw: `![${alt ?? ""}](${virtualPath})`, data: { file: dataUrl, url: dataUrl } };
+    const url = await fetch(pathToFileURL(virtualToRealPath(virtualPath)))
+      .then((r) => r.blob())
+      .then(blobToDataURL)
+      .catch(() => null);
+    if (url) {
+      return { type: "image", raw: `![${alt ?? ""}](${virtualPath})`, data: { file: url, url } };
     }
     return null;
   }

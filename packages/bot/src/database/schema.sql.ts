@@ -1,4 +1,5 @@
-import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import type { UnifiedInboundMessage } from "@/index";
 
 // 用户 ID 映射表
 //
@@ -17,4 +18,26 @@ export const userAlias = sqliteTable(
     createdAt: integer("created_at").notNull(),
   },
   (t) => [unique("user_alias_platform_unique").on(t.platform, t.platformId)],
+);
+
+// 待处理消息主表
+//
+// 会话级消息队列的持久化层。`evaluated` 标记是否已被触发判定消费。
+// `date` 存 Unix 毫秒时间戳，加载时转回 Date。
+// `segments` 用 SQLite 的 TEXT+JSON 模式整体存 `UnifiedInboundMessage[]`，
+// 包括 reply 嵌套结构；Drizzle 自动处理序列化，应用层只看到强类型对象。
+export const pendingMessages = sqliteTable(
+  "pending_messages",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    sessionId: text("session_id").notNull(),
+    userId: text("user_id").notNull(),
+    nickname: text("nickname").notNull(),
+    date: integer("date").notNull(),
+    isAt: integer("is_at", { mode: "boolean" }).notNull(),
+    isAdmin: integer("is_admin", { mode: "boolean" }).notNull(),
+    evaluated: integer("evaluated", { mode: "boolean" }),
+    segments: text("segments", { mode: "json" }).$type<UnifiedInboundMessage[]>().notNull(),
+  },
+  (t) => [index("pending_messages_session_idx").on(t.sessionId)],
 );
