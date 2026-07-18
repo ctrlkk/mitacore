@@ -1,4 +1,4 @@
-import type { BrowserContext, Page } from "playwright";
+import type { BrowserContext, Page, Response } from "playwright";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { serve } from "@hono/node-server";
@@ -121,12 +121,6 @@ async function setupBrowser(headless: boolean, clean: boolean) {
  * @param file 图片文件对象
  */
 async function uploadImage(page: Page, file: File): Promise<void> {
-  const fileObj = {
-    name: file.name,
-    mimeType: file.type,
-    buffer: Buffer.from(await file.arrayBuffer()),
-  };
-
   await closePromptIfPresent(page);
 
   const addBtn = page.locator('button:has(svg path[d^="M12.0005"])').first();
@@ -134,7 +128,11 @@ async function uploadImage(page: Page, file: File): Promise<void> {
 
   const fileInput = page.locator('input[type="file"]').first();
   await fileInput.waitFor({ state: "attached", timeout: 5000 });
-  await fileInput.setInputFiles(fileObj);
+  await fileInput.setInputFiles({
+    name: file.name,
+    mimeType: file.type,
+    buffer: Buffer.from(await file.bytes()),
+  });
 
   await page.waitForTimeout(2000);
 }
@@ -147,29 +145,20 @@ async function uploadImage(page: Page, file: File): Promise<void> {
  */
 async function navigateAndSendPrompt(page: Page, prompt: string, images?: File[]): Promise<void> {
   await page.goto(BASE_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await closePromptIfPresent(page);
 
   try {
-    await page.waitForSelector('textarea, [contenteditable="true"]', { timeout: 120_000, state: "visible" });
-  } catch (e) {
-    await closePromptIfPresent(page);
-    // 弹窗可能盖住输入框导致超时，关掉重试一次
-    try {
-      await page.waitForSelector('textarea, [contenteditable="true"]', { timeout: 10_000, state: "visible" });
-    } catch (e2) {
-      console.error(`!! 找不到输入框。url=${page.url()} title=${await page.title()}`);
-      console.error(
-        "textarea 数量:",
-        await page.locator("textarea").count(),
-        "contenteditable 数量:",
-        await page.locator("[contenteditable]").count(),
-      );
-      await page.screenshot({ path: "debug/headless_no_input.png", fullPage: true });
-      throw e2;
-    }
-    return;
+    await page.waitForSelector('textarea, [contenteditable="true"]', { timeout: 10_000, state: "visible" });
+  } catch (e2) {
+    console.error(`!! 找不到输入框。url=${page.url()} title=${await page.title()}`);
+    console.error(
+      "textarea 数量:",
+      await page.locator("textarea").count(),
+      "contenteditable 数量:",
+      await page.locator("[contenteditable]").count(),
+    );
+    throw e2;
   }
-
-  await closePromptIfPresent(page);
 
   if (images?.length) {
     for (const img of images) {
@@ -239,7 +228,7 @@ async function generateImages(page: Page, prompt: string, images?: File[]): Prom
   const urls: string[] = [];
   let done = false;
 
-  const onResponse = async (res: any) => {
+  const onResponse = async (res: Response) => {
     if (done || !res.url().includes("/chat/completion")) return;
     try {
       for (const line of (await res.text()).split("\n")) {
@@ -281,16 +270,6 @@ async function generateImages(page: Page, prompt: string, images?: File[]): Prom
 }
 
 /**
- * 点击删除菜单项并确认删除
- * @param page 页面对象
- */
-async function clickMenuAndDelete(page: Page): Promise<void> {
-  await page.getByRole("menuitem", { name: "删除" }).first().click();
-  const dialog = page.getByRole("dialog").first();
-  await dialog.getByRole("button", { name: "删除" }).first().click();
-}
-
-/**
  * 删除当前对话
  * @param page 页面对象
  */
@@ -302,15 +281,15 @@ async function deleteCurrentConversation(page: Page): Promise<void> {
     await active.waitFor({ state: "visible", timeout: 3000 });
     await active.hover();
     await page.waitForTimeout(300);
+    // 点击菜单按钮
     await active.locator("button").first().click({ force: true });
-    await clickMenuAndDelete(page);
-    console.log("对话删除完成 (策略1: hover菜单)");
-    await page.waitForTimeout(1000);
-    return;
+    // 点击删除菜单项
+    await page.getByRole("menuitem", { name: "删除" }).first().click();
+    // 点击二次确认删除
+    await page.getByRole("dialog").first().getByRole("button", { name: "删除" }).first().click();
   } catch (e) {
-    console.warn(`策略1 失败: ${(e as Error).message ?? e}`);
+    console.warn("删除对话失败，但不影响图片获取", e);
   }
-  console.warn("删除对话失败，所有策略均未命中，但不影响图片获取");
 }
 
 async function main(): Promise<void> {
