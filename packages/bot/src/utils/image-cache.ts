@@ -3,9 +3,10 @@ import { resolve, basename, posix, join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { extension } from "mime-types";
 import { dataPath } from "./path";
-import bs58 from "bs58";
 import { createWriteStream } from "node:fs";
-import { finished } from "node:stream/promises";
+import { Readable, Transform, type TransformCallback } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import bs58 from "bs58";
 
 /** 图片缓存的真实文件系统目录 */
 const IMAGE_CACHE_DIR = dataPath("images");
@@ -38,16 +39,13 @@ function realToVirtualPath(filename: string): string {
 }
 
 /**
- * 类型守卫：判断未知错误是否为 Node.js 文件系统冲突错误 (EPERM / EEXIST)
+ * 下载图片到缓存目录
+ * 如果图片已存在，直接返回缓存路径
+ * @param url 图片 URL
+ * @param option 下载选项
+ * @param option.limit 最大下载大小（字节），默认 20MB
+ * @returns 图片缓存路径
  */
-function isFsConflictError(err: unknown): boolean {
-  if (err instanceof Error && "code" in err) {
-    const sysErr = err as NodeJS.ErrnoException;
-    return sysErr.code === "EPERM" || sysErr.code === "EEXIST";
-  }
-  return false;
-}
-
 export async function downloadToCache(url: string, option: { limit?: number } = {}) {
   const limit = option.limit ?? 20 * 1024 * 1024; // 20 MB
 
@@ -62,32 +60,25 @@ export async function downloadToCache(url: string, option: { limit?: number } = 
   const tempFilename = `${randomUUID()}.${ext}.tmp`;
   const tempPath = join(IMAGE_CACHE_DIR, tempFilename);
 
-  const stream = createWriteStream(tempPath);
+  // pipeline 自动处理背压、错误传递与流关闭：transform 报错时会销毁整条管道，
+  // 文件句柄随之释放，避免 finally 中 unlink 因句柄未释放而 EBUSY/EPERM
   const hasher = createHash("sha256");
   let receivedLength = 0;
+  const transform = new Transform({
+    transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback) {
+      receivedLength += chunk.length;
+      if (receivedLength > limit) {
+        return callback(new Error(`下载大小超过限制: ${receivedLength} > ${limit}`));
+      }
+      hasher.update(chunk);
+      callback(null, chunk);
+    },
+  });
 
-  let isStreamFinished = false; // 标记网络流和文件流是否正常结束
   let isFileFinalized = false; // 标记临时文件是否已成功处理(rename 或 冲突清理)
 
   try {
-    for await (const chunk of response.body) {
-      receivedLength += chunk.length;
-
-      if (receivedLength > limit) {
-        if (response.body.cancel) {
-          await response.body.cancel("文件大小超过限制");
-        }
-        stream.destroy(new Error(`下载大小超过限制: ${receivedLength} > ${limit}`));
-        throw new Error(`下载大小超过限制: ${receivedLength} > ${limit}`);
-      }
-
-      stream.write(chunk);
-      hasher.update(chunk);
-    }
-
-    // 确保数据完全刷入磁盘
-    await finished(stream.end());
-    isStreamFinished = true;
+    await pipeline(Readable.fromWeb(response.body), transform, createWriteStream(tempPath));
 
     const hashHex = hasher.digest("hex").slice(0, 12);
     const encoded = bs58.encode(Buffer.from(hashHex, "hex"));
@@ -97,9 +88,8 @@ export async function downloadToCache(url: string, option: { limit?: number } = 
     try {
       await rename(tempPath, finalPath);
     } catch (err: unknown) {
-      if (!isFsConflictError(err)) {
-        throw err;
-      }
+      // Windows 下如果文件已存在会抛出 EEXIST
+      // 其它错误严重性不高，不做处理，一并删除
       await unlink(tempPath);
     }
 
@@ -110,15 +100,10 @@ export async function downloadToCache(url: string, option: { limit?: number } = 
       virtualPath: realToVirtualPath(finalFilename),
       realPath: finalPath,
     };
-  } catch (err: unknown) {
-    if (!isStreamFinished) {
-      const destroyErr = err instanceof Error ? err : undefined;
-      stream.destroy(destroyErr);
-    }
-    throw err;
   } finally {
+    // pipeline 完成或抛出错误时，所有流均已关闭，此处 unlink 不会触发句柄竞态
     if (!isFileFinalized) {
-      await unlink(tempPath);
+      await unlink(tempPath).catch(() => {});
     }
   }
 }

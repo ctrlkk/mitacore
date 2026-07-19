@@ -17,7 +17,7 @@ class KeyvSqliteStore {
 
   clear() {
     this.init();
-    this.db.exec(`DELETE FROM ${this.tableName}`);
+    this.db.run(`DELETE FROM ${this.tableName}`);
     return true;
   }
 
@@ -49,7 +49,7 @@ class KeyvSqliteStore {
 
   private init() {
     if (this.initialized) return;
-    this.db.exec(`
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS ${this.tableName} (
         key TEXT PRIMARY KEY,
         value TEXT,
@@ -66,7 +66,7 @@ if (!existsSync(dir)) {
 }
 
 const kvDb = new DatabaseSync(join(dir, "cache.db"));
-kvDb.exec("PRAGMA journal_mode = WAL");
+kvDb.run("PRAGMA journal_mode = WAL");
 
 const kv = new Keyv({
   store: new KeyvSqliteStore(kvDb),

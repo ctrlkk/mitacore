@@ -5,6 +5,7 @@ import { formatBytes } from "./format";
 import { logger } from "@/logger";
 
 const MAX_DIM = 720;
+const MIN_COMPRESS_SIZE = 50 * 1024;
 
 /**
  * 查找 gifsicle 可执行文件
@@ -84,6 +85,8 @@ export async function compressImage(file: BunFile): Promise<Blob> {
   const supported = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp"]);
   if (!supported.has(mimeType)) return file;
 
+  if (file.size < MIN_COMPRESS_SIZE) return file;
+
   try {
     const img = new Bun.Image(file);
 
@@ -93,32 +96,37 @@ export async function compressImage(file: BunFile): Promise<Blob> {
 
     switch (mimeType) {
       case "image/jpeg":
-        img.jpeg({ quality: 85 });
+        img.jpeg({ quality: 80 });
         break;
       case "image/png":
-        img.webp({ quality: 85 });
+        img.webp({ quality: 80 });
         break;
       case "image/webp":
-        img.webp({ quality: 85 });
+        img.webp({ quality: 80 });
         break;
       case "image/bmp":
-        img.jpeg({ quality: 85 }); // BMP 转为 JPEG 更节省空间
+        img.jpeg({ quality: 80 });
         break;
       default:
         return file;
     }
 
     const result = await img.blob();
+
+    const compressionRatio = result.size / file.size;
+
     logger.info(
       {
         file: file.name,
         originalBytes: formatBytes(file.size),
         compressedBytes: formatBytes(result.size),
+        compressionRatio,
       },
       "图片压缩",
     );
 
-    return result.size < file.size ? result : file;
+    if (compressionRatio > 0.95) return file;
+    return result;
   } catch (error) {
     logger.warn({ error }, "图片处理失败");
     return file;

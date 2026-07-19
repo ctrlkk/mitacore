@@ -8,8 +8,6 @@ import { logger } from "@/logger";
 import type { OneBotMessageEvent, OneBotMessageSegment } from "@/onebot/websocket-client";
 import { OneBotClient, type OneBotEventContext } from "@/onebot/onebot-client";
 import { startBuiltinNapCat } from "@/napcat/loader";
-import { db } from "@/database/db";
-import { apply as applyMigrations } from "@/database/migration";
 import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
 import { imageToText } from "@/multimedia";
 import { runReply } from "@/reply";
@@ -67,9 +65,10 @@ export interface PendingMessage {
   nickname: string;
   date: Date;
   isAt: boolean;
-  isAdmin: boolean;
+  /**
+   * 标记一条消息是否已被 evaluationLoop 的触发判定逻辑"检查过"。
+   */
   evaluated?: boolean;
-
   /**
    * 资源准备 Promise，在入队时立即启动下载与转述；
    * 不阻塞入队，对同一 URL 仅下载一次，对同一 path 仅转述一次。
@@ -338,7 +337,6 @@ function createBot(sessionId: string) {
   let lastMsgAt = Date.now();
   let dirty = false;
   let evaluating = false;
-  let forceArm = false;
 
   async function evaluationLoop(ctx: OneBotEventContext<OneBotMessageEvent>) {
     if (evaluating) {
@@ -349,46 +347,80 @@ function createBot(sessionId: string) {
 
     try {
       while (true) {
+        // 等待用户停止输入 1s
         while (Date.now() - lastMsgAt < debounceMs) {
           await Bun.sleep(100);
         }
 
-        if (forceArm) {
-          forceArm = false;
-          scheduler.arm(ctx);
+        const queueSnapshot = scheduler.snapshot();
+        const unprocessed = queueSnapshot.filter((m) => !m.evaluated);
+
+        if (unprocessed.length === 0) {
+          if (dirty) {
+            dirty = false;
+            continue;
+          }
           break;
         }
 
-        const queueSnapshot = scheduler.snapshot();
-        if (queueSnapshot.length === 0) break;
+        // 检查是否包含 AT 或私聊消息
+        const hasForceTrigger = unprocessed.some((m) => m.isAt);
 
-        const unprocessed = queueSnapshot.filter((msg) => !msg.evaluated);
-        if (unprocessed.length >= 5) {
-          for (const msg of unprocessed) {
-            msg.evaluated = true;
+        if (!hasForceTrigger) {
+          // 群聊普通消息模式（主动插话逻辑）
+          // 必须攒够数量，且没有新消息到来，才进行后续处理，否则一直等待
+          if (unprocessed.length < 5) {
+            // 如果没有新消息到来，退出循环等待新消息
+            if (!dirty) break;
+            // 有新消息，重置 dirty 继续循环检查（重新计数/防抖）
+            dirty = false;
+            continue;
           }
+        }
+        // 若 hasForceTrigger 为 true，则跳过数量检查，直接进入资源等待
 
-          log.info("开始等待资源就绪并进行触发判定...");
-          const resolvedImageMaps = await Promise.all(unprocessed.map((msg) => msg.resourcesPromise!));
+        // 等待异步资源处理完成
+        // 无论是哪种模式，只要决定处理，就等待所有相关资源的下载/转述。
+        // 如果在此期间有新消息（dirty 变动），则放弃本次触发，重新开始循环，
+        // 以便将新消息纳入处理范围（实现图片处理期间的防抖合并）。
+        log.info(`开始处理 ${unprocessed.length} 条消息的资源...`);
+        const resolvedImageMaps = await Promise.all(unprocessed.map((m) => m.resourcesPromise!));
 
+        if (dirty) {
+          log.info("资源等待期间收到新消息，重新开始评估循环");
+          dirty = false;
+          continue;
+        }
+
+        // 标记已评估
+        for (const m of unprocessed) {
+          m.evaluated = true;
+        }
+
+        // 最终触发判定
+        let shouldTrigger = false;
+
+        if (hasForceTrigger) {
+          // 硬触发，被 AT/私聊消息触发
+          // 无需调用 dispatchMessage，直接触发回复
+          shouldTrigger = true;
+        } else {
+          // 软触发，被群聊普通消息触发（主动插话逻辑）
+          // 调用 dispatchMessage 判断是否需要主动插话
           const globalImageMap: ImageMap = new Map();
           for (const map of resolvedImageMaps) {
             for (const [url, info] of map) {
               globalImageMap.set(url, info);
             }
           }
-
-          const shouldTrigger = await dispatchMessage(unprocessed, globalImageMap);
-          if (shouldTrigger) {
-            scheduler.arm(ctx);
-            break;
-          }
+          shouldTrigger = await dispatchMessage(unprocessed, globalImageMap);
         }
 
-        if (dirty) {
-          dirty = false;
-          continue;
+        if (shouldTrigger) {
+          scheduler.arm(ctx);
+          break;
         }
+        // 若判定不触发，退出循环
         break;
       }
     } catch (err) {
@@ -400,10 +432,7 @@ function createBot(sessionId: string) {
 
   return {
     enqueue: (message: PendingMessage, ctx: OneBotEventContext<OneBotMessageEvent>) => {
-      /**
-       * 允许列收到消息后立即进行处理，当处理“下载”、“转述”这类耗时的任务，它不会阻止队列继续获取信息。
-       * 也就是说这类耗时的预处理任务本身也可以是一种防抖，当全部消息处理结束后，在经历代码硬防抖，然后再进行软触发与硬触发判定。
-       */
+      // 启动资源预处理（不阻塞入队）
       message.resourcesPromise = (async () => {
         const urls = new Set<string>();
         const extractImage = (segments: UnifiedInboundMessage[]) => {
@@ -415,13 +444,13 @@ function createBot(sessionId: string) {
         extractImage(message.unifiedMessages);
         return await processImageAssets(Array.from(urls));
       })();
+
       message.evaluated = false;
       scheduler.enqueue(message, ctx);
 
+      // 更新状态，触发循环
       lastMsgAt = Date.now();
       dirty = true;
-
-      if (message.isAt) forceArm = true;
 
       evaluationLoop(ctx).catch((err) => log.error({ error: err }, "dispatch 失败"));
     },
@@ -463,7 +492,9 @@ async function handleCommand(
 
 if (import.meta.main) {
   // 先跑数据库迁移：空库走 bootstrap，已 bootstrap 的库只跑新增迁移
-  await applyMigrations(db);
+  const { db } = await import("@/database/db");
+  const { apply } = await import("@/database/migration");
+  await apply(db);
 
   // 根据配置选择启动方式
   let wsUrl: string;
@@ -581,7 +612,6 @@ if (import.meta.main) {
         nickname: event.sender.nickname,
         date: new Date(event.time * 1000),
         isAt,
-        isAdmin,
       };
       getBot(sessionId).enqueue(message, ctx);
     } catch (error) {
