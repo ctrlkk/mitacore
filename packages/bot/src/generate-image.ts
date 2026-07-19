@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { binPath, projectPath, sidecarPath } from "@/utils/path";
 import { logger } from "@/logger";
+import { env } from "node:process";
 
 interface ReadyMessage {
   type: string;
@@ -130,6 +131,10 @@ export async function getImageGenerator() {
     _instancePromise = setupImageGenerator();
   }
   return _instancePromise;
+}
+
+if (env.PLAYWRIGHT_EAGER_START !== "0") {
+  getImageGenerator();
 }
 
 if (import.meta.main) {
