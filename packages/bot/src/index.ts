@@ -379,6 +379,11 @@ function createBot(sessionId: string) {
         }
         // 若 hasForceTrigger 为 true，则跳过数量检查，直接进入资源等待
 
+        // 在开始耗时等待前，先将 dirty 置为 false。
+        // 这样如果在等待期间有新消息入队，dirty 会被重新置为 true，
+        // 从而在等待结束后能正确检测到新消息。
+        dirty = false;
+
         // 等待异步资源处理完成
         // 无论是哪种模式，只要决定处理，就等待所有相关资源的下载/转述。
         // 如果在此期间有新消息（dirty 变动），则放弃本次触发，重新开始循环，

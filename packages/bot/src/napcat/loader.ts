@@ -367,7 +367,7 @@ export async function launchNapCat(config: NapCatConfig) {
   stdoutTee.on("data", (d: Buffer) => {
     const text = d.toString();
     for (const line of text.split(/\r?\n/)) {
-      if (line) logger.debug({ line }, "napcat stdout");
+      if (line) logger.trace({ line }, "napcat stdout");
     }
     // 记录 PID
     if (!handle.qqPid) {

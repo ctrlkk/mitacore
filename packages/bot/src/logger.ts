@@ -1,4 +1,9 @@
-import pino, { type LoggerOptions, type Logger as PinoLogger, type DestinationStream } from "pino";
+import pino, {
+  type LoggerOptions,
+  type Logger as PinoLogger,
+  type LevelWithSilentOrString,
+  type StreamEntry,
+} from "pino";
 import { rename, readdir, unlink } from "node:fs/promises";
 import { mkdirSync } from "node:fs";
 import { dataPath } from "@/utils/path";
@@ -45,7 +50,7 @@ const createLogger = (): PinoLogger => {
   const msUntilMidnight = dayjs().add(1, "day").startOf("day").diff(dayjs());
   setTimeout(rotateLog, msUntilMidnight).unref();
 
-  const streams: { stream: DestinationStream }[] = [{ stream: dest }];
+  const streams: StreamEntry<LevelWithSilentOrString>[] = [{ stream: dest, level: baseOptions.level }];
 
   if (prettyEnabled) {
     streams.push({
@@ -54,10 +59,12 @@ const createLogger = (): PinoLogger => {
         translateTime: "HH:MM:ss.l",
         ignore: "pid,hostname",
       }),
+      level: baseOptions.level,
     });
   } else {
     streams.push({
       stream: process.stdout,
+      level: baseOptions.level,
     });
   }
 
