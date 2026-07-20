@@ -16,6 +16,8 @@
 - <prompt>：完整的图像生成提示词，应具体、可直接交给绘图模型。内容中不要出现 `</prompt>`、`</image>` 或 `</image_decision>` 字面字符串，避免破坏 XML 结构。
 - <images>：可选参考图路径（绝对路径或对话中出现的本地路径），无参考图时留空。每个参考图用一个 <image>path</image> 子节点表示。
 
+输出示例：
+```xml
 <image_decision>
   <prompt>一只在樱花树下散步的柴犬，穿着和服，背景是日式庭院的清晨光线，胶片质感</prompt>
   <images>
@@ -23,6 +25,7 @@
     <image>/data/images/ref_kimono.png</image>
   </images>
 </image_decision>
+```
 </output_rules>
 
 <rules>
