@@ -8,6 +8,7 @@ import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { imageGen } from "./tools/image-gen";
 import { compactHistory, isOverflow } from "./compaction";
+import { getStickersPrompt } from "./stickers";
 
 const submitPlanTool = tool({
   description: "提交本轮回复策略，包含语气、角度、要点、长度、工具调用等",
@@ -65,6 +66,7 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
   const { default: planPrompt } = await import("./prompts/plan.txt");
   const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
   const replyPrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
+  const stickersPrompt = await getStickersPrompt();
 
   const system = [
     "<role>",
@@ -74,6 +76,8 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
     "<capabilities>",
     capabilitiesPrompt.trim(),
     "</capabilities>",
+    "",
+    stickersPrompt.trim(),
     "",
     "下面为 `reply agent` 的角色设定：",
     "<reply_role>",

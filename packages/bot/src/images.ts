@@ -2,13 +2,15 @@ import { marked, type Token } from "marked";
 import { sanitizeImagePath, virtualToRealPath } from "./utils/image-cache";
 import { blobToDataURL, download } from "./utils/blob";
 import { pathToFileURL } from "node:url";
+import { resolveSticker } from "./stickers";
 
-interface ImagePart {
+export interface ImagePart {
   type: "image";
   raw: string;
   data: {
     file: string;
     url: string;
+    // 图片类型，0 表示普通图片，1 表示 sticker
     sub_type?: number;
     summary?: string;
     [key: string]: unknown;
@@ -31,8 +33,8 @@ marked.use({
       },
       tokenizer(src: string) {
         // [name] 且后面不跟 ( 或 [，避免吞掉链接 [text](url) 和引用链接 [text][ref]
-        // name 须以字母开头，避免误匹配 [1]、[x] 这类文本
-        const match = /^\[([a-z][\w-]*)\](?![\(\[])/i.exec(src);
+        // name 须以字母（\p{L} 覆盖中文等 Unicode 字母）开头，且至少 2 个字符，避免误匹配 [1]、[x] 这类文本
+        const match = /^\[([\p{L}][\p{L}\p{N}_-]+)\](?![\(\[])/u.exec(src);
         if (!match) return undefined;
         return {
           type: "sticker",
@@ -125,25 +127,27 @@ async function resolveImage(href: string, alt?: string): Promise<ImagePart | nul
  * 将简单数组转化为平台需要的消息数组
  */
 async function convertToMessageParts(nodes: SimpleNode[]): Promise<MessagePart[]> {
-  // 将连续文本合并、图片独立，生成交替的 文本 | 图片 序列
-  const segments: (string | { href: string; alt: string; raw: string })[] = [];
+  // 将连续文本合并、图片/贴纸独立，生成交替的 文本 | 图片 | 贴纸 序列
+  const segments: SimpleNode[] = [];
   for (const node of nodes) {
-    if (node.type === "image") {
-      segments.push({ href: node.href, alt: node.text, raw: node.raw });
+    if (node.type === "image" || node.type === "sticker") {
+      segments.push(node);
       continue;
     }
     // 连续文本追加到末尾文本段，否则新建一段
     const last = segments.at(-1);
-    if (typeof last === "string") segments[segments.length - 1] = last + node.text;
-    else segments.push(node.text);
+    if (last?.type === "text") last.text += node.text;
+    else segments.push(node);
   }
-
   return await Promise.all(
     segments.map(async (seg): Promise<MessagePart | null> => {
-      if (typeof seg === "string") {
-        return seg.trim() || null;
+      if (seg.type === "text") {
+        return seg.text.trim() || null;
       }
-      return (await resolveImage(seg.href, seg.alt)) || seg.raw;
+      if (seg.type === "sticker") {
+        return (await resolveSticker(seg.text)) || seg.raw;
+      }
+      return (await resolveImage(seg.href, seg.text)) || seg.raw;
     }),
   ).then((resolved) => resolved.filter((part) => part !== null));
 }

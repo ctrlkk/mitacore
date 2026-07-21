@@ -8,6 +8,7 @@ import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { compactHistory, isOverflow } from "./compaction";
+import { getStickersPrompt } from "./stickers";
 
 async function loadExecutorHistory(): Promise<ChatHistory> {
   try {
@@ -67,6 +68,7 @@ export async function runReply(
   const prompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
   const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
   const { default: replyGroupPrompt } = await import("./prompts/reply-group.txt");
+  const stickersPrompt = await getStickersPrompt();
 
   const system = [
     "<role>",
@@ -76,6 +78,8 @@ export async function runReply(
     "<capabilities>",
     capabilitiesPrompt.trim(),
     "</capabilities>",
+    "",
+    stickersPrompt.trim(),
   ].join("\n");
 
   const planContent = reasoning
