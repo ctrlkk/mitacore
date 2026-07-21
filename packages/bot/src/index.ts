@@ -111,60 +111,81 @@ async function parseOneBotMessage(
 }
 
 /**
- * 处理图片资产，包括下载、转述和缓存
- * @param urls 图片URL列表
- * @returns 图片路径和描述的映射
+ * 创建图片资源处理器
+ * 内部维护下载与转述的去重缓存，确保并发安全。
  */
-async function processImageAssets(urls: string[]): Promise<ImageMap> {
-  const resultMap: ImageMap = new Map();
-  if (urls.length === 0) return resultMap;
+function createImageProcessor() {
+  const pendingDownloads = new Map<string, Promise<{ virtualPath: string; realPath: string } | null>>();
+  const pendingDescriptions = new Map<string, Promise<string>>();
 
-  const downloaded = await Promise.all(
-    urls.map(async (url) => {
-      try {
-        const { virtualPath, realPath } = await downloadToCache(url, { limit: 5 * 1024 * 1024 });
-        return { url, virtualPath, realPath };
-      } catch (error) {
-        logger.error({ url, error }, "下载失败");
-        return null;
-      }
-    }),
-  );
-
-  const pathMap = new Map<string, { realPath: string; sourceUrls: string[] }>();
-  for (const item of downloaded) {
-    if (!item) continue;
-    const group = pathMap.get(item.virtualPath);
-    if (group) {
-      group.sourceUrls.push(item.url);
-    } else {
-      pathMap.set(item.virtualPath, { realPath: item.realPath, sourceUrls: [item.url] });
-    }
+  async function singleFlight<K, V>(map: Map<K, Promise<V>>, key: K, fn: () => Promise<V>): Promise<V> {
+    const existing = map.get(key);
+    if (existing) return existing;
+    const p = fn().finally(() => map.delete(key));
+    map.set(key, p);
+    return p;
   }
 
-  await Promise.all(
-    Array.from(pathMap.entries()).map(async ([path, { realPath, sourceUrls }]) => {
-      let description = await cache.get<string>(path);
-      if (!description) {
-        try {
-          const blob = await compressImage(Bun.file(realPath));
-          description = (await imageToText(blob)).trim();
-          cache.set(path, description).catch((err) => {
-            logger.error({ error: err }, "缓存图片描述失败");
-          });
-        } catch (error) {
-          logger.error({ path, error }, "转述失败");
-          description = "图片转述失败";
-        }
-      }
-      for (const url of sourceUrls) {
-        resultMap.set(url, { path, description });
-      }
-    }),
-  );
+  async function process(urls: string[]): Promise<ImageMap> {
+    const resultMap: ImageMap = new Map();
+    if (urls.length === 0) return resultMap;
 
-  return resultMap;
+    // 并发下载（单飞去重）
+    const downloaded = await Promise.all(
+      urls.map((url) =>
+        singleFlight(pendingDownloads, url, async () => {
+          try {
+            return await downloadToCache(url, { limit: 5 * 1024 * 1024 });
+          } catch (error) {
+            logger.error({ url, error }, "下载失败");
+            return null;
+          }
+        }).then((res) => (res ? { url, ...res } : null)),
+      ),
+    );
+
+    // 按物理路径归类
+    const pathMap = new Map<string, { realPath: string; sourceUrls: string[] }>();
+    for (const item of downloaded) {
+      if (!item) continue;
+      const group = pathMap.get(item.virtualPath);
+      if (group) {
+        group.sourceUrls.push(item.url);
+      } else {
+        pathMap.set(item.virtualPath, { realPath: item.realPath, sourceUrls: [item.url] });
+      }
+    }
+
+    // 并发转述（单飞去重）
+    await Promise.all(
+      Array.from(pathMap.entries()).map(([path, { realPath, sourceUrls }]) =>
+        singleFlight(pendingDescriptions, path, async () => {
+          let description = await cache.get<string>(path);
+          if (!description) {
+            try {
+              const blob = await compressImage(Bun.file(realPath));
+              description = (await imageToText(blob)).trim();
+              cache.set(path, description).catch((err) => logger.error({ error: err }, "缓存图片描述失败"));
+            } catch (error) {
+              logger.error({ path, error }, "转述失败");
+              description = "图片转述失败";
+            }
+          }
+          for (const url of sourceUrls) {
+            resultMap.set(url, { path, description });
+          }
+          return description;
+        }),
+      ),
+    );
+
+    return resultMap;
+  }
+
+  return process;
 }
+
+const processImageAssets = createImageProcessor();
 
 function buildPrompt(batch: PendingMessage[], imageMap: ImageMap) {
   const promptParts: string[] = [];

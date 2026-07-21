@@ -17,8 +17,21 @@ export interface ImageSegment {
 
 export interface VideoSegment {
   type: "video";
-  /** file: 视频文件路径、URL 或 Base64 编码; url: 视频在线 URL; thumb: 视频缩略图(可选) */
-  data: { file: string; file_size?: number | string; url: string; thumb?: string };
+  /**
+   * path: 视频文件路径(发送时可以是本地路径或网络路径或者base64)
+   * url: 视频在线 URL
+   * file_size: 视频文件大小
+   * thumb: 视频缩略图(发送视频时可用)
+   * [key]: 其他自定义字段
+   */
+  data: {
+    url?: string;
+    file?: string;
+    path?: string;
+    file_size?: number | string;
+    thumb?: string;
+    [key: string]: unknown;
+  };
 }
 
 export interface RecordSegment {
