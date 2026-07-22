@@ -303,6 +303,16 @@ export class OneBotClient {
     return this.call<string>("get_ai_record", params, options);
   }
 
+  /** 获取群文件下载 URL（需要 Packet API 可用） */
+  getGroupFileUrl(groupId: number, fileId: string, options?: RequestOptions): Promise<{ url?: string }> {
+    return this.call<{ url?: string }>("get_group_file_url", { group_id: groupId, file_id: fileId }, options);
+  }
+
+  /** 获取私聊文件下载 URL（NapCat 扩展接口） */
+  getPrivateFileUrl(fileId: string, options?: RequestOptions): Promise<{ url?: string }> {
+    return this.call<{ url?: string }>("get_private_file_url", { file_id: fileId }, options);
+  }
+
   /** 注册事件中间件，返回取消注册的函数 */
   use(middleware: EventMiddleware) {
     this.middlewares.push(middleware);

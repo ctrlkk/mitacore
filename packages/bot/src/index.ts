@@ -727,6 +727,41 @@ if (import.meta.main) {
       if (isCommandHandled) return;
     }
 
+    /** 根据文件名扩展名猜测文件类型（NapCat 不提供 MIME 信息，只能靠扩展名） */
+    function guessFileType(fileName: string): "image" | "video" | "audio" | "other" {
+      const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+      if (["jpg", "jpeg", "png", "gif", "bmp", "webp", "svg", "ico"].includes(ext)) return "image";
+      if (["mp4", "avi", "mov", "mkv", "webm", "flv", "wmv"].includes(ext)) return "video";
+      if (["mp3", "wav", "ogg", "flac", "aac", "silk", "amr"].includes(ext)) return "audio";
+      return "other";
+    }
+
+    // 将 file 消息段映射为 image/video，以便 parseOneBotMessage 能识别
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]!;
+      if (seg.type !== "file") continue;
+      const fileType = guessFileType(seg.data.file);
+      if (fileType !== "image" && fileType !== "video") continue;
+
+      let url = seg.data.url;
+      if (!url) {
+        const result = await (event.message_type === "group"
+          ? ctx.client.getGroupFileUrl(event.group_id, seg.data.file_id)
+          : ctx.client.getPrivateFileUrl(seg.data.file_id));
+        url = result.url;
+      }
+      if (!url) {
+        logger.warn({ fileId: seg.data.file_id, fileName: seg.data.file }, "无法获取文件下载 URL，跳过映射");
+        continue;
+      }
+
+      if (fileType === "image") {
+        segments[i] = { type: "image", data: { file: url, url, file_size: seg.data.file_size } };
+      } else if (fileType === "video") {
+        segments[i] = { type: "video", data: { file: url, url, file_size: seg.data.file_size } };
+      }
+    }
+
     try {
       const unified = await parseOneBotMessage(
         segments,
