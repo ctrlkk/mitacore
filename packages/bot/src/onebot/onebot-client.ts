@@ -121,7 +121,7 @@ export class OneBotClient {
   readonly ws: OneBotWebSocketClient;
   private middlewares: EventMiddleware[] = [];
 
-  constructor(options: OneBotWebSocketClientOptions = {}) {
+  constructor(options: OneBotWebSocketClientOptions) {
     this.ws = new OneBotWebSocketClient(options);
     this.ws.onEvent((event) => {
       this.dispatchEvent(event).catch((error) => this.ws.emitError(error));

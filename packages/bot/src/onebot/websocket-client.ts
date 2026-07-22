@@ -167,7 +167,7 @@ export interface ReconnectOptions {
 }
 
 export interface OneBotWebSocketClientOptions {
-  url?: string;
+  url: string;
   accessToken?: string;
   requestTimeoutMs?: number;
   reconnect?: boolean | ReconnectOptions;
@@ -210,10 +210,8 @@ export class OneBotWebSocketClient {
   private closeHandlers = new Set<Handler<{ code: number; reason: string }>>();
   private errorHandlers = new Set<Handler<unknown>>();
 
-  constructor(options: OneBotWebSocketClientOptions = {}) {
-    if (!globalThis.WebSocket) throw new Error("当前运行环境不支持标准 WebSocket");
-
-    this.url = options.url ?? "ws://127.0.0.1:3001/";
+  constructor(options: OneBotWebSocketClientOptions) {
+    this.url = options.url;
     this.accessToken = options.accessToken;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
     this.reconnect = normalizeReconnect(options.reconnect);
