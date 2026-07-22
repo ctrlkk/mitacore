@@ -5,11 +5,11 @@ import {
   type OneBotApiParams,
   type OneBotEvent,
   type OneBotGroupMessageEvent,
-  type OneBotMessage,
+  type OneBotIncomingMessageSegment,
   type OneBotMessageEvent,
-  type OneBotMessageSegment,
   type OneBotMetaEvent,
   type OneBotNoticeEvent,
+  type OneBotOutgoingMessage,
   type OneBotPrivateMessageEvent,
   type OneBotRequestEvent,
   type OneBotSender,
@@ -17,7 +17,7 @@ import {
   type RequestOptions,
 } from "./websocket-client";
 
-type MessageInput = OneBotMessage;
+type MessageInput = OneBotOutgoingMessage;
 
 /** 可能为 Promise 的联合类型 */
 export type MaybePromise<T = void> = T | Promise<T>;
@@ -92,7 +92,7 @@ export interface OneBotMessageInfo {
   user_id: number;
   real_id?: number;
   sender: OneBotSender;
-  message: OneBotMessageSegment[];
+  message: OneBotIncomingMessageSegment[];
   raw_message?: string;
   [key: string]: unknown;
 }
@@ -113,6 +113,11 @@ export interface OneBotEventContext<TEvent extends OneBotEvent = OneBotEvent> {
   reply(message: MessageInput, options?: RequestOptions & { autoEscape?: boolean }): Promise<unknown>;
   approve(options?: RequestDecisionOptions): Promise<unknown>;
   reject(reason?: string, options?: RequestDecisionOptions): Promise<unknown>;
+  /**
+   * 调用 NapCat 的快速操作接口。
+   * 目前 NapCat 实际支持：reply / auto_escape / at_sender / approve / reason。
+   * delete / kick / ban / ban_duration / remark 仅在类型中存在，未实际实现。
+   */
   quickOperation(operation: OneBotApiParams, options?: RequestOptions): Promise<unknown>;
 }
 

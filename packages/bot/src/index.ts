@@ -5,7 +5,7 @@ import "dayjs/locale/zh-cn";
 
 import { logger } from "@/logger";
 
-import type { OneBotMessageEvent, OneBotMessageSegment } from "@/onebot/websocket-client";
+import type { OneBotIncomingMessageSegment, OneBotMessageEvent } from "@/onebot/websocket-client";
 import { OneBotClient, type OneBotEventContext } from "@/onebot/onebot-client";
 import { startBuiltinNapCat } from "@/napcat/loader";
 import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
@@ -105,9 +105,9 @@ export interface PendingMessage {
  * @returns 解析后的统一格式消息段落
  */
 async function parseOneBotMessage(
-  segments: OneBotMessageSegment[],
+  segments: OneBotIncomingMessageSegment[],
   getNickname: (qq: number) => Promise<string>,
-  getMessage: (id: number) => Promise<{ userId: number; message: OneBotMessageSegment[] } | null>,
+  getMessage: (id: number) => Promise<{ userId: number; message: OneBotIncomingMessageSegment[] } | null>,
 ) {
   const messages: UnifiedInboundMessage[] = [];
   for (const seg of segments) {
@@ -123,10 +123,15 @@ async function parseOneBotMessage(
         logger.info({ url: seg.data.url }, "忽略图片，大小超过5MB");
       }
     } else if (seg.type === "video") {
+      const url = seg.data.url;
+      if (!url) {
+        logger.warn("视频消息缺少 url，跳过处理");
+        continue;
+      }
       if (Number(seg.data.file_size) < 20 * 1024 * 1024) {
-        messages.push({ type: "video", data: { url: seg.data.url! } });
+        messages.push({ type: "video", data: { url } });
       } else {
-        logger.info({ url: seg.data.url }, "忽略视频，大小超过20MB");
+        logger.info({ url }, "忽略视频，大小超过20MB");
       }
     } else if (seg.type === "reply") {
       const result = await getMessage(Number(seg.data.id));

@@ -1,42 +1,8 @@
 export type OneBotEcho = string | number;
-export type OneBotMessage = string | OneBotMessageSegment | OneBotMessageSegment[] | OneBotMessageChainLike;
-
-export interface OneBotMessageChainLike {
-  toSegments(): unknown[];
-}
 
 export interface TextSegment {
   type: "text";
   data: { text: string };
-}
-
-export interface ImageSegment {
-  type: "image";
-  data: { file: string; file_size?: number | string; url: string };
-}
-
-export interface VideoSegment {
-  type: "video";
-  /**
-   * path: 视频文件路径(发送时可以是本地路径或网络路径或者base64)
-   * url: 视频在线 URL
-   * file_size: 视频文件大小
-   * thumb: 视频缩略图(发送视频时可用)
-   * [key]: 其他自定义字段
-   */
-  data: {
-    url?: string;
-    file?: string;
-    path?: string;
-    file_size?: number | string;
-    thumb?: string;
-    [key: string]: unknown;
-  };
-}
-
-export interface RecordSegment {
-  type: "record";
-  data: { file: string; file_size?: number | string; url: string };
 }
 
 export interface AtSegment {
@@ -54,20 +20,140 @@ export interface ReplySegment {
   data: { id: string };
 }
 
-export interface FileSegment {
-  type: "file";
-  data: { file: string; file_name?: string; file_size?: number | string; url?: string };
+/** 接收到的图片消息段 */
+export interface IncomingImageSegment {
+  type: "image";
+  data: {
+    file: string;
+    url: string;
+    file_size: number | string;
+    summary?: string;
+    sub_type?: number;
+    [key: string]: unknown;
+  };
 }
 
-export type OneBotMessageSegment =
+/** 接收到的视频消息段 */
+export interface IncomingVideoSegment {
+  type: "video";
+  data: {
+    file: string;
+    /** NapCat 在极端情况下可能无法获取视频 URL，因此这里保留可选 */
+    url?: string;
+    file_size?: number | string;
+    [key: string]: unknown;
+  };
+}
+
+/** 接收到的语音消息段 */
+export interface IncomingRecordSegment {
+  type: "record";
+  data: {
+    file: string;
+    path: string;
+    file_size: number | string;
+    url?: string;
+    [key: string]: unknown;
+  };
+}
+
+/** 接收到的文件消息段 */
+export interface IncomingFileSegment {
+  type: "file";
+  data: {
+    file: string;
+    file_id: string;
+    file_size: number | string;
+    url?: string;
+    [key: string]: unknown;
+  };
+}
+
+/** 发送图片消息段 */
+export interface OutgoingImageSegment {
+  type: "image";
+  /** 运行时需至少提供 file / url / path 之一 */
+  data: {
+    file?: string;
+    url?: string;
+    path?: string;
+    summary?: string;
+    sub_type?: number;
+    [key: string]: unknown;
+  };
+}
+
+/** 发送视频消息段 */
+export interface OutgoingVideoSegment {
+  type: "video";
+  /** 运行时需至少提供 file / url / path 之一 */
+  data: {
+    file?: string;
+    url?: string;
+    path?: string;
+    name?: string;
+    thumb?: string;
+    [key: string]: unknown;
+  };
+}
+
+/** 发送语音消息段 */
+export interface OutgoingRecordSegment {
+  type: "record";
+  /** 运行时需至少提供 file / url / path 之一 */
+  data: {
+    file?: string;
+    url?: string;
+    path?: string;
+    [key: string]: unknown;
+  };
+}
+
+/** 发送文件消息段 */
+export interface OutgoingFileSegment {
+  type: "file";
+  /** 运行时需至少提供 file / url / path 之一 */
+  data: {
+    file?: string;
+    url?: string;
+    path?: string;
+    name?: string;
+    [key: string]: unknown;
+  };
+}
+
+/** 接收消息中可能出现的消息段 */
+export type OneBotIncomingMessageSegment =
   | TextSegment
-  | ImageSegment
-  | VideoSegment
-  | RecordSegment
+  | IncomingImageSegment
+  | IncomingVideoSegment
+  | IncomingRecordSegment
   | AtSegment
   | FaceSegment
   | ReplySegment
-  | FileSegment;
+  | IncomingFileSegment;
+
+/** 发送消息时可能使用的消息段 */
+export type OneBotOutgoingMessageSegment =
+  | TextSegment
+  | OutgoingImageSegment
+  | OutgoingVideoSegment
+  | OutgoingRecordSegment
+  | AtSegment
+  | FaceSegment
+  | ReplySegment
+  | OutgoingFileSegment;
+
+export interface OneBotMessageChainLike {
+  toSegments(): OneBotOutgoingMessageSegment[];
+}
+
+/** 发送消息时可接受的输入类型 */
+export type OneBotOutgoingMessage =
+  | string
+  | OneBotOutgoingMessageSegment
+  | OneBotOutgoingMessageSegment[]
+  | OneBotMessageChainLike;
 
 export interface OneBotApiParams {
   [key: string]: unknown;
@@ -107,7 +193,7 @@ export interface OneBotPrivateMessageEvent extends OneBotBaseEvent {
   sub_type: string;
   message_id: number;
   user_id: number;
-  message: OneBotMessageSegment[];
+  message: OneBotIncomingMessageSegment[];
   raw_message: string;
   font: number;
   sender: OneBotSender;
@@ -120,7 +206,7 @@ export interface OneBotGroupMessageEvent extends OneBotBaseEvent {
   message_id: number;
   group_id: number;
   user_id: number;
-  message: OneBotMessageSegment[];
+  message: OneBotIncomingMessageSegment[];
   raw_message: string;
   font: number;
   sender: OneBotSender;
@@ -468,8 +554,8 @@ async function messageDataToString(data: unknown) {
   return String(data);
 }
 
-/** 将 OneBotMessage 统一转换为片段数组，供 API 调用时使用 */
-export function normalizeMessage(message: OneBotMessage) {
+/** 将 OneBotOutgoingMessage 统一转换为片段数组，供 API 调用时使用 */
+export function normalizeMessage(message: OneBotOutgoingMessage): string | OneBotOutgoingMessageSegment[] {
   if (typeof message === "string") return message;
   if (isMessageChainLike(message)) return message.toSegments();
   return Array.isArray(message) ? message : [message];
