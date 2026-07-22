@@ -9,12 +9,13 @@ import type { OneBotMessageEvent, OneBotMessageSegment } from "@/onebot/websocke
 import { OneBotClient, type OneBotEventContext } from "@/onebot/onebot-client";
 import { startBuiltinNapCat } from "@/napcat/loader";
 import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
-import { imageToText } from "@/multimedia";
+import { imageToText, videoToText } from "@/multimedia";
 import { runReply } from "@/reply";
 import { runPlanner } from "@/planner";
 import { cache } from "@/utils/cache";
 import { downloadToCache } from "@/utils/image-cache";
 import { compressImage } from "@/utils/image-resize";
+import { compressVideo } from "@/utils/video-resize";
 import { registerShutdownHook } from "@/utils/shutdown";
 import { config, type Config } from "@/config";
 import { runMain } from "./agent";
@@ -51,11 +52,31 @@ interface UnifiedImageMessage {
   type: "image";
   data: { url: string };
 }
+interface UnifiedVideoMessage {
+  type: "video";
+  data: { url: string };
+}
 interface UnifiedReplyMessage {
   type: "reply";
   data: { userId: string; nickname: string; segments: UnifiedInboundMessage[] }; // userId 为用户短号 u1、u2…
 }
-export type UnifiedInboundMessage = UnifiedTextMessage | UnifiedAtMessage | UnifiedImageMessage | UnifiedReplyMessage;
+export type UnifiedInboundMessage =
+  | UnifiedTextMessage
+  | UnifiedAtMessage
+  | UnifiedImageMessage
+  | UnifiedVideoMessage
+  | UnifiedReplyMessage;
+
+export type MediaKind = "image" | "video";
+
+export type MediaMap = Map<
+  string,
+  {
+    kind: MediaKind;
+    path: string;
+    description: string;
+  }
+>;
 
 export type ImageMap = Map<string, { path: string; description: string }>;
 
@@ -73,7 +94,7 @@ export interface PendingMessage {
    * 资源准备 Promise，在入队时立即启动下载与转述；
    * 不阻塞入队，对同一 URL 仅下载一次，对同一 path 仅转述一次。
    */
-  resourcesPromise?: Promise<ImageMap>;
+  resourcesPromise?: Promise<MediaMap>;
 }
 
 /**
@@ -96,7 +117,17 @@ async function parseOneBotMessage(
       const nickname = await getNickname(Number(seg.data.qq));
       messages.push({ type: "at", data: { id: seg.data.qq, nickname: nickname ?? " " } });
     } else if (seg.type === "image") {
-      messages.push({ type: "image", data: { url: seg.data.url } });
+      if (Number(seg.data.file_size) < 5 * 1024 * 1024) {
+        messages.push({ type: "image", data: { url: seg.data.url } });
+      } else {
+        logger.info({ url: seg.data.url }, "忽略图片，大小超过5MB");
+      }
+    } else if (seg.type === "video") {
+      if (Number(seg.data.file_size) < 20 * 1024 * 1024) {
+        messages.push({ type: "video", data: { url: seg.data.url! } });
+      } else {
+        logger.info({ url: seg.data.url }, "忽略视频，大小超过20MB");
+      }
     } else if (seg.type === "reply") {
       const result = await getMessage(Number(seg.data.id));
       if (!result) continue;
@@ -110,73 +141,124 @@ async function parseOneBotMessage(
   return messages;
 }
 
+type MediaResource = {
+  url: string;
+  kind: MediaKind;
+};
+
 /**
- * 创建图片资源处理器
+ * 创建媒体资源处理器。
  * 内部维护下载与转述的去重缓存，确保并发安全。
+ *
+ * 注意：
+ * - singleflight 只复用"下载结果"或"转述结果"
+ * - 不把当前 process 的 resultMap 写入逻辑放进 singleflight 内部，
+ *   否则并发复用 Promise 时，其他调用方的 sourceUrls 不会被写入自己的 resultMap
  */
-function createImageProcessor() {
+function createMediaProcessor() {
   const pendingDownloads = new Map<string, Promise<{ virtualPath: string; realPath: string } | null>>();
+
   const pendingDescriptions = new Map<string, Promise<string>>();
 
   async function singleFlight<K, V>(map: Map<K, Promise<V>>, key: K, fn: () => Promise<V>): Promise<V> {
     const existing = map.get(key);
     if (existing) return existing;
-    const p = fn().finally(() => map.delete(key));
-    map.set(key, p);
-    return p;
+
+    const promise = fn().finally(() => map.delete(key));
+    map.set(key, promise);
+    return promise;
   }
 
-  async function process(urls: string[]): Promise<ImageMap> {
-    const resultMap: ImageMap = new Map();
-    if (urls.length === 0) return resultMap;
+  async function process(resources: MediaResource[]): Promise<MediaMap> {
+    const resultMap: MediaMap = new Map();
+    if (resources.length === 0) return resultMap;
 
     // 并发下载（单飞去重）
+    // 这里按 kind:url 去重，避免同一个 URL 被图片和视频以不同限制处理时互相干扰。
     const downloaded = await Promise.all(
-      urls.map((url) =>
-        singleFlight(pendingDownloads, url, async () => {
+      resources.map(({ url, kind }) =>
+        singleFlight(pendingDownloads, `${kind}:${url}`, async () => {
           try {
-            return await downloadToCache(url, { limit: 5 * 1024 * 1024 });
+            if (kind === "image") {
+              return await downloadToCache(url, { limit: 5 * 1024 * 1024 });
+            } else if (kind === "video") {
+              return await downloadToCache(url, { limit: 20 * 1024 * 1024 });
+            }
           } catch (error) {
-            logger.error({ url, error }, "下载失败");
+            logger.error({ url, kind, error }, "下载失败");
             return null;
           }
-        }).then((res) => (res ? { url, ...res } : null)),
+        }).then((res) => (res ? { url, kind, ...res } : null)),
       ),
     );
 
-    // 按物理路径归类
-    const pathMap = new Map<string, { realPath: string; sourceUrls: string[] }>();
+    // 按资源类型 + 物理路径归类
+    const pathMap = new Map<
+      string,
+      {
+        kind: MediaKind;
+        virtualPath: string;
+        realPath: string;
+        sourceUrls: string[];
+      }
+    >();
+
     for (const item of downloaded) {
       if (!item) continue;
-      const group = pathMap.get(item.virtualPath);
+
+      const key = `${item.kind}:${item.virtualPath}`;
+      const group = pathMap.get(key);
+
       if (group) {
         group.sourceUrls.push(item.url);
-      } else {
-        pathMap.set(item.virtualPath, { realPath: item.realPath, sourceUrls: [item.url] });
+        continue;
       }
+
+      pathMap.set(key, {
+        kind: item.kind,
+        virtualPath: item.virtualPath,
+        realPath: item.realPath,
+        sourceUrls: [item.url],
+      });
     }
 
     // 并发转述（单飞去重）
     await Promise.all(
-      Array.from(pathMap.entries()).map(([path, { realPath, sourceUrls }]) =>
-        singleFlight(pendingDescriptions, path, async () => {
-          let description = await cache.get<string>(path);
-          if (!description) {
-            try {
-              const blob = await compressImage(Bun.file(realPath));
-              description = (await imageToText(blob)).trim();
-              cache.set(path, description).catch((err) => logger.error({ error: err }, "缓存图片描述失败"));
-            } catch (error) {
-              logger.error({ path, error }, "转述失败");
-              description = "图片转述失败";
+      Array.from(pathMap.values()).map(async (item) => {
+        const cacheKey = item.virtualPath;
+
+        const description = await singleFlight(pendingDescriptions, cacheKey, async () => {
+          const cached = await cache.get<string>(cacheKey);
+          if (cached) return cached;
+
+          try {
+            let result: string;
+
+            if (item.kind === "image") {
+              const blob = await compressImage(Bun.file(item.realPath));
+              result = (await imageToText(blob)).trim();
+            } else {
+              const blob = await compressVideo(Bun.file(item.realPath));
+              result = (await videoToText(blob)).trim();
             }
+
+            await cache.set(cacheKey, result).catch((error) => logger.error({ error }, "缓存资源描述失败"));
+
+            return result;
+          } catch (error) {
+            logger.error({ path: item.virtualPath, kind: item.kind, error }, "转述失败");
+            return item.kind === "image" ? "图片转述失败" : "视频转述失败";
           }
-          for (const url of sourceUrls) {
-            resultMap.set(url, { path, description });
-          }
-          return description;
-        }),
-      ),
+        });
+
+        for (const url of item.sourceUrls) {
+          resultMap.set(url, {
+            kind: item.kind,
+            path: item.virtualPath,
+            description,
+          });
+        }
+      }),
     );
 
     return resultMap;
@@ -185,13 +267,14 @@ function createImageProcessor() {
   return process;
 }
 
-const processImageAssets = createImageProcessor();
+const processMediaAssets = createMediaProcessor();
 
-function buildPrompt(batch: PendingMessage[], imageMap: ImageMap) {
+function buildPrompt(batch: PendingMessage[], mediaMap: MediaMap) {
   const promptParts: string[] = [];
 
   const formatMessage = (segments: UnifiedInboundMessage[]) => {
     const parts: string[] = [];
+
     for (const seg of segments) {
       if (seg.type === "text") {
         parts.push(seg.text);
@@ -199,12 +282,13 @@ function buildPrompt(batch: PendingMessage[], imageMap: ImageMap) {
         if (seg.data.nickname) {
           parts.push(`@${seg.data.nickname}`);
         }
-      } else if (seg.type === "image") {
-        const img = imageMap.get(seg.data.url);
-        if (img && img.path) {
-          parts.push(`\`${img.path}\``);
+      } else if (seg.type === "image" || seg.type === "video") {
+        const media = mediaMap.get(seg.data.url);
+
+        if (media?.path) {
+          parts.push(`\`${media.path}\``);
         } else {
-          parts.push("[图片]");
+          parts.push(seg.type === "image" ? "[图片]" : "[视频]");
         }
       } else if (seg.type === "reply") {
         const inner = formatMessage(seg.data.segments);
@@ -213,6 +297,7 @@ function buildPrompt(batch: PendingMessage[], imageMap: ImageMap) {
         }
       }
     }
+
     return parts
       .map((p) => p.trim())
       .filter((p) => p.length > 0)
@@ -221,25 +306,44 @@ function buildPrompt(batch: PendingMessage[], imageMap: ImageMap) {
 
   for (const msg of batch) {
     const text = formatMessage(msg.unifiedMessages);
-    let block = `<user_input user_id="${msg.userId}" date="${dayjs(msg.date).format("MM-DD dddd HH:mm")}" nickname="${msg.nickname}">\n${text}\n</user_input>`;
+    const block = `<user_input user_id="${msg.userId}" date="${dayjs(msg.date).format("MM-DD dddd HH:mm")}" nickname="${msg.nickname}">\n${text}\n</user_input>`;
     promptParts.push(block);
   }
 
   let finalPrompt = promptParts.join("\n\n");
 
-  // 去重并格式化图片描述
-  const uniqueImages = Array.from(new Map(imageMap.values().map((img) => [img.path, img])).values());
-  if (uniqueImages.length > 0) {
+  // 去重并格式化媒体描述
+  const uniqueMedia = Array.from(
+    new Map(mediaMap.values().map((media) => [`${media.kind}:${media.path}`, media])).values(),
+  );
+
+  const images = uniqueMedia
+    .filter((media) => media.kind === "image")
+    .map(({ path, description }) => ({ path, description }));
+
+  const videos = uniqueMedia
+    .filter((media) => media.kind === "video")
+    .map(({ path, description }) => ({ path, description }));
+
+  const reminder: {
+    image?: Array<{ path: string; description: string }>;
+    video?: Array<{ path: string; description: string }>;
+  } = {};
+
+  if (images.length > 0) reminder.image = images;
+  if (videos.length > 0) reminder.video = videos;
+
+  if (images.length > 0 || videos.length > 0) {
     const builder = new XMLBuilder({ format: true, ignoreAttributes: false });
-    const reminder = builder
+    const reminderText = builder
       .build({
-        system_reminder: {
-          image: uniqueImages,
-        },
+        system_reminder: reminder,
       })
       .trim();
-    finalPrompt = `${reminder}\n\n${finalPrompt}`;
+
+    finalPrompt = `${reminderText}\n\n${finalPrompt}`;
   }
+
   return finalPrompt;
 }
 
@@ -331,14 +435,14 @@ function createBot(sessionId: string) {
   const log = logger.child({ sessionId });
 
   async function processBatch(batch: PendingMessage[], ctx: OneBotEventContext<OneBotMessageEvent>) {
-    const imageMaps = await Promise.all(batch.map((m) => m.resourcesPromise!));
-    const imageMap: ImageMap = new Map();
-    for (const map of imageMaps) {
+    const mediaMaps = await Promise.all(batch.map((m) => m.resourcesPromise!));
+    const mediaMap: MediaMap = new Map();
+    for (const map of mediaMaps) {
       for (const [url, info] of map) {
-        imageMap.set(url, info);
+        mediaMap.set(url, info);
       }
     }
-    const prompt = buildPrompt(batch, imageMap).trim();
+    const prompt = buildPrompt(batch, mediaMap).trim();
     log.info({ prompt }, "用户输入");
 
     const { plan, reasoning, submitReply } = await runPlanner(prompt, log);
@@ -410,7 +514,7 @@ function createBot(sessionId: string) {
         // 如果在此期间有新消息（dirty 变动），则放弃本次触发，重新开始循环，
         // 以便将新消息纳入处理范围（实现图片处理期间的防抖合并）。
         log.info(`开始处理 ${unprocessed.length} 条消息的资源...`);
-        const resolvedImageMaps = await Promise.all(unprocessed.map((m) => m.resourcesPromise!));
+        const resolvedMediaMaps = await Promise.all(unprocessed.map((m) => m.resourcesPromise!));
 
         if (dirty) {
           log.info("资源等待期间收到新消息，重新开始评估循环");
@@ -432,14 +536,20 @@ function createBot(sessionId: string) {
           shouldTrigger = true;
         } else {
           // 软触发，被群聊普通消息触发（主动插话逻辑）
-          // 调用 dispatchMessage 判断是否需要主动插话
+          // 当前 dispatchMessage 只消费 path / description，
+          // 因此这里把图片和视频都压平成旧的 ImageMap 结构，避免改动 dispatcher。
           const globalImageMap: ImageMap = new Map();
-          for (const map of resolvedImageMaps) {
-            for (const [url, info] of map) {
-              globalImageMap.set(url, info);
+          for (const map of resolvedMediaMaps) {
+            for (const [url, media] of map) {
+              globalImageMap.set(url, {
+                path: media.path,
+                description: media.description,
+              });
             }
           }
-          shouldTrigger = await dispatchMessage(unprocessed, globalImageMap);
+          // shouldTrigger = await dispatchMessage(unprocessed, globalImageMap);
+          // 禁用主动插话逻辑
+          shouldTrigger = false;
         }
 
         if (shouldTrigger) {
@@ -460,15 +570,29 @@ function createBot(sessionId: string) {
     enqueue: (message: PendingMessage, ctx: OneBotEventContext<OneBotMessageEvent>) => {
       // 启动资源预处理（不阻塞入队）
       message.resourcesPromise = (async () => {
-        const urls = new Set<string>();
-        const extractImage = (segments: UnifiedInboundMessage[]) => {
+        const resources = new Map<string, MediaResource>();
+
+        const extractResources = (segments: UnifiedInboundMessage[]) => {
           for (const seg of segments) {
-            if (seg.type === "image") urls.add(seg.data.url);
-            else if (seg.type === "reply") extractImage(seg.data.segments);
+            if (seg.type === "image") {
+              resources.set(`image:${seg.data.url}`, {
+                url: seg.data.url,
+                kind: "image",
+              });
+            } else if (seg.type === "video") {
+              resources.set(`video:${seg.data.url}`, {
+                url: seg.data.url,
+                kind: "video",
+              });
+            } else if (seg.type === "reply") {
+              extractResources(seg.data.segments);
+            }
           }
         };
-        extractImage(message.unifiedMessages);
-        return await processImageAssets(Array.from(urls));
+
+        extractResources(message.unifiedMessages);
+
+        return await processMediaAssets(Array.from(resources.values()));
       })();
 
       message.evaluated = false;

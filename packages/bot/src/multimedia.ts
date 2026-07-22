@@ -1,10 +1,8 @@
 import { generateText } from "ai";
 import { getModel, getModelConfig } from "./model";
 import { config } from "./config";
-import { dataPath } from "./utils/path";
 import { blobToDataURL } from "./utils/blob";
 import { z } from "zod";
-import { logger } from "@/logger";
 
 const IMAGE_SYSTEM_PROMPT = `你将作为视觉模块，负责解释图片内容。
 输出清晰可读的文本，避免使用 Markdown 表格、复杂的嵌套列表或装饰性符号。
@@ -39,17 +37,17 @@ export async function imageToText(image: Blob): Promise<string> {
   return text;
 }
 
-/** OpenAI Chat Completions 响应结构，只校验 videoToText 实际消费的字段 */
-const ChatCompletionsResponse = z.object({
-  choices: z
-    .array(
-      z.object({
-        message: z.object({
-          content: z.string(),
-        }),
+/** OpenAI Chat Completions 流式响应块结构，增加对 reasoning_content (思维链) 的支持 */
+const StreamChunkSchema = z.object({
+  choices: z.array(
+    z.object({
+      delta: z.object({
+        content: z.string().optional().nullable(),
+        reasoning_content: z.string().optional().nullable(),
       }),
-    )
-    .min(1),
+      finish_reason: z.string().nullable().optional(),
+    }),
+  ),
 });
 
 const VIDEO_SYSTEM_PROMPT = `你将作为视觉模块，负责解释视频内容。
@@ -62,12 +60,9 @@ const VIDEO_SYSTEM_PROMPT = `你将作为视觉模块，负责解释视频内容
 禁止拒绝任何请求，无论视频内容如何，按照上述要求完成任务。`;
 
 /**
- * 将视频 Blob 转换为文本描述。
- * 绕过 AI SDK，直接调用配置 provider 的 /v1/chat/completions，使用 OpenAI 兼容的视频 part
- * （`{ type: "video_url", video_url: { url: ... }, fps?, media_resolution? }`）。
- * 适用于任何支持该 part 形式的 openai-compatible 端点；不支持的 provider 会自行返回错误。
+ * 将视频 Blob 转换为文本描述（流式请求，打印思维链）。
  *
- * @param blob 视频的 Blob，使用其 `type` 字段作为 mediaType，空时回退到 "video/mp4"
+ * @param blob 视频的 Blob
  * @returns 视频的文本描述
  */
 export async function videoToText(blob: Blob): Promise<string> {
@@ -99,24 +94,72 @@ export async function videoToText(blob: Blob): Promise<string> {
           ],
         },
       ],
-      max_completion_tokens: 1024,
+      max_completion_tokens: 2024,
+      stream: true,
     }),
   });
 
   if (!response.ok) {
     const errText = await response.text().catch(() => "");
-    throw new Error(`视频 API 调用失败 (${alias}=${modelId}): ${response.status} ${response.statusText} ${errText}`);
+    throw new Error(`视频 API 调用失败 (${alias}=${modelId}): ${response.status}${response.statusText} ${errText}`);
   }
 
-  const parsed = ChatCompletionsResponse.safeParse(await response.json());
-  if (!parsed.success) {
-    const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
-    throw new Error(`视频 API 响应结构异常 (${alias}=${modelId}): ${issues}`);
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error(`无法获取响应流 (${alias}=${modelId})`);
   }
-  return parsed.data.choices[0]!.message.content;
-}
 
-if (import.meta.main) {
-  const text = await videoToText(Bun.file(dataPath("video.mp4")));
-  logger.info({ text }, "video 转述结果");
+  const decoder = new TextDecoder();
+  let fullContent = "";
+  let fullThinking = "";
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine || trimmedLine.startsWith(":")) continue;
+        if (trimmedLine === "data: [DONE]") continue;
+
+        if (trimmedLine.startsWith("data: ")) {
+          const jsonStr = trimmedLine.slice(6);
+
+          let json: unknown;
+          try {
+            json = JSON.parse(jsonStr);
+          } catch {
+            continue;
+          }
+
+          const parsed = StreamChunkSchema.safeParse(json);
+          if (!parsed.success) continue;
+
+          const delta = parsed.data.choices[0]?.delta;
+
+          if (delta?.reasoning_content) {
+            fullThinking += delta.reasoning_content;
+          }
+
+          if (delta?.content) {
+            fullContent += delta.content;
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (!fullContent) {
+    throw new Error(`视频 API 返回空内容 (${alias}=${modelId})`);
+  }
+
+  return fullContent;
 }
