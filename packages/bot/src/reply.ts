@@ -10,7 +10,7 @@ import { logger, type PinoLogger } from "@/logger";
 import { compactHistory, isOverflow } from "./compaction";
 import { getStickersPrompt } from "./stickers";
 
-async function loadExecutorHistory(): Promise<ChatHistory> {
+async function loadHistory(): Promise<ChatHistory> {
   try {
     const raw = JSON.parse(await readFile(dataPath("chat.json"), "utf8"));
     return migrateHistory(raw);
@@ -19,7 +19,7 @@ async function loadExecutorHistory(): Promise<ChatHistory> {
   }
 }
 
-async function saveExecutorHistory(history: ChatHistory, log: PinoLogger = logger) {
+async function saveHistory(history: ChatHistory, log: PinoLogger = logger) {
   try {
     await mkdir(dataPath(), { recursive: true });
     await writeFile(dataPath("chat.json"), JSON.stringify(history, null, 2));
@@ -58,7 +58,7 @@ export async function runReply(
   onReply: (segments: MessagePart[]) => Promise<void>,
   log: PinoLogger = logger,
 ): Promise<{ replyText: string; usage: LanguageModelUsage | undefined }> {
-  const historyMessages: ChatHistory = await loadExecutorHistory();
+  const historyMessages: ChatHistory = await loadHistory();
   const runtimeMessages: ChatHistory = [];
   const model = getModel(config.models.reply);
 
@@ -143,7 +143,7 @@ export async function runReply(
     log.info("检测到上下文溢出，开始执行压缩...");
     finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
   }
-  await saveExecutorHistory(finalHistory, log);
+  await saveHistory(finalHistory, log);
 
   return { replyText, usage };
 }

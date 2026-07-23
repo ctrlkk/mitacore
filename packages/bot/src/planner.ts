@@ -18,7 +18,7 @@ const submitPlanTool = tool({
   }),
 });
 
-async function loadPlannerHistory(): Promise<ChatHistory> {
+async function loadHistory(): Promise<ChatHistory> {
   try {
     const raw = JSON.parse(await readFile(dataPath("planner.json"), "utf8"));
     return migrateHistory(raw);
@@ -27,7 +27,7 @@ async function loadPlannerHistory(): Promise<ChatHistory> {
   }
 }
 
-async function savePlannerHistory(history: ChatHistory, log: PinoLogger = logger) {
+async function saveHistory(history: ChatHistory, log: PinoLogger = logger) {
   try {
     await mkdir(dataPath(), { recursive: true });
     await writeFile(dataPath("planner.json"), JSON.stringify(history, null, 2));
@@ -49,7 +49,7 @@ interface PlannerResult {
  * @returns plan + submitReply 回调（调用后把完整 messages 持久化到 .cache/planner.json）
  */
 export async function runPlanner(userInputMessage: string, log: PinoLogger = logger): Promise<PlannerResult> {
-  let messages: ChatHistory = await loadPlannerHistory();
+  let messages: ChatHistory = await loadHistory();
 
   // 新增本次用户输入作为一条 record
   messages.push({
@@ -150,7 +150,7 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
       log.info("检测到上下文溢出，开始执行压缩...");
       messages = await compactHistory(model, system, messages, undefined, log);
     }
-    await savePlannerHistory(messages, log);
+    await saveHistory(messages, log);
   };
 
   return { plan: planText, reasoning: reasoning.join("\n"), submitReply };

@@ -8,7 +8,7 @@ import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { imageGen } from "./tools/image-gen";
 
-async function loadMainHistory(): Promise<ModelMessage[]> {
+async function loadHistory(): Promise<ModelMessage[]> {
   try {
     const history = await readFile(dataPath("history.json"), "utf8");
     return JSON.parse(history);
@@ -17,7 +17,7 @@ async function loadMainHistory(): Promise<ModelMessage[]> {
   }
 }
 
-async function saveMainHistory(history: ModelMessage[], log: PinoLogger = logger) {
+async function saveHistory(history: ModelMessage[], log: PinoLogger = logger) {
   try {
     await mkdir(dataPath(), { recursive: true });
     await writeFile(dataPath("history.json"), JSON.stringify(history, null, 2));
@@ -58,7 +58,7 @@ export async function runMain(
   }
   const model = getModel(mainAlias);
 
-  const historyMessages: ModelMessage[] = await loadMainHistory();
+  const historyMessages: ModelMessage[] = await loadHistory();
   historyMessages.push({ role: "user", content: userPrompt });
   const runtimeMessages: ModelMessage[] = [];
 
@@ -99,6 +99,6 @@ export async function runMain(
     if (result.toolCalls.length === 0) break;
   }
 
-  await saveMainHistory([...historyMessages, ...runtimeMessages], log);
+  await saveHistory([...historyMessages, ...runtimeMessages], log);
   return { usage };
 }
