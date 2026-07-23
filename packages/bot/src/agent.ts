@@ -106,13 +106,15 @@ export async function runMain(
     }
     usage = result.usage;
 
-    result.response.messages.forEach((message, i) => {
-      runtimeMessages.push({
-        message,
-        timestamp: Date.now(),
-        usage: i === 0 ? result.usage : undefined,
-      });
-    });
+    for (const step of result.steps) {
+      for (const message of step.response.messages) {
+        runtimeMessages.push({
+          message,
+          timestamp: Date.now(),
+          usage: step.usage,
+        });
+      }
+    }
 
     if (result.toolCalls.length === 0) break;
   }

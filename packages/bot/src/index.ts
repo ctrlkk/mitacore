@@ -450,14 +450,20 @@ function createBot(sessionId: string) {
     const prompt = buildPrompt(batch, mediaMap).trim();
     log.info({ prompt }, "用户输入");
 
-    const { plan, reasoning, submitReply } = await runPlanner(prompt, log);
-    const { replyText } = await runReply(prompt, plan, reasoning, async (segments) => {
+    // const { plan, reasoning, submitReply } = await runPlanner(prompt, log);
+    // const { replyText } = await runReply(prompt, plan, reasoning, async (segments) => {
+    //   for (const seg of segments) {
+    //     await ctx.reply(seg);
+    //     await Bun.sleep(500);
+    //   }
+    // });
+    // await submitReply(replyText);
+    await runMain(prompt, async (segments) => {
       for (const seg of segments) {
         await ctx.reply(seg);
         await Bun.sleep(500);
       }
     });
-    await submitReply(replyText);
   }
 
   const scheduler = createScheduler(processBatch, { maxQueue: 30 });
