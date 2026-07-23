@@ -7,6 +7,7 @@ import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { imageGen } from "./tools/image-gen";
+import { websearch } from "./tools/web-search";
 import { compactHistory, isOverflow } from "./compaction";
 import { getStickersPrompt } from "./stickers";
 
@@ -87,6 +88,7 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
 
   const tools: ToolSet = { submit_plan: submitPlanTool };
   tools.image_gen = imageGen(tools, system, model);
+  tools.web_search = websearch();
 
   for (let step = 0; step < 10; step++) {
     const result = await generateText({

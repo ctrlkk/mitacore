@@ -28,28 +28,6 @@ function parseImageGenDecisionXml(xml: string): { prompt: string; images: string
   return { prompt, images };
 }
 
-function parseImageGenDecisionText(text: string) {
-  const xmlStart = text.indexOf("<image_decision");
-  const xmlEnd = text.lastIndexOf("</image_decision>");
-  if (xmlStart < 0 || xmlEnd <= xmlStart) {
-    logger.warn(
-      { error: "未找到 <image_decision> 根标签", outputPreview: text.slice(0, 500) },
-      "图像生成分支输出解析失败",
-    );
-    return null;
-  }
-  const block = text.slice(xmlStart, xmlEnd + "</image_decision>".length);
-  const decision = parseImageGenDecisionXml(block);
-  if (!decision) {
-    logger.warn(
-      { error: "候选 XML 缺少 <prompt> 字段", outputPreview: text.slice(0, 500) },
-      "图像生成分支输出解析失败",
-    );
-    return null;
-  }
-  return decision;
-}
-
 export function imageGen(
   allTools: ToolSet,
   parentSystem: string,
@@ -97,8 +75,11 @@ export function imageGen(
         );
       }
 
-      const decision = parseImageGenDecisionText(text);
-      if (!decision) return "图像生成分支输出解析失败，且原始任务为空，无法继续生成图像。";
+      const decision = parseImageGenDecisionXml(text);
+      if (!decision) {
+        logger.warn({ error: "未匹配到 <prompt> 字段", outputPreview: text.slice(0, 500) }, "图像生成分支输出解析失败");
+        return "图像生成分支输出解析失败，且原始任务为空，无法继续生成图像。";
+      }
       const { prompt, images } = decision;
       log.info({ prompt, images }, "生成图像");
 
