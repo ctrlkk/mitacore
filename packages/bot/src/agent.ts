@@ -1,4 +1,4 @@
-import { generateText, type LanguageModelUsage, type ModelMessage, type ToolSet } from "ai";
+import { generateText, type LanguageModelUsage, type ToolSet } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { getModel } from "@/model";
 import { parseMarkdown, type MessagePart } from "@/images";
@@ -6,18 +6,21 @@ import { splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
+import { type ChatHistory, migrateHistory, toModelMessages } from "@/types/chat-history";
 import { imageGen } from "./tools/image-gen";
+import { websearch } from "./tools/web-search";
+import { compactHistory, isOverflow } from "./compaction";
 
-async function loadHistory(): Promise<ModelMessage[]> {
+async function loadHistory(): Promise<ChatHistory> {
   try {
-    const history = await readFile(dataPath("history.json"), "utf8");
-    return JSON.parse(history);
+    const raw = JSON.parse(await readFile(dataPath("history.json"), "utf8"));
+    return migrateHistory(raw);
   } catch {
     return [];
   }
 }
 
-async function saveHistory(history: ModelMessage[], log: PinoLogger = logger) {
+async function saveHistory(history: ChatHistory, log: PinoLogger = logger) {
   try {
     await mkdir(dataPath(), { recursive: true });
     await writeFile(dataPath("history.json"), JSON.stringify(history, null, 2));
@@ -58,9 +61,15 @@ export async function runMain(
   }
   const model = getModel(mainAlias);
 
-  const historyMessages: ModelMessage[] = await loadHistory();
-  historyMessages.push({ role: "user", content: userPrompt });
-  const runtimeMessages: ModelMessage[] = [];
+  const historyMessages: ChatHistory = await loadHistory();
+  const runtimeMessages: ChatHistory = [];
+  runtimeMessages.push({
+    message: {
+      role: "user",
+      content: userPrompt,
+    },
+    timestamp: Date.now(),
+  });
 
   let usage: LanguageModelUsage | undefined;
 
@@ -79,12 +88,14 @@ export async function runMain(
 
   const tools: ToolSet = {};
   tools.image_gen = imageGen(tools, system, model);
+  tools.web_search = websearch();
 
   for (let step = 0; step < 20; step++) {
     const result = await generateText({
       model,
       system,
-      messages: [...historyMessages, ...runtimeMessages],
+      messages: toModelMessages([...historyMessages, ...runtimeMessages]),
+      tools,
     });
 
     if (result.reasoning) log.debug({ reasoning: result.reasoningText, step }, "内部思考");
@@ -94,11 +105,26 @@ export async function runMain(
       await onReply(segments);
     }
     usage = result.usage;
-    runtimeMessages.push(...result.response.messages);
+
+    result.response.messages.forEach((message, i) => {
+      runtimeMessages.push({
+        message,
+        timestamp: Date.now(),
+        usage: i === 0 ? result.usage : undefined,
+      });
+    });
 
     if (result.toolCalls.length === 0) break;
   }
 
-  await saveHistory([...historyMessages, ...runtimeMessages], log);
+  let finalHistory: ChatHistory = [...historyMessages, ...runtimeMessages];
+
+  if (isOverflow(usage)) {
+    log.info("检测到上下文溢出，开始执行压缩...");
+    finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
+  }
+
+  await saveHistory(finalHistory, log);
+
   return { usage };
 }
