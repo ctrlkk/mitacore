@@ -1,7 +1,7 @@
 import type { ToolResultOutput } from "@ai-sdk/provider-utils";
 import type { LanguageModel, ToolSet } from "ai";
 import { z } from "zod";
-import { generateText, tool } from "ai";
+import { generateText, tool, zodSchema } from "ai";
 import { basename } from "node:path";
 import { lookup } from "mime-types";
 import { imageToText } from "@/multimedia";
@@ -14,8 +14,6 @@ import imageGenPromptTemplate from "./image-gen.txt";
 type ContentResult = Extract<ToolResultOutput, { type: "content" }>;
 type ContentValue = ContentResult["value"];
 type ContentPart = ContentValue[number];
-
-const SUPPORTS_MULTIMODAL = false;
 
 function parseImageGenDecisionXml(xml: string): { prompt: string; images: string[] } | null {
   const promptMatch = xml.match(/<prompt>([\s\S]*?)<\/prompt>/i);
@@ -34,6 +32,8 @@ export function imageGen(
   parentModel: LanguageModel,
   log: PinoLogger = logger,
 ) {
+  const SUPPORTS_MULTIMODAL = false;
+
   return tool({
     description:
       "派生图像生成分支完成视觉创作。" +
@@ -42,8 +42,8 @@ export function imageGen(
     inputSchema: z.object({
       task: z.string().describe("对期望图像的大致任务描述：要画什么、用途或风格意向即可，无需编写完整绘画提示词"),
     }),
-    execute: async ({ task }, { messages, abortSignal, experimental_context }) => {
-      const inBranch = (experimental_context as { inBranch?: boolean } | undefined)?.inBranch === true;
+    execute: async ({ task }, { messages, abortSignal, context }) => {
+      const inBranch = context?.inBranch === true;
       if (inBranch) {
         return "图像生成分支不允许再次派生图像生成，已忽略本次调用。请直接完成手头的任务。";
       }
@@ -53,11 +53,12 @@ export function imageGen(
 
       const { usage, text } = await generateText({
         model: parentModel,
-        system: parentSystem,
+        instructions: parentSystem,
         messages: [...messages, { role: "user", content: branchInput }],
         tools: allTools,
         abortSignal,
-        experimental_context: { inBranch: true },
+        runtimeContext: { inBranch: true },
+        maxOutputTokens: 4096,
       });
       const inputTokens = usage.inputTokens ?? 0;
       const cacheReadTokens = usage.inputTokenDetails?.cacheReadTokens ?? 0;

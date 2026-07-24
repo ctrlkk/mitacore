@@ -97,6 +97,7 @@ export async function runReply(
       model,
       system,
       messages: toModelMessages([...historyMessages, ...runtimeMessages]),
+      maxOutputTokens: 4096,
     });
 
     if (result.reasoning) log.info({ reasoning: result.reasoningText, step }, "内部思考");

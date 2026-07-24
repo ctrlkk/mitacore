@@ -76,8 +76,8 @@ function createBranchTool(allTools: ToolSet, parentSystem: string, parentModel: 
     inputSchema: z.object({
       task: z.string().describe("交给分支代理执行的具体任务"),
     }),
-    execute: async ({ task }, { messages, abortSignal, experimental_context }) => {
-      const inBranch = (experimental_context as { inBranch?: boolean } | undefined)?.inBranch === true;
+    execute: async ({ task }, { messages, abortSignal, context }) => {
+      const inBranch = context?.inBranch === true;
       if (inBranch) {
         return "[branch] 分支代理不允许再次派生分支，已忽略本次调用。请直接完成手头的任务。";
       }
@@ -98,11 +98,11 @@ function createBranchTool(allTools: ToolSet, parentSystem: string, parentModel: 
       const branchAbort = abortSignal ?? AbortSignal.timeout(300_000);
       const result = await generateText({
         model: parentModel,
-        system: parentSystem,
+        instructions: parentSystem,
         messages: [...messages, { role: "user", content: branchInput }],
         tools: allTools,
         abortSignal: branchAbort,
-        experimental_context: { inBranch: true },
+        runtimeContext: { inBranch: true },
         stopWhen: stepCountIs(5),
         onStepFinish({ stepNumber, toolCalls, text, usage }) {
           const tcList = toolCalls.map((t) => `${t.toolName}(${JSON.stringify(t.input)})`).join(", ") || "无";

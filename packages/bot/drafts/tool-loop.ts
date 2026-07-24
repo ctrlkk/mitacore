@@ -126,6 +126,7 @@ async function run() {
             output = await toolDef.execute(tc.input, {
               toolCallId: tc.toolCallId,
               messages,
+              context: {} as Record<string, unknown>,
             });
           }
         } catch (error) {

@@ -139,6 +139,7 @@ export async function dispatchMessage(pendingMessages: PendingMessage[], imageMa
     model: getModel("deepseek-v4-flash"),
     system,
     messages: [...filteredHistory, { role: "user", content }],
+    maxOutputTokens: 4096,
   });
   logger.info({ reasoningText, text }, "触发判定输出");
   const decision = parseTriggerDecisionText(text);

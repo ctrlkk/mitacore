@@ -96,6 +96,7 @@ export async function runMain(
       system,
       messages: toModelMessages([...historyMessages, ...runtimeMessages]),
       tools,
+      maxOutputTokens: 4096,
     });
 
     if (result.reasoning) log.debug({ reasoning: result.reasoningText, step }, "内部思考");

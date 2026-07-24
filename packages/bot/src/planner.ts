@@ -96,6 +96,7 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
       system,
       messages: toModelMessages(messages),
       tools,
+      maxOutputTokens: 4096,
     });
 
     log.info({ reasoningText: result.reasoningText, text: result.text, step }, "plan响应");

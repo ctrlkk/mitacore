@@ -23,13 +23,13 @@ export async function imageToText(image: Blob): Promise<string> {
   const model = getModel(config.models.multimodal_image);
   const { text } = await generateText({
     model,
-    system: IMAGE_SYSTEM_PROMPT,
+    instructions: IMAGE_SYSTEM_PROMPT,
     messages: [
       {
         role: "user",
         content: [
           { type: "text", text: "解释图片" },
-          { type: "image", image: await blobToDataURL(image) },
+          { type: "file", mediaType: "image", data: await blobToDataURL(image) },
         ],
       },
     ],
