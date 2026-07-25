@@ -1,8 +1,8 @@
 import { marked, type Token } from "marked";
-import { sanitizeImagePath, virtualToRealPath } from "./utils/image-cache";
-import { blobToDataURL, download } from "./utils/blob";
+import { sanitizeImagePath, virtualToRealPath } from "../utils/image-cache";
+import { blobToDataURL, download } from "../utils/blob";
 import { pathToFileURL } from "node:url";
-import { resolveSticker } from "./stickers";
+import { resolveSticker } from "../stickers";
 
 export interface ImagePart {
   type: "image";

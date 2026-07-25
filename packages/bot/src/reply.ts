@@ -2,7 +2,7 @@ import { type ChatHistory, migrateHistory, toModelMessages } from "@/types/chat-
 import { generateText, type LanguageModelUsage } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { getModel } from "@/model";
-import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message-parts";
+import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message/parts";
 import { splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
