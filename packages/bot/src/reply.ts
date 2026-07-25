@@ -2,7 +2,7 @@ import { type ChatHistory, migrateHistory, toModelMessages } from "@/types/chat-
 import { generateText, type LanguageModelUsage } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { getModel } from "@/model";
-import { parseMarkdown, type MessagePart } from "@/images";
+import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message-parts";
 import { splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
@@ -28,9 +28,9 @@ async function saveHistory(history: ChatHistory, log: PinoLogger = logger) {
   }
 }
 
-async function sliceReply(chunk: string): Promise<MessagePart[]> {
-  const parts = await parseMarkdown(chunk);
-  const result: MessagePart[] = [];
+function sliceReply(chunk: string): ParsedMessagePart[] {
+  const parts = parseMarkdown(chunk);
+  const result: ParsedMessagePart[] = [];
   for (const part of parts) {
     if (typeof part === "string") {
       for (const seg of splitMessage(part, { maxSplitNum: 5 })) {
@@ -106,7 +106,7 @@ export async function runReply(
     const stepMsgs = result.response.messages;
 
     if (result.text) {
-      const segments = await sliceReply(result.text);
+      const segments = await resolveMessageParts(sliceReply(result.text));
       await onReply(segments);
       const sentText = segments
         .map((seg) => {

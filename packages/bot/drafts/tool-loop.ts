@@ -1,30 +1,21 @@
-/**
- * 自定义 generateText 工具调用循环示例
- *
- * 核心思路：generateText 默认会自动执行工具，我们通过 stripToolExecutors 去掉 execute，
- * 只把工具定义（名称、描述、参数 schema）传给模型，然后自己接管执行和结果回传。
- *
- * 为什么这么做：
- *   - 控制执行时机（比如加审批、限流、日志）
- *   - 控制结果格式（toModelOutput 自定义输出给模型的内容）
- *   - 控制错误处理（决定错误以什么形式回传给模型）
- */
-
-import { generateText, type JSONValue, type ModelMessage, type Tool, type ToolResultPart, type ToolSet } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
+import {
+  generateText,
+  isStepCount,
+  streamText,
+  type JSONValue,
+  type LanguageModelUsage,
+  type ModelMessage,
+  type Tool,
+  type ToolResultPart,
+  type ToolSet,
+} from "ai";
 import { z } from "zod";
 import { tool } from "ai";
+import { getModel } from "@/model";
+import { logger } from "@/logger";
+import { getErrorMessage } from "@ai-sdk/provider-utils";
 
-// ── 配置 ──────────────────────────────────────────────────────
-
-const model = createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-  baseURL: process.env.OPENAI_API_BASE!,
-})("gpt-4o-mini");
-
-// ── 工具定义 ──────────────────────────────────────────────────
-
-const tools: Record<string, Tool> = {
+const tools: ToolSet = {
   get_weather: tool({
     description: "获取指定城市的天气信息",
     inputSchema: z.object({
@@ -39,115 +30,185 @@ const tools: Record<string, Tool> = {
       expression: z.string().describe("数学表达式，如 2+3*4"),
     }),
     execute: async ({ expression }) => {
-      // 简单演示，实际不要用 eval
       const result = new Function(`return ${expression}`)();
       return { expression, result };
     },
   }),
 };
 
-// ── 工具调用循环的基础设施 ────────────────────────────────────
-
 /** 从工具定义中剥离 execute，只保留 schema 给模型看 */
-function stripToolExecutors(tools: Record<string, Tool>): ToolSet {
+function stripToolExecutors(tools: ToolSet): ToolSet {
   return Object.fromEntries(Object.entries(tools).map(([name, { execute, ...rest }]) => [name, rest]));
 }
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  return String(error);
-}
-
-function toJSONValue(value: unknown): JSONValue {
-  return value === undefined ? null : (value as JSONValue);
-}
-
 /**
- * 将工具输出转为模型能理解的 ToolResultOutput 格式。
- * 逻辑与 SDK 内部 createToolModelOutput 一致：
- *   - 错误时：error-text（纯文本错误信息）或 error-json（JSON 错误信息）
- *   - 有 toModelOutput：调用工具自定义的输出转换
- *   - 字符串输出：text
- *   - 其他：json
+ * 工具循环-手动进行工具调用
  */
-async function toToolResultOutput(
-  tool: Tool | undefined,
-  toolCallId: string,
-  input: unknown,
-  output: unknown,
-  errorMode: "none" | "text" | "json",
-) {
-  if (errorMode === "text") return { type: "error-text" as const, value: getErrorMessage(output) };
-  if (errorMode === "json") return { type: "error-json" as const, value: toJSONValue(output) };
-
-  if (tool?.toModelOutput) {
-    return await tool.toModelOutput({ toolCallId, input, output });
-  }
-
-  if (typeof output === "string") return { type: "text" as const, value: output };
-  return { type: "json" as const, value: toJSONValue(output) };
-}
-
-// ── 主循环 ────────────────────────────────────────────────────
-
 async function run() {
   const toolsForGenerate = stripToolExecutors(tools);
   let messages: ModelMessage[] = [{ role: "user", content: "北京天气怎么样？顺便算一下 (12 + 8) * 3" }];
 
   for (let step = 0; step < 10; step++) {
     const result = await generateText({
-      model,
-      system: "你是一个助手，可以查询天气和做计算。",
+      model: getModel("deepseek-v4-flash"),
+      instructions: "你是一个助手，可以查询天气和做计算。",
       messages,
       tools: toolsForGenerate,
+      maxOutputTokens: 1024,
     });
 
-    // 把模型的响应消息（包含 tool-call）加入历史
-    messages.push(...result.response.messages);
-
-    if (result.text) {
-      console.log("助手:", result.text);
+    for (const step of result.steps) {
+      logger.info({ response: step.reasoningText, text: step.text }, "助手响应");
+      for (const stepMessage of step.response.messages) {
+        messages.push(stepMessage);
+      }
     }
 
-    // 没有工具调用就结束
-    if (result.toolCalls.length === 0) break;
+    if (result.finalStep.toolCalls.length === 0) break;
 
     // 手动执行每个工具调用，构造 ToolResultPart
     const toolResults: ToolResultPart[] = await Promise.all(
-      result.toolCalls.map(async (tc) => {
-        console.log(`[工具调用] ${tc.toolName}(${JSON.stringify(tc.input)})`);
-        const toolDef = tools[tc.toolName];
-        let output: unknown;
-        let errorMode: "none" | "text" | "json" = "none";
+      result.finalStep.toolCalls.map(async (tc) => {
+        logger.info({ toolCallId: tc.toolCallId, toolName: tc.toolName, input: tc.input }, "工具调用");
+
+        const toolDef = tools[tc.toolName]!;
 
         try {
-          if (toolDef?.execute) {
-            output = await toolDef.execute(tc.input, {
-              toolCallId: tc.toolCallId,
-              messages,
-              context: {} as Record<string, unknown>,
-            });
-          }
+          const rawOutput = await toolDef.execute!(tc.input, {
+            toolCallId: tc.toolCallId,
+            messages,
+            context: {},
+          });
+
+          return {
+            type: "tool-result",
+            toolCallId: tc.toolCallId,
+            toolName: tc.toolName,
+            output:
+              typeof rawOutput === "string" ? { type: "text", value: rawOutput } : { type: "json", value: rawOutput },
+          };
         } catch (error) {
-          output = error;
-          errorMode = "text";
+          return {
+            type: "tool-result",
+            toolCallId: tc.toolCallId,
+            toolName: tc.toolName,
+            output: { type: "error-text", value: getErrorMessage(error) },
+          };
         }
-
-        console.log(`[工具结果]`, output);
-
-        return {
-          type: "tool-result" as const,
-          toolCallId: tc.toolCallId,
-          toolName: tc.toolName,
-          output: await toToolResultOutput(toolDef, tc.toolCallId, tc.input, output, errorMode),
-        };
       }),
     );
-
-    // 把工具结果作为 tool 消息加入历史，下一轮模型会看到
     messages.push({ role: "tool", content: toolResults });
   }
 }
 
-run();
+/**
+ * 工具循环-自动进行工具调用，精细化管理上下文
+ */
+async function run3() {
+  type ChatRecord = {
+    message: ModelMessage;
+    timestamp: number;
+    usage?: LanguageModelUsage;
+  };
+  const toModelMessages = (records: ChatRecord[]): ModelMessage[] => records.map((r) => r.message);
+
+  const historyMessages: ChatRecord[] = [];
+  const runtimeMessages: ChatRecord[] = [
+    {
+      message: { role: "user", content: "北京天气怎么样？顺便算一下 (12 + 8) * 3" },
+      timestamp: Date.now(),
+    },
+  ];
+
+  for (let step = 0; step < 10; step++) {
+    const { finalStep } = await generateText({
+      model: getModel("deepseek-v4-flash"),
+      instructions: "你是一个助手，可以查询天气和做计算。",
+      messages: toModelMessages([...historyMessages, ...runtimeMessages]),
+      tools,
+      maxOutputTokens: 1024,
+      onToolExecutionStart({ toolCall }) {
+        logger.info(
+          { toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input },
+          "工具调用",
+        );
+      },
+      onToolExecutionEnd({ toolOutput }) {
+        if (toolOutput.type === "tool-result") {
+          logger.info({ output: toolOutput.output }, "工具执行成功");
+        } else {
+          logger.info({ error: toolOutput.error }, "工具执行失败");
+        }
+      },
+      onStepEnd(step) {
+        logger.info({ response: step.reasoningText, text: step.text }, "助手响应");
+        for (const message of step.response.messages) {
+          runtimeMessages.push({ message, timestamp: Date.now(), usage: step.usage });
+        }
+      },
+    });
+
+    if (finalStep.toolCalls.length === 0) break;
+  }
+}
+
+/**
+ * 工具循环-自动进行工具调用，精细化管理上下文，流式输出
+ */
+async function run4() {
+  type ChatRecord = {
+    message: ModelMessage;
+    timestamp: number;
+    usage?: LanguageModelUsage;
+  };
+  const toModelMessages = (records: ChatRecord[]): ModelMessage[] => records.map((r) => r.message);
+
+  const historyMessages: ChatRecord[] = [];
+  const runtimeMessages: ChatRecord[] = [
+    {
+      message: { role: "user", content: "北京天气怎么样？顺便算一下 (12 + 8) * 3" },
+      timestamp: Date.now(),
+    },
+  ];
+
+  let hasToolCalls = true;
+  for (let step = 0; step < 10 && hasToolCalls; step++) {
+    const streamResult = streamText({
+      model: getModel("deepseek-v4-flash"),
+      instructions: "你是一个助手，可以查询天气和做计算。",
+      messages: toModelMessages([...historyMessages, ...runtimeMessages]),
+      tools,
+      maxOutputTokens: 1024,
+    });
+
+    hasToolCalls = false;
+
+    for await (const event of streamResult.fullStream) {
+      switch (event.type) {
+        case "text-delta":
+          process.stdout.write(event.text);
+          break;
+        case "tool-call":
+          hasToolCalls = true;
+          logger.info({ toolCallId: event.toolCallId, toolName: event.toolName, input: event.input }, "工具调用");
+          break;
+        case "tool-result":
+          logger.info({ output: event.output }, "工具执行成功");
+          break;
+        case "tool-error":
+          logger.info({ error: event.error }, "工具执行失败");
+          break;
+      }
+    }
+    process.stdout.write("\n");
+
+    const responseMessages = await streamResult.responseMessages;
+    const finalStep = await streamResult.finalStep;
+    logger.info({ response: finalStep.reasoningText, text: finalStep.text }, "助手响应");
+    for (const message of responseMessages) {
+      runtimeMessages.push({ message, timestamp: Date.now(), usage: finalStep.usage });
+    }
+  }
+}
+
+run4();

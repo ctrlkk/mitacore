@@ -19,6 +19,21 @@ export interface ImagePart {
 
 export type MessagePart = string | ImagePart;
 
+type MediaReference =
+  | {
+      type: "image-reference";
+      href: string;
+      text: string;
+      raw: string;
+    }
+  | {
+      type: "sticker-reference";
+      text: string;
+      raw: string;
+    };
+
+export type ParsedMessagePart = string | MediaReference;
+
 /**
  * 注册自定义的 sticker 扩展，用于解析 [name] 格式的的 sticker 图片
  */
@@ -126,7 +141,7 @@ async function resolveImage(href: string, alt?: string): Promise<ImagePart | nul
 /**
  * 将简单数组转化为平台需要的消息数组
  */
-async function convertToMessageParts(nodes: SimpleNode[]): Promise<MessagePart[]> {
+function convertToParsedMessageParts(nodes: SimpleNode[]): ParsedMessagePart[] {
   // 将连续文本合并、图片/贴纸独立，生成交替的 文本 | 图片 | 贴纸 序列
   const segments: SimpleNode[] = [];
   for (const node of nodes) {
@@ -139,26 +154,33 @@ async function convertToMessageParts(nodes: SimpleNode[]): Promise<MessagePart[]
     if (last?.type === "text") last.text += node.text;
     else segments.push(node);
   }
-  return await Promise.all(
-    segments.map(async (seg): Promise<MessagePart | null> => {
-      if (seg.type === "text") {
-        return seg.text.trim() || null;
-      }
-      if (seg.type === "sticker") {
-        return (await resolveSticker(seg.text)) || seg.raw;
-      }
-      return (await resolveImage(seg.href, seg.text)) || seg.raw;
-    }),
-  ).then((resolved) => resolved.filter((part) => part !== null));
+  return segments.flatMap((segment): ParsedMessagePart[] => {
+    if (segment.type === "text") return segment.text.trim() ? [segment.text.trim()] : [];
+    if (segment.type === "sticker") {
+      return [{ type: "sticker-reference", text: segment.text, raw: segment.raw }];
+    }
+    return [{ type: "image-reference", href: segment.href, text: segment.text, raw: segment.raw }];
+  });
 }
 
 /**
- * 解析 Markdown 内容为平台需要的消息数组
+ * 同步解析 Markdown 内容，不读取图片或贴纸文件
  * @param content Markdown 内容
- * @returns 平台需要的消息数组
+ * @returns 文本和待解析媒体引用组成的消息数组
  */
-export async function parseMarkdown(content: string): Promise<MessagePart[]> {
-  const tokens = marked.lexer(content);
-  const simpleNodes = flattenTokens(tokens);
-  return convertToMessageParts(simpleNodes);
+export function parseMarkdown(content: string): ParsedMessagePart[] {
+  return convertToParsedMessageParts(flattenTokens(marked.lexer(content)));
+}
+
+/**
+ * 并发读取解析结果中的图片和贴纸，转换为平台消息
+ */
+export async function resolveMessageParts(parts: ParsedMessagePart[]): Promise<MessagePart[]> {
+  return await Promise.all(
+    parts.map(async (part): Promise<MessagePart> => {
+      if (typeof part === "string") return part;
+      if (part.type === "sticker-reference") return (await resolveSticker(part.text)) || part.raw;
+      return (await resolveImage(part.href, part.text)) || part.raw;
+    }),
+  );
 }

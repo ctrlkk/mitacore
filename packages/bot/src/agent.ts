@@ -1,7 +1,7 @@
 import { generateText, type LanguageModelUsage, type ToolSet } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { getModel } from "@/model";
-import { parseMarkdown, type MessagePart } from "@/images";
+import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message-parts";
 import { splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
@@ -29,9 +29,9 @@ async function saveHistory(history: ChatHistory, log: PinoLogger = logger) {
   }
 }
 
-async function sliceReply(chunk: string): Promise<MessagePart[]> {
-  const parts = await parseMarkdown(chunk);
-  const result: MessagePart[] = [];
+function sliceReply(chunk: string): ParsedMessagePart[] {
+  const parts = parseMarkdown(chunk);
+  const result: ParsedMessagePart[] = [];
   for (const part of parts) {
     if (typeof part === "string") {
       for (const seg of splitMessage(part, { maxSplitNum: 5 })) {
@@ -42,6 +42,10 @@ async function sliceReply(chunk: string): Promise<MessagePart[]> {
     }
   }
   return result;
+}
+
+function joinReply(parts: ParsedMessagePart[]): string {
+  return parts.map((part) => (typeof part === "string" ? part : part.raw)).join("\n");
 }
 
 /**
@@ -62,14 +66,16 @@ export async function runMain(
   const model = getModel(mainAlias);
 
   const historyMessages: ChatHistory = await loadHistory();
-  const runtimeMessages: ChatHistory = [];
-  runtimeMessages.push({
+  const userRecord: ChatHistory[number] = {
     message: {
       role: "user",
       content: userPrompt,
     },
     timestamp: Date.now(),
-  });
+  };
+  // 工具循环始终使用原始响应，持久化历史则只替换实际发送给用户的文本。
+  const runtimeMessages: ChatHistory = [userRecord];
+  const savedMessages: ChatHistory = [userRecord];
 
   let usage: LanguageModelUsage | undefined;
 
@@ -97,30 +103,63 @@ export async function runMain(
       messages: toModelMessages([...historyMessages, ...runtimeMessages]),
       tools,
       maxOutputTokens: 4096,
+      async onLanguageModelCallEnd({ content }) {
+        const reasoningText = content
+          .filter((part) => part.type === "reasoning")
+          .map((part) => part.text)
+          .join("");
+        const text = content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("");
+        log.info({ reasoningText, text }, "助手响应");
+        for (const part of content) {
+          if (part.type !== "text") continue;
+          const segments = await resolveMessageParts(sliceReply(part.text));
+          if (segments.length > 0) await onReply(segments);
+        }
+      },
+      onToolExecutionStart({ toolCall }) {
+        log.info({ toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input }, "工具调用");
+      },
+      onToolExecutionEnd({ toolCall }) {
+        log.info({ toolName: toolCall.toolName }, "工具执行结束");
+      },
+      onStepEnd(step) {
+        for (const [index, message] of step.response.messages.entries()) {
+          const timestamp = Date.now();
+          const messageUsage = index === 0 ? step.usage : undefined;
+          runtimeMessages.push({ message, timestamp, usage: messageUsage });
+
+          if (message.role !== "assistant") {
+            savedMessages.push({ message, timestamp, usage: messageUsage });
+            continue;
+          }
+
+          if (typeof message.content === "string") {
+            const content = joinReply(sliceReply(message.content));
+            if (content) {
+              savedMessages.push({ message: { ...message, content }, timestamp, usage: messageUsage });
+            }
+            continue;
+          }
+
+          const content = message.content.flatMap((part): typeof message.content => {
+            if (part.type !== "text") return [part];
+            const text = joinReply(sliceReply(part.text));
+            return text ? [{ type: "text", text }] : [];
+          });
+          if (content.length > 0) {
+            savedMessages.push({ message: { ...message, content }, timestamp, usage: messageUsage });
+          }
+        }
+      },
     });
-
-    if (result.reasoning) log.debug({ reasoning: result.reasoningText, step }, "内部思考");
-    if (result.text) log.debug({ text: result.text, step }, "助手响应");
-    if (result.text) {
-      const segments = await sliceReply(result.text);
-      await onReply(segments);
-    }
     usage = result.usage;
-
-    for (const step of result.steps) {
-      for (const message of step.response.messages) {
-        runtimeMessages.push({
-          message,
-          timestamp: Date.now(),
-          usage: step.usage,
-        });
-      }
-    }
-
     if (result.toolCalls.length === 0) break;
   }
 
-  let finalHistory: ChatHistory = [...historyMessages, ...runtimeMessages];
+  let finalHistory: ChatHistory = [...historyMessages, ...savedMessages];
 
   if (isOverflow(usage)) {
     log.info("检测到上下文溢出，开始执行压缩...");
