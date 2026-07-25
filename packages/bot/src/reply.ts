@@ -43,6 +43,10 @@ function sliceReply(chunk: string): ParsedMessagePart[] {
   return result;
 }
 
+function joinReply(parts: ParsedMessagePart[]): string {
+  return parts.map((part) => (typeof part === "string" ? part : part.raw)).join("\n");
+}
+
 /**
  * 运行回复层（仙狐小姐 persona）
  * @param userPrompt 已用 <user_input> 标签包好的用户消息
@@ -58,9 +62,11 @@ export async function runReply(
   onReply: (segments: MessagePart[]) => Promise<void>,
   log: PinoLogger = logger,
 ): Promise<{ replyText: string; usage: LanguageModelUsage | undefined }> {
+  const model = getModel(config.models.reply);
+
   const historyMessages: ChatHistory = await loadHistory();
   const runtimeMessages: ChatHistory = [];
-  const model = getModel(config.models.reply);
+  const savedMessages: ChatHistory = [];
 
   let usage: LanguageModelUsage | undefined;
   let replyText = "";
@@ -98,48 +104,60 @@ export async function runReply(
       system,
       messages: toModelMessages([...historyMessages, ...runtimeMessages]),
       maxOutputTokens: 4096,
-    });
-
-    if (result.reasoning) log.info({ reasoning: result.reasoningText, step }, "内部思考");
-    if (result.text) log.info({ text: result.text, step }, "助手响应");
-
-    const stepMsgs = result.response.messages;
-
-    if (result.text) {
-      const segments = await resolveMessageParts(sliceReply(result.text));
-      await onReply(segments);
-      const sentText = segments
-        .map((seg) => {
-          if (typeof seg === "string") return seg;
-          return seg.raw;
-        })
-        .join("\n");
-
-      // 修剪assistant消息（仅对首条 assistant 有效）
-      stepMsgs.forEach((msg, i) => {
-        if (i === 0 && msg.role === "assistant") {
-          msg.content = sentText;
+      async onLanguageModelCallEnd({ content }) {
+        const reasoningText = content
+          .filter((part) => part.type === "reasoning")
+          .map((part) => part.text)
+          .join("");
+        const text = content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("");
+        log.info({ reasoningText, text, step }, "助手响应");
+        for (const part of content) {
+          if (part.type !== "text") continue;
+          const segments = await resolveMessageParts(sliceReply(part.text));
+          if (segments.length === 0) continue;
+          await onReply(segments);
+          replyText += segments.map((seg) => (typeof seg === "string" ? seg : seg.raw)).join("\n");
         }
-      });
+      },
+      onStepEnd(step) {
+        for (const [index, message] of step.response.messages.entries()) {
+          const timestamp = Date.now();
+          const messageUsage = index === 0 ? step.usage : undefined;
+          runtimeMessages.push({ message, timestamp, usage: messageUsage });
 
-      replyText += sentText;
-    }
+          if (message.role !== "assistant") {
+            savedMessages.push({ message, timestamp, usage: messageUsage });
+            continue;
+          }
 
-    // 把该 step 产出的消息追加为 ChatRecord，首条带 usage
-    stepMsgs.forEach((msg, i) => {
-      runtimeMessages.push({
-        message: msg,
-        timestamp: Date.now(),
-        usage: i === 0 ? result.usage : undefined,
-      });
+          if (typeof message.content === "string") {
+            const content = joinReply(sliceReply(message.content));
+            if (content) {
+              savedMessages.push({ message: { ...message, content }, timestamp, usage: messageUsage });
+            }
+            continue;
+          }
+
+          const content = message.content.flatMap((part): typeof message.content => {
+            if (part.type !== "text") return [part];
+            const text = joinReply(sliceReply(part.text));
+            return text ? [{ type: "text", text }] : [];
+          });
+          if (content.length > 0) {
+            savedMessages.push({ message: { ...message, content }, timestamp, usage: messageUsage });
+          }
+        }
+      },
     });
 
     usage = result.usage;
-
     if (result.toolCalls.length === 0) break;
   }
 
-  let finalHistory: ChatHistory = [...historyMessages.slice(0, -1), ...runtimeMessages];
+  let finalHistory: ChatHistory = [...historyMessages.slice(0, -1), ...savedMessages];
   if (isOverflow(usage)) {
     log.info("检测到上下文溢出，开始执行压缩...");
     finalHistory = await compactHistory(model, system, finalHistory, undefined, log);

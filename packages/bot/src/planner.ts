@@ -49,18 +49,20 @@ interface PlannerResult {
  * @returns plan + submitReply 回调（调用后把完整 messages 持久化到 .cache/planner.json）
  */
 export async function runPlanner(userInputMessage: string, log: PinoLogger = logger): Promise<PlannerResult> {
-  let messages: ChatHistory = await loadHistory();
-
-  // 新增本次用户输入作为一条 record
-  messages.push({
-    message: { role: "user", content: userInputMessage },
-    timestamp: Date.now(),
-  });
   const model = getModel(config.models.plan);
+  const historyMessages: ChatHistory = await loadHistory();
+  const runtimeMessages: ChatHistory = [
+    {
+      message: { role: "user", content: userInputMessage },
+      timestamp: Date.now(),
+    },
+  ];
 
   let planText = "";
   let reasoning: string[] = [];
   let toolCallId: string | undefined;
+  // v7 中 result.toolCalls 累积所有 step，需用 currentStepToolCalls 追踪每步的工具调用
+  let currentStepToolCalls: Array<{ toolName: string; toolCallId: string; input: unknown }> = [];
 
   let usage: LanguageModelUsage | undefined;
 
@@ -94,64 +96,72 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
     const result = await generateText({
       model,
       system,
-      messages: toModelMessages(messages),
+      messages: toModelMessages([...historyMessages, ...runtimeMessages]),
       tools,
       maxOutputTokens: 4096,
+      async onLanguageModelCallEnd({ content }) {
+        const reasoningText = content
+          .filter((part) => part.type === "reasoning")
+          .map((part) => part.text)
+          .join("");
+        const text = content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("");
+        log.info({ reasoningText, text, step }, "plan响应");
+        if (reasoningText) reasoning.push(reasoningText);
+      },
+      onStepEnd(stepResult) {
+        currentStepToolCalls = stepResult.toolCalls;
+        for (const [index, message] of stepResult.response.messages.entries()) {
+          const timestamp = Date.now();
+          const messageUsage = index === 0 ? stepResult.usage : undefined;
+          runtimeMessages.push({ message, timestamp, usage: messageUsage });
+        }
+      },
     });
 
-    log.info({ reasoningText: result.reasoningText, text: result.text, step }, "plan响应");
-    if (result.reasoningText) reasoning.push(result.reasoningText);
     usage = result.usage;
 
-    // 把该 step 产出的消息追加为 ChatRecord，首条带 usage
-    const stepMsgs = result.response.messages;
-    stepMsgs.forEach((msg, i) => {
-      messages.push({
-        message: msg,
-        timestamp: Date.now(),
-        usage: i === 0 ? result.usage : undefined,
-      });
-    });
-
-    const submitCall = result.toolCalls.find((tc) => tc.toolName === "submit_plan");
+    const submitCall = currentStepToolCalls.find((tc) => tc.toolName === "submit_plan");
     if (submitCall) {
       planText = (submitCall.input as { plan?: string }).plan ?? "";
       toolCallId = submitCall.toolCallId;
       break;
     }
 
-    if (result.toolCalls.length === 0) break;
+    if (currentStepToolCalls.length === 0) break;
   }
 
   log.info({ plan: planText }, "规划层 plan");
 
   const submitReply = async (replyText: string): Promise<void> => {
-    messages.push(
-      {
-        message: {
-          role: "tool",
-          content: [
-            {
-              type: "tool-result",
-              toolCallId: toolCallId ?? "submit_plan",
-              toolName: "submit_plan",
-              output: { type: "text", value: replyText },
-            },
-          ],
-        },
-        timestamp: Date.now(),
+    const toolRecord: ChatHistory[number] = {
+      message: {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: toolCallId ?? "submit_plan",
+            toolName: "submit_plan",
+            output: { type: "text", value: replyText },
+          },
+        ],
       },
-      {
-        message: { role: "assistant", content: "[Done]" },
-        timestamp: Date.now(),
-      },
-    );
+      timestamp: Date.now(),
+    };
+    const doneRecord: ChatHistory[number] = {
+      message: { role: "assistant", content: "[Done]" },
+      timestamp: Date.now(),
+    };
+    runtimeMessages.push(toolRecord, doneRecord);
 
+    let finalHistory: ChatHistory = [...historyMessages, ...runtimeMessages];
     if (isOverflow(usage)) {
       log.info("检测到上下文溢出，开始执行压缩...");
-      messages = await compactHistory(model, system, messages, undefined, log);
+      finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
     }
-    await saveHistory(messages, log);
+    await saveHistory(finalHistory, log);
   };
 
   return { plan: planText, reasoning: reasoning.join("\n"), submitReply };

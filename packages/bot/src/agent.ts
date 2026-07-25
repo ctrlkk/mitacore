@@ -73,7 +73,6 @@ export async function runMain(
     },
     timestamp: Date.now(),
   };
-  // 工具循环始终使用原始响应，持久化历史则只替换实际发送给用户的文本。
   const runtimeMessages: ChatHistory = [userRecord];
   const savedMessages: ChatHistory = [userRecord];
 
