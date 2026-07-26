@@ -9,6 +9,7 @@ import { sanitizeImagePath, virtualToRealPath, downloadToCache } from "@/utils/i
 import { getImageGenerator } from "@/generate-image";
 import { logger, type PinoLogger } from "@/logger";
 import imageGenPromptTemplate from "./image-gen.txt";
+import { compressImage } from "@/utils/image-resize";
 
 // 提取 type 为 'content' 的分支
 type ContentResult = Extract<ToolResultOutput, { type: "content" }>;
@@ -107,7 +108,7 @@ export function imageGen(
           const file = Bun.file(realPath);
           return {
             path: virtualPath,
-            image: await new Bun.Image(file).webp({ quality: 80 }).blob(),
+            image: await compressImage(file),
           };
         }),
       );
