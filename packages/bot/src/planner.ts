@@ -10,6 +10,7 @@ import { imageGen } from "./tools/image-gen";
 import { websearch } from "./tools/web-search";
 import { compactHistory, isOverflow } from "./compaction";
 import { getStickersPrompt } from "./stickers";
+import { injectSystemContext } from "./system-context";
 
 const submitPlanTool = tool({
   description: "提交本轮回复策略，包含语气、角度、要点、长度、工具调用等",
@@ -51,9 +52,10 @@ interface PlannerResult {
 export async function runPlanner(userInputMessage: string, log: PinoLogger = logger): Promise<PlannerResult> {
   const model = getModel(config.models.plan);
   const historyMessages: ChatHistory = await loadHistory();
+  const processedInputMessage = injectSystemContext(historyMessages, userInputMessage, log);
   const runtimeMessages: ChatHistory = [
     {
-      message: { role: "user", content: userInputMessage },
+      message: { role: "user", content: processedInputMessage },
       timestamp: Date.now(),
     },
   ];

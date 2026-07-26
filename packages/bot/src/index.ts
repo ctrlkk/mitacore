@@ -1,7 +1,6 @@
 import type { LanguageModelUsage } from "ai";
 import XMLBuilder from "fast-xml-builder";
-import dayjs from "dayjs";
-import "dayjs/locale/zh-cn";
+import dayjs from "@/utils/time";
 
 import { logger } from "@/logger";
 
@@ -20,8 +19,6 @@ import { registerShutdownHook } from "@/utils/shutdown";
 import { config, type Config } from "@/config";
 import { runMain } from "./agent";
 import { dispatchMessage } from "./dispatcher";
-
-dayjs.locale("zh-cn");
 
 /**
  * 检查ID是否在范围内
@@ -309,9 +306,12 @@ function buildPrompt(batch: PendingMessage[], mediaMap: MediaMap) {
       .join(" ");
   };
 
+  const today = dayjs();
+
   for (const msg of batch) {
     const text = formatMessage(msg.unifiedMessages);
-    const block = `<user_input user_id="${msg.userId}" date="${dayjs(msg.date).format("MM-DD dddd HH:mm")}" nickname="${msg.nickname}">\n${text}\n</user_input>`;
+    const fmt = dayjs(msg.date).isSame(today, "day") ? "HH:mm" : "MM-DD HH:mm";
+    const block = `<user_input user_id="${msg.userId}" date="${dayjs(msg.date).format(fmt)}" nickname="${msg.nickname}">\n${text}\n</user_input>`;
     promptParts.push(block);
   }
 

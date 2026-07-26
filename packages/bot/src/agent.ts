@@ -10,6 +10,7 @@ import { type ChatHistory, migrateHistory, toModelMessages } from "@/types/chat-
 import { imageGen } from "./tools/image-gen";
 import { websearch } from "./tools/web-search";
 import { compactHistory, isOverflow } from "./compaction";
+import { injectSystemContext } from "./system-context";
 
 async function loadHistory(): Promise<ChatHistory> {
   try {
@@ -66,10 +67,13 @@ export async function runMain(
   const model = getModel(mainAlias);
 
   const historyMessages: ChatHistory = await loadHistory();
+
+  const finalUserPrompt = injectSystemContext(historyMessages, userPrompt, log);
+
   const userRecord: ChatHistory[number] = {
     message: {
       role: "user",
-      content: userPrompt,
+      content: finalUserPrompt,
     },
     timestamp: Date.now(),
   };

@@ -9,6 +9,7 @@ import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { compactHistory, isOverflow } from "./compaction";
 import { getStickersPrompt } from "./stickers";
+import { injectSystemContext } from "./system-context";
 
 async function loadHistory(): Promise<ChatHistory> {
   try {
@@ -65,6 +66,7 @@ export async function runReply(
   const model = getModel(config.models.reply);
 
   const historyMessages: ChatHistory = await loadHistory();
+  const processedUserPrompt = injectSystemContext(historyMessages, userPrompt, log);
   const runtimeMessages: ChatHistory = [];
   const savedMessages: ChatHistory = [];
 
@@ -94,7 +96,7 @@ export async function runReply(
 
   // 追加 user 消息和 plan 消息作为 record
   historyMessages.push(
-    { message: { role: "user", content: userPrompt }, timestamp: Date.now() },
+    { message: { role: "user", content: processedUserPrompt }, timestamp: Date.now() },
     { message: { role: "user", content: planContent }, timestamp: Date.now() },
   );
 
