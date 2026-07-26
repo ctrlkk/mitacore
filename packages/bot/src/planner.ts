@@ -49,7 +49,7 @@ interface PlannerResult {
  * @param userInputMessage 已用 <user_input> 标签包好的用户消息
  * @returns plan + submitReply 回调（调用后把完整 messages 持久化到 .cache/planner.json）
  */
-export async function runPlanner(userInputMessage: string, log: PinoLogger = logger): Promise<PlannerResult> {
+export async function runPlanner(userInputMessage: string, log: PinoLogger = logger): Promise<PlannerResult | null> {
   const model = getModel(config.models.plan);
   const historyMessages: ChatHistory = await loadHistory();
   const processedInputMessage = injectSystemContext(historyMessages, userInputMessage, log);
@@ -133,6 +133,18 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
     }
 
     if (currentStepToolCalls.length === 0) break;
+  }
+
+  // 未调用 submit_plan，无需回复，保存当前上下文后返回 null
+  if (!toolCallId) {
+    log.info("规划层未调用 submit_plan，跳过回复");
+    let finalHistory: ChatHistory = [...historyMessages, ...runtimeMessages];
+    if (isOverflow(usage)) {
+      log.info("检测到上下文溢出，开始执行压缩...");
+      finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
+    }
+    await saveHistory(finalHistory, log);
+    return null;
   }
 
   log.info({ plan: planText }, "规划层 plan");
