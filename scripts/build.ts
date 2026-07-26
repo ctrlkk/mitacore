@@ -105,7 +105,7 @@ async function buildSidecar() {
  */
 async function copyBin() {
   const outBinDir = join(outDir, "bin");
-  const bins = ["node", "ffmpeg", "gifsicle"];
+  const bins = ["node", "ffmpeg", "ffprobe", "gifsicle"];
 
   await mkdir(outBinDir, { recursive: true });
 
