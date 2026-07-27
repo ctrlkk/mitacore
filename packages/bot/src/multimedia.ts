@@ -33,6 +33,7 @@ export async function imageToText(image: Blob): Promise<string> {
         ],
       },
     ],
+    maxOutputTokens: 1024,
   });
   return text;
 }

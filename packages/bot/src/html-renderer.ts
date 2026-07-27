@@ -3,10 +3,6 @@ import { existsSync } from "node:fs";
 import { binPath, projectPath, sidecarPath } from "@/utils/path";
 import { logger } from "@/logger";
 
-interface ReadyMessage {
-  type: string;
-}
-
 interface RenderResultMessage {
   uuid: string;
   type: "result" | "error";
