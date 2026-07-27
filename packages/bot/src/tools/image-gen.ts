@@ -1,15 +1,15 @@
 import type { ToolResultOutput } from "@ai-sdk/provider-utils";
 import type { LanguageModel, ToolSet } from "ai";
 import { z } from "zod";
-import { generateText, tool, zodSchema } from "ai";
+import { generateText, tool } from "ai";
 import { basename } from "node:path";
 import { lookup } from "mime-types";
 import { imageToText } from "@/multimedia";
 import { sanitizeImagePath, virtualToRealPath, downloadToCache } from "@/utils/image-cache";
 import { getImageGenerator } from "@/generate-image";
 import { logger, type PinoLogger } from "@/logger";
-import imageGenPromptTemplate from "./image-gen.txt";
 import { compressImage } from "@/utils/image-resize";
+import imageGenPromptTemplate from "./image-gen.txt";
 
 // 提取 type 为 'content' 的分支
 type ContentResult = Extract<ToolResultOutput, { type: "content" }>;
@@ -44,22 +44,20 @@ export function imageGen(
       task: z.string().describe("对期望图像的大致任务描述：要画什么、用途或风格意向即可，无需编写完整绘画提示词"),
     }),
     execute: async ({ task }, { messages, abortSignal, context }) => {
-      const inBranch = context?.inBranch === true;
-      if (inBranch) {
-        return "图像生成分支不允许再次派生图像生成，已忽略本次调用。请直接完成手头的任务。";
-      }
+      if (context?.inSubagent) return "图像生成分支不允许再次派生图像生成，已忽略本次调用。请直接完成手头的任务。";
 
       const template = imageGenPromptTemplate;
       const branchInput = template.replace("{task}", task);
 
-      const { usage, text } = await generateText({
+      const { usage, text, finalStep } = await generateText({
         model: parentModel,
         instructions: parentSystem,
         messages: [...messages, { role: "user", content: branchInput }],
         tools: allTools,
         abortSignal,
-        runtimeContext: { inBranch: true },
+        runtimeContext: { inSubagent: true },
         maxOutputTokens: 4096,
+        toolChoice: "none",
       });
       const inputTokens = usage.inputTokens ?? 0;
       const cacheReadTokens = usage.inputTokenDetails?.cacheReadTokens ?? 0;
@@ -77,9 +75,11 @@ export function imageGen(
         );
       }
 
+      log.debug({ reasoningText: finalStep.reasoningText, text }, "图像生成分支输出");
+
       const decision = parseImageGenDecisionXml(text);
       if (!decision) {
-        logger.warn({ error: "未匹配到 <prompt> 字段", outputPreview: text.slice(0, 500) }, "图像生成分支输出解析失败");
+        log.warn({ error: "未匹配到 <prompt> 字段", outputPreview: text.slice(0, 500) }, "图像生成分支输出解析失败");
         return "图像生成分支输出解析失败，且原始任务为空，无法继续生成图像。";
       }
       const { prompt, images } = decision;

@@ -4,7 +4,7 @@ import { FsMemoryStorage } from "./storage";
 
 const storage = new FsMemoryStorage();
 
-export const minimalistMemoryTools: Record<string, Tool> = {
+export const memoryTools = {
   read: tool({
     description:
       "读取文件内容或列出目录条目。如果是目录，每行列出一个条目，子目录以 `/` 结尾。" +

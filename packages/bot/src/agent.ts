@@ -11,6 +11,7 @@ import { imageGen } from "./tools/image-gen";
 import { websearch } from "./tools/web-search";
 import { compactHistory, isOverflow } from "./compaction";
 import { injectSystemContext } from "./system-context";
+import { memoryTools } from "./memory/tool";
 
 async function loadHistory(): Promise<ChatHistory> {
   try {
@@ -95,7 +96,7 @@ export async function runMain(
     "</role>",
   ].join("\n");
 
-  const tools: ToolSet = {};
+  const tools: ToolSet = { ...memoryTools };
   tools.image_gen = imageGen(tools, system, model);
   tools.web_search = websearch();
 
