@@ -4,6 +4,7 @@ import { getModel } from "@/model";
 import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message/parts";
 import { splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
+import { logUsage } from "@/utils/format";
 import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { type ChatHistory, migrateHistory, toModelMessages } from "@/types/chat-history";
@@ -159,7 +160,9 @@ export async function runMain(
         }
       },
     });
+    // 所有 step 的 usage 累加，但是这里只会有一次 step
     usage = result.usage;
+    logUsage(log, usage);
     if (result.toolCalls.length === 0) break;
   }
 

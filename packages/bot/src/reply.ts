@@ -10,6 +10,7 @@ import { logger, type PinoLogger } from "@/logger";
 import { compactHistory, isOverflow } from "./compaction";
 import { getStickersPrompt } from "./stickers";
 import { injectSystemContext } from "./system-context";
+import { logUsage } from "./utils/format";
 
 async function loadHistory(): Promise<ChatHistory> {
   try {
@@ -156,6 +157,7 @@ export async function runReply(
     });
 
     usage = result.usage;
+    logUsage(log, usage);
     if (result.toolCalls.length === 0) break;
   }
 

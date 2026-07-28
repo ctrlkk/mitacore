@@ -9,6 +9,7 @@ import { sanitizeImagePath, virtualToRealPath, downloadToCache } from "@/utils/i
 import { getImageGenerator } from "@/generate-image";
 import { logger, type PinoLogger } from "@/logger";
 import { compressImage } from "@/utils/image-resize";
+import { logUsage } from "@/utils/format";
 import imageGenPromptTemplate from "./image-gen.txt";
 
 // 提取 type 为 'content' 的分支
@@ -59,22 +60,7 @@ export function imageGen(
         maxOutputTokens: 4096,
         toolChoice: "none",
       });
-      const inputTokens = usage.inputTokens ?? 0;
-      const cacheReadTokens = usage.inputTokenDetails?.cacheReadTokens ?? 0;
-      const cacheHitRate = inputTokens > 0 ? (cacheReadTokens / inputTokens) * 100 : 0;
-      if (cacheHitRate < 80) {
-        log.warn(
-          {
-            cacheHitRate: Number(cacheHitRate.toFixed(1)),
-            inputTokens,
-            cacheReadTokens,
-            cacheWriteTokens: usage.inputTokenDetails?.cacheWriteTokens ?? 0,
-            uncachedTokens: usage.inputTokenDetails?.noCacheTokens ?? 0,
-          },
-          "图像生成分支缓存命中率低于 80%",
-        );
-      }
-
+      logUsage(log, usage);
       log.debug({ reasoningText: finalStep.reasoningText, text }, "图像生成分支输出");
 
       const decision = parseImageGenDecisionXml(text);
