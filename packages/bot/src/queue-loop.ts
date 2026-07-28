@@ -11,8 +11,9 @@ import { runPlanner } from "@/planner";
 import { runMain } from "@/agent";
 import { cache } from "@/utils/cache";
 import { logger } from "@/logger";
-import XMLBuilder from "fast-xml-builder";
 import dayjs from "@/utils/time";
+import os from "node:os";
+import XMLBuilder from "fast-xml-builder";
 
 type MediaResource = {
   url: string;
@@ -55,7 +56,9 @@ function createMediaProcessor() {
             if (kind === "image") {
               return await downloadToCache(url, { limit: 5 * 1024 * 1024 });
             } else if (kind === "video") {
-              return await downloadToCache(url, { limit: 20 * 1024 * 1024 });
+              const { downloadToCache } = await import("@/utils/blob");
+              const { realPath } = await downloadToCache(url, { cacheDir: os.tmpdir(), limit: 20 * 1024 * 1024 });
+              return { virtualPath: "", realPath };
             }
           } catch (error) {
             logger.error({ url, kind, error }, "下载失败");

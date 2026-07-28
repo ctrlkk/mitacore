@@ -1,4 +1,12 @@
 import { Buffer } from "node:buffer";
+import { mkdir, rename, unlink, open } from "node:fs/promises";
+import { resolve, join } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { extension } from "mime-types";
+import { createWriteStream } from "node:fs";
+import { Readable, Transform, type TransformCallback } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import bs58 from "bs58";
 
 /**
  * 将Base64字符串转换为Blob对象
@@ -84,4 +92,137 @@ export async function download(url: string, option: { limit?: number } = {}): Pr
     }
   }
   return new Blob(chunks, { type: contentType });
+}
+
+type MagicSignature = {
+  ext: string;
+  bytes: Array<number | null>;
+};
+
+const MAGIC_SIGNATURES: MagicSignature[] = [
+  { ext: "jpg", bytes: [0xff, 0xd8, 0xff] },
+  { ext: "png", bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },
+  { ext: "gif", bytes: [0x47, 0x49, 0x46, 0x38] },
+  {
+    ext: "webp",
+    bytes: [0x52, 0x49, 0x46, 0x46, null, null, null, null, 0x57, 0x45, 0x42, 0x50],
+  },
+  { ext: "bmp", bytes: [0x42, 0x4d] },
+
+  { ext: "avif", bytes: [null, null, null, null, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66] },
+  {
+    ext: "heic",
+    bytes: [null, null, null, null, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63],
+  },
+  {
+    ext: "heif",
+    bytes: [null, null, null, null, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x69, 0x66, 0x31],
+  },
+  {
+    ext: "mov",
+    bytes: [null, null, null, null, 0x66, 0x74, 0x79, 0x70, 0x71, 0x74, 0x20, 0x20],
+  },
+  {
+    ext: "m4a",
+    bytes: [null, null, null, null, 0x66, 0x74, 0x79, 0x70, 0x4d, 0x34, 0x41, 0x20],
+  },
+  {
+    ext: "mp4",
+    bytes: [null, null, null, null, 0x66, 0x74, 0x79, 0x70],
+  },
+  { ext: "webm", bytes: [0x1a, 0x45, 0xdf, 0xa3] },
+  { ext: "flv", bytes: [0x46, 0x4c, 0x56] },
+  {
+    ext: "avi",
+    bytes: [0x52, 0x49, 0x46, 0x46, null, null, null, null, 0x41, 0x56, 0x49, 0x20],
+  },
+];
+
+function detectExtByMagic(header: Uint8Array): string | undefined {
+  for (const signature of MAGIC_SIGNATURES) {
+    if (header.length < signature.bytes.length) continue;
+
+    const matched = signature.bytes.every((byte, index) => byte === null || header[index] === byte);
+    if (matched) return signature.ext;
+  }
+
+  return undefined;
+}
+
+/**
+ * 下载一个网络文件到缓存目录
+ * @param url 链接
+ * @param options 选项
+ * @param options.cacheDir 缓存目录
+ * @param options.limit 下载大小限制
+ * @param options.fallbackExt 回退文件扩展名
+ * @returns 下载结果
+ */
+export async function downloadToCache(
+  url: string,
+  options: {
+    cacheDir: string;
+    limit?: number;
+    fallbackExt?: string;
+  },
+): Promise<{ realPath: string; fileName: string }> {
+  const limit = options.limit ?? 20 * 1024 * 1024;
+  const fallbackExt = options.fallbackExt ?? "jpg";
+
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+  if (!response.body) throw new Error("空的响应体");
+
+  const contentType = response.headers.get("content-type")?.split(";")[0]?.trim() || undefined;
+
+  await mkdir(options.cacheDir, { recursive: true });
+  const tempFilename = `${randomUUID()}.tmp`;
+  const tempPath = join(options.cacheDir, tempFilename);
+
+  const hasher = createHash("sha256");
+  let receivedLength = 0;
+
+  const transform = new Transform({
+    transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback) {
+      receivedLength += chunk.length;
+      if (receivedLength > limit) {
+        return callback(new Error(`下载大小超过限制: ${receivedLength} > ${limit}`));
+      }
+      hasher.update(chunk);
+      callback(null, chunk);
+    },
+  });
+
+  let isFileFinalized = false;
+
+  try {
+    await pipeline(Readable.fromWeb(response.body), transform, createWriteStream(tempPath));
+
+    const fileHandle = await open(tempPath, "r");
+    const header = new Uint8Array(64);
+    await fileHandle.read(header, 0, 64, 0);
+    await fileHandle.close();
+
+    const contentTypeExt = contentType && contentType !== "application/octet-stream" ? extension(contentType) : false;
+    const ext = detectExtByMagic(header) ?? contentTypeExt ?? fallbackExt;
+
+    const hashHex = hasher.digest("hex").slice(0, 12);
+    const encoded = bs58.encode(Buffer.from(hashHex, "hex"));
+    const finalFilename = `${encoded}.${ext}`;
+    const finalPath = resolve(options.cacheDir, finalFilename);
+
+    try {
+      await rename(tempPath, finalPath);
+    } catch {
+      await unlink(tempPath);
+    }
+
+    isFileFinalized = true;
+
+    return { realPath: finalPath, fileName: finalFilename };
+  } finally {
+    if (!isFileFinalized) {
+      await unlink(tempPath).catch(() => {});
+    }
+  }
 }

@@ -6,7 +6,7 @@ import { logger } from "@/logger";
 
 const MAX_DIM = 720;
 const MIN_COMPRESS_SIZE = 50 * 1024;
-const SUPPORTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp", "image/gif"]);
+const SUPPORTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp", "image/x-ms-bmp", "image/gif"]);
 
 /**
  * 查找图片处理所需的可执行文件
@@ -35,7 +35,7 @@ async function resizeGif(file: BunFile): Promise<Blob> {
         gifsicle,
         `--resize-fit=${MAX_DIM}x${MAX_DIM}`, // 等比缩放，限制在 MAX_DIM 以内
         "--optimize=3", // 无损 LZW 重组优化
-        "--lossy=80", // 有损压缩（如果编译版本支持）
+        "--lossy=90", // 有损压缩（如果编译版本支持）
         "--no-warnings", // 忽略警告
         "-o",
         "-", // 输出到 stdout
@@ -117,7 +117,7 @@ async function probeWebpCodec(file: Blob): Promise<"webp" | "webp_anim" | null> 
  * 按格式选择压缩策略：
  * - GIF → gifsicle（保留动画）
  * - JPEG / PNG / WebP → ffmpeg（保持原始格式）
- * - BMP → ffmpeg 转为 JPEG
+ * - BMP → ffmpeg 转为 PNG
  * - 未知格式 → 透传
  */
 export async function compressImage(file: BunFile): Promise<Blob> {
@@ -136,22 +136,43 @@ export async function compressImage(file: BunFile): Promise<Blob> {
 
   // 根据图片类型选择 ffmpeg 编码参数
   const profile = (() => {
-    if (file.type === "image/jpeg" || file.type === "image/bmp") {
-      return { type: "image/jpeg", args: ["-frames:v", "1", "-c:v", "mjpeg", "-q:v", "5", "-f", "image2pipe"] };
+    // JPEG
+    if (file.type === "image/jpeg") {
+      return {
+        type: "image/jpeg",
+        args: ["-frames:v", "1", "-c:v", "mjpeg", "-q:v", "3", "-f", "image2pipe"],
+      };
     }
+
+    // BMP
+    if (file.type === "image/bmp" || file.type === "image/x-ms-bmp") {
+      return {
+        type: "image/png",
+        args: ["-frames:v", "1", "-c:v", "png", "-compression_level", "9", "-pred", "mixed", "-f", "image2pipe"],
+      };
+    }
+
+    // PNG
     if (file.type === "image/png") {
       return {
         type: "image/png",
         args: ["-frames:v", "1", "-c:v", "png", "-compression_level", "9", "-pred", "mixed", "-f", "image2pipe"],
       };
     }
+
+    // 动态 WebP
     if (webpCodec === "webp_anim") {
       return {
         type: "image/webp",
-        args: ["-c:v", "libwebp_anim", "-quality", "80", "-fps_mode", "passthrough", "-loop", "0", "-f", "webp"],
+        args: ["-c:v", "libwebp_anim", "-quality", "90", "-fps_mode", "passthrough", "-loop", "0", "-f", "webp"],
       };
     }
-    return { type: "image/webp", args: ["-frames:v", "1", "-c:v", "libwebp", "-quality", "80", "-f", "webp"] };
+
+    // 静态 WebP
+    return {
+      type: "image/webp",
+      args: ["-frames:v", "1", "-c:v", "libwebp", "-quality", "90", "-compression_level", "6", "-f", "webp"],
+    };
   })();
 
   try {
@@ -188,19 +209,16 @@ export async function compressImage(file: BunFile): Promise<Blob> {
 
     const result = new Blob([buffer], { type: profile.type });
 
-    const compressionRatio = result.size / file.size;
-
     logger.info(
       {
         file: file.name,
         originalBytes: formatBytes(file.size),
         compressedBytes: formatBytes(result.size),
-        compressionRatio,
       },
       "图片压缩",
     );
 
-    return compressionRatio <= 0.95 ? result : file;
+    return result.size < file.size ? result : file;
   } catch (error) {
     logger.warn({ error }, "图片处理失败");
     return file;
