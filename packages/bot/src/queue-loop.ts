@@ -321,27 +321,32 @@ export function createBot(sessionId: string) {
     const prompt = buildPrompt(batch, mediaMap).trim();
     log.info({ prompt }, "用户输入");
 
-    if (1 > 2) {
-      const planResult = await runPlanner(prompt, log);
-      if (!planResult) {
-        log.info("规划层未调用 submit_plan，跳过回复");
-        return;
+    const cancelTyping = await ctx.setTyping();
+    try {
+      if (1 > 2) {
+        const planResult = await runPlanner(prompt, log);
+        if (!planResult) {
+          log.info("规划层未调用 submit_plan，跳过回复");
+          return;
+        }
+        const { plan, reasoning, submitReply } = planResult;
+        const { replyText } = await runReply(prompt, plan, reasoning, async (segments) => {
+          for (const seg of segments) {
+            await ctx.reply(seg);
+            await Bun.sleep(500);
+          }
+        });
+        await submitReply(replyText);
+      } else {
+        await runMain(prompt, async (segments) => {
+          for (const seg of segments) {
+            await ctx.reply(seg);
+            await Bun.sleep(500);
+          }
+        });
       }
-      const { plan, reasoning, submitReply } = planResult;
-      const { replyText } = await runReply(prompt, plan, reasoning, async (segments) => {
-        for (const seg of segments) {
-          await ctx.reply(seg);
-          await Bun.sleep(500);
-        }
-      });
-      await submitReply(replyText);
-    } else {
-      await runMain(prompt, async (segments) => {
-        for (const seg of segments) {
-          await ctx.reply(seg);
-          await Bun.sleep(500);
-        }
-      });
+    } finally {
+      cancelTyping();
     }
   }
 

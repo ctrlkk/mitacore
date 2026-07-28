@@ -119,6 +119,9 @@ export interface OneBotEventContext<TEvent extends OneBotEvent = OneBotEvent> {
    * delete / kick / ban / ban_duration / remark 仅在类型中存在，未实际实现。
    */
   quickOperation(operation: OneBotApiParams, options?: RequestOptions): Promise<unknown>;
+
+  /** 设置"正在输入中"状态（NapCat 扩展，仅私聊消息事件可用）。 */
+  setTyping(): Promise<() => void>;
 }
 
 /** OneBot v11 业务客户端，基于 {@link OneBotWebSocketClient} 提供中间件事件系统和业务级 API */
@@ -313,6 +316,14 @@ export class OneBotClient {
     return this.call<{ url?: string }>("get_private_file_url", { file_id: fileId }, options);
   }
 
+  /**
+   * 单次调用 set_input_status（NapCat 扩展 API，仅私聊有效）。
+   * 群聊调用时静默忽略。
+   */
+  setInputStatus(userId: number | string, eventType: 0 | 1, options?: RequestOptions) {
+    return this.call<null>("set_input_status", { user_id: String(userId), event_type: eventType }, options);
+  }
+
   /** 注册事件中间件，返回取消注册的函数 */
   use(middleware: EventMiddleware) {
     this.middlewares.push(middleware);
@@ -447,6 +458,30 @@ function createEventContext<TEvent extends OneBotEvent>(
     },
     quickOperation(operation, options) {
       return client.raw(".handle_quick_operation", { context: event, operation }, options);
+    },
+
+    async setTyping() {
+      if (!isPrivateMessageEvent(event)) {
+        return () => {};
+      }
+
+      const userId = event.user_id;
+      let cancelled = false;
+
+      // 立即发一次
+      await client.setInputStatus(userId, 1);
+
+      const timer = setInterval(async () => {
+        if (cancelled) return;
+        await client.setInputStatus(userId, 1);
+      }, 500).unref();
+
+      return async () => {
+        if (cancelled) return;
+        cancelled = true;
+        clearInterval(timer);
+        await client.setInputStatus(userId, 0);
+      };
     },
   };
 }
