@@ -17,7 +17,8 @@ export function formatUsage(u: import("ai").LanguageModelUsage | undefined): str
   const cached = u.inputTokenDetails?.cacheReadTokens ?? 0;
   const output = u.outputTokens ?? 0;
   const hitRate = input > 0 ? ((cached / input) * 100).toFixed(1) : "0.0";
-  return `输入=${input}  缓存=${cached} (命中率 ${hitRate}%)  输出=${output}`;
+  const fmt = (v: number) => v.toLocaleString();
+  return `输入=${fmt(input)}  缓存=${fmt(cached)} (命中率 ${hitRate}%)  输出=${fmt(output)}`;
 }
 
 /**

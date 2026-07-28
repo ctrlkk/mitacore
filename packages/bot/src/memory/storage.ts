@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile, rm, readdir, stat } from "node:fs/promises";
-import { resolve, dirname, relative, normalize } from "node:path";
+import { resolve, dirname, relative, isAbsolute, posix } from "node:path";
 import { glob } from "glob";
 import { dataPath } from "@/utils/path";
 
@@ -12,31 +12,31 @@ export interface IMemoryStorage {
   grep(pattern: string, path: string | undefined, include: string | undefined, ignoreCase: boolean): Promise<string>;
 }
 
-const BASE_DIR = dataPath("memory");
-const MAX_LINE_LENGTH = 2000;
-const MAX_LINE_SUFFIX = "...";
-const MAX_MATCHES = 100;
-
-function getSafePath(path: string): string {
-  const normalized = normalize(path).replace(/\\/g, "/");
-  const fullPath = resolve(BASE_DIR, normalized.replace(/^\/+/, ""));
-  if (!fullPath.startsWith(BASE_DIR)) {
-    throw new Error("非法路径：禁止目录穿越");
-  }
-  return fullPath;
-}
-
-function isWithinBaseDir(filePath: string): boolean {
-  const normalized = filePath.replace(/\\/g, "/");
-  const baseNormalized = BASE_DIR.replace(/\\/g, "/");
-  return normalized.startsWith(baseNormalized);
-}
-
-function getRelativePath(filePath: string): string {
-  return "/" + relative(BASE_DIR, filePath).replace(/\\/g, "/");
-}
-
 export async function createFsStorage(): Promise<IMemoryStorage> {
+  const BASE_DIR = dataPath("memory");
+  const MAX_LINE_LENGTH = 2000;
+  const MAX_LINE_SUFFIX = "...";
+  const MAX_MATCHES = 100;
+
+  function getSafePath(path: string): string {
+    const normalizedInput = posix.normalize(path).replace(/^\/+/, "");
+    const fullPath = resolve(BASE_DIR, normalizedInput);
+    const rel = relative(BASE_DIR, fullPath);
+    if (rel !== "" && (rel.startsWith("..") || isAbsolute(rel))) {
+      throw new Error(`非法路径：禁止目录穿越 (${path})`);
+    }
+    return fullPath;
+  }
+
+  function isWithinBaseDir(filePath: string): boolean {
+    const rel = relative(BASE_DIR, filePath);
+    return !rel.startsWith("..") && !isAbsolute(rel);
+  }
+
+  function getRelativePath(filePath: string): string {
+    return "/" + posix.relative(BASE_DIR.replace(/\\/g, "/"), filePath.replace(/\\/g, "/"));
+  }
+
   await mkdir(BASE_DIR, { recursive: true });
 
   async function read(path: string, offset: number, limit: number): Promise<string> {
