@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { tool, type Tool } from "ai";
-import { FsMemoryStorage } from "./storage";
+import { tool } from "ai";
+import { createFsStorage } from "./storage";
 
-const storage = new FsMemoryStorage();
+const storage = await createFsStorage();
 
 export const memoryTools = {
   read: tool({

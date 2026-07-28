@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile, rm, readdir, stat } from "node:fs/promises";
 import { resolve, dirname, relative, normalize } from "node:path";
 import { glob } from "glob";
-import { dataPath } from "../utils/path";
+import { dataPath } from "@/utils/path";
 
 export interface IMemoryStorage {
   read(path: string, offset: number, limit: number): Promise<string>;
@@ -17,22 +17,30 @@ const MAX_LINE_LENGTH = 2000;
 const MAX_LINE_SUFFIX = "...";
 const MAX_MATCHES = 100;
 
-export class FsMemoryStorage implements IMemoryStorage {
-  constructor() {
-    mkdir(BASE_DIR, { recursive: true }).catch(() => {});
+function getSafePath(path: string): string {
+  const normalized = normalize(path).replace(/\\/g, "/");
+  const fullPath = resolve(BASE_DIR, normalized.replace(/^\/+/, ""));
+  if (!fullPath.startsWith(BASE_DIR)) {
+    throw new Error("非法路径：禁止目录穿越");
   }
+  return fullPath;
+}
 
-  private getSafePath(path: string): string {
-    const normalized = normalize(path).replace(/\\/g, "/");
-    const fullPath = resolve(BASE_DIR, normalized.replace(/^\/+/, ""));
-    if (!fullPath.startsWith(BASE_DIR)) {
-      throw new Error("非法路径：禁止目录穿越");
-    }
-    return fullPath;
-  }
+function isWithinBaseDir(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, "/");
+  const baseNormalized = BASE_DIR.replace(/\\/g, "/");
+  return normalized.startsWith(baseNormalized);
+}
 
-  async read(path: string, offset: number, limit: number): Promise<string> {
-    const fullPath = this.getSafePath(path);
+function getRelativePath(filePath: string): string {
+  return "/" + relative(BASE_DIR, filePath).replace(/\\/g, "/");
+}
+
+export async function createFsStorage(): Promise<IMemoryStorage> {
+  await mkdir(BASE_DIR, { recursive: true });
+
+  async function read(path: string, offset: number, limit: number): Promise<string> {
+    const fullPath = getSafePath(path);
     try {
       const s = await stat(fullPath);
 
@@ -76,8 +84,8 @@ export class FsMemoryStorage implements IMemoryStorage {
     }
   }
 
-  async write(path: string, content: string, overwrite: boolean): Promise<string> {
-    const fullPath = this.getSafePath(path);
+  async function write(path: string, content: string, overwrite: boolean): Promise<string> {
+    const fullPath = getSafePath(path);
     const exists = await stat(fullPath)
       .then(() => true)
       .catch(() => false);
@@ -89,8 +97,8 @@ export class FsMemoryStorage implements IMemoryStorage {
     return "文件写入成功。";
   }
 
-  async edit(path: string, oldString: string, newString: string): Promise<string> {
-    const fullPath = this.getSafePath(path);
+  async function edit(path: string, oldString: string, newString: string): Promise<string> {
+    const fullPath = getSafePath(path);
     try {
       const content = await readFile(fullPath, "utf-8");
       const occurrences = content.split(oldString).length - 1;
@@ -107,8 +115,8 @@ export class FsMemoryStorage implements IMemoryStorage {
     }
   }
 
-  async delete(path: string, confirm: boolean): Promise<string> {
-    const fullPath = this.getSafePath(path);
+  async function remove(path: string, confirm: boolean): Promise<string> {
+    const fullPath = getSafePath(path);
     const stats = await stat(fullPath).catch(() => null);
     if (!stats) return `错误：文件 "${path}" 不存在。`;
     if (stats.isDirectory() && !confirm) {
@@ -118,25 +126,19 @@ export class FsMemoryStorage implements IMemoryStorage {
     return `已删除 "${path}"。`;
   }
 
-  async glob(pattern: string, searchPath: string | undefined, limit: number): Promise<string> {
-    const searchDir = searchPath ? this.getSafePath(searchPath) : BASE_DIR;
+  async function globFiles(pattern: string, searchPath: string | undefined, limit: number): Promise<string> {
+    const searchDir = searchPath ? getSafePath(searchPath) : BASE_DIR;
     const files = await glob(pattern, { cwd: searchDir, nodir: true, absolute: true });
 
-    // 过滤越界路径，收集 mtime
     const entries: { path: string; mtime: number }[] = [];
     for (const file of files) {
-      const normalized = file.replace(/\\/g, "/");
-      const baseNormalized = BASE_DIR.replace(/\\/g, "/");
-      if (!normalized.startsWith(baseNormalized)) continue;
-
+      if (!isWithinBaseDir(file)) continue;
       try {
         const s = await stat(file);
-        const relPath = "/" + relative(BASE_DIR, file).replace(/\\/g, "/");
-        entries.push({ path: relPath, mtime: s.mtimeMs });
+        entries.push({ path: getRelativePath(file), mtime: s.mtimeMs });
       } catch {}
     }
 
-    // 按修改时间降序
     entries.sort((a, b) => b.mtime - a.mtime);
 
     const truncated = entries.length > limit;
@@ -148,13 +150,13 @@ export class FsMemoryStorage implements IMemoryStorage {
     return output + (truncated ? `\n(结果截断：显示前 ${limit} 条)` : "");
   }
 
-  async grep(
+  async function grep(
     pattern: string,
     searchPath: string | undefined,
     include: string | undefined,
     ignoreCase: boolean,
   ): Promise<string> {
-    const searchDir = searchPath ? this.getSafePath(searchPath) : BASE_DIR;
+    const searchDir = searchPath ? getSafePath(searchPath) : BASE_DIR;
     const globPattern = include || "**/*";
     const files = await glob(globPattern, { cwd: searchDir, nodir: true, absolute: true });
 
@@ -171,15 +173,11 @@ export class FsMemoryStorage implements IMemoryStorage {
 
     for (const file of files) {
       if (totalCount >= MAX_MATCHES) break;
-      // 越界检查
-      const normalized = file.replace(/\\/g, "/");
-      const baseNormalized = BASE_DIR.replace(/\\/g, "/");
-      if (!normalized.startsWith(baseNormalized)) continue;
+      if (!isWithinBaseDir(file)) continue;
 
       try {
         const content = await readFile(file, "utf-8");
         const lines = content.split("\n");
-        const relPath = "/" + relative(BASE_DIR, file).replace(/\\/g, "/");
         const matched: { line: number; text: string }[] = [];
 
         for (let i = 0; i < lines.length; i++) {
@@ -197,12 +195,11 @@ export class FsMemoryStorage implements IMemoryStorage {
 
         if (matched.length > 0) {
           const s = await stat(file);
-          fileMatches.push({ path: relPath, mtime: s.mtimeMs, lines: matched });
+          fileMatches.push({ path: getRelativePath(file), mtime: s.mtimeMs, lines: matched });
         }
       } catch {}
     }
 
-    // 按修改时间降序
     fileMatches.sort((a, b) => b.mtime - a.mtime);
 
     if (fileMatches.length === 0) return "未找到匹配的内容。";
@@ -219,4 +216,6 @@ export class FsMemoryStorage implements IMemoryStorage {
     }
     return output.join("\n");
   }
+
+  return { read, write, edit, delete: remove, glob: globFiles, grep };
 }
