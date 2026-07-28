@@ -9,7 +9,7 @@ import { pipeline } from "node:stream/promises";
 import bs58 from "bs58";
 
 /** 图片缓存的真实文件系统目录 */
-const IMAGE_CACHE_DIR = dataPath("images");
+const IMAGE_CACHE_DIR = dataPath("workspace", "images");
 const IMAGE_VIRTUAL_PREFIX = "/images/";
 
 /**
