@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { findExecutable } from "@/utils/find-executable";
 import { binPath, projectPath, sidecarPath } from "@/utils/path";
 import { logger } from "@/logger";
 import { env } from "node:process";
@@ -16,13 +17,7 @@ interface GenerateResult {
 
 async function setupImageGenerator() {
   const localNodePath = process.platform === "win32" ? binPath("node.exe") : binPath("node");
-
-  let nodeBin: string | null = null;
-  if (existsSync(localNodePath)) {
-    nodeBin = localNodePath;
-  } else {
-    nodeBin = Bun.which("node");
-  }
+  const nodeBin = existsSync(localNodePath) ? localNodePath : findExecutable("node");
 
   if (!nodeBin) {
     throw new Error("找不到 node 可执行文件，请在 bin 目录下放置 node.exe，或安装 Node.js");

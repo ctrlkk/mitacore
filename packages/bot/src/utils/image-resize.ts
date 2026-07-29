@@ -1,23 +1,11 @@
 import type { BunFile } from "bun";
-import { resolve, dirname } from "node:path";
-import { existsSync } from "node:fs";
 import { formatBytes } from "./format";
+import { findExecutable } from "./find-executable";
 import { logger } from "@/logger";
 
 const MAX_DIM = 720;
 const MIN_COMPRESS_SIZE = 50 * 1024;
 const SUPPORTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp", "image/x-ms-bmp", "image/gif"]);
-
-/**
- * 查找图片处理所需的可执行文件
- * 优先从打包目录的 bin 子目录查找，找不到则回退到系统 PATH
- */
-function findExecutable(name: "ffmpeg" | "ffprobe" | "gifsicle"): string | null {
-  const exeExt = process.platform === "win32" ? ".exe" : "";
-  const bundled = resolve(dirname(process.execPath), "bin", `${name}${exeExt}`);
-  if (existsSync(bundled)) return bundled;
-  return Bun.which(name) ?? null;
-}
 
 /**
  * 使用 gifsicle 缩放并压缩 GIF，保留动画

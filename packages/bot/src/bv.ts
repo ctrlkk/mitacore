@@ -1,6 +1,7 @@
 import { logger } from "./logger";
 import type { OneBotEventContext } from "./onebot/onebot-client";
 import type { OneBotMessageEvent } from "./onebot/websocket-client";
+import { findExecutable } from "./utils/find-executable";
 
 async function handleBilibiliDownload(input: string, ctx: OneBotEventContext<OneBotMessageEvent>) {
   const { mkdir } = await import("node:fs/promises");
@@ -31,7 +32,7 @@ async function handleBilibiliDownload(input: string, ctx: OneBotEventContext<One
   await downloadBilibiliVideo(bvid, cid, outputPath);
   // 使用环境中的 ffmpeg 提取首帧作为封面（dataurl 格式）
   let cover: string | undefined;
-  const ffmpeg = Bun.which("ffmpeg");
+  const ffmpeg = findExecutable("ffmpeg");
   if (ffmpeg) {
     try {
       const proc = Bun.spawn(

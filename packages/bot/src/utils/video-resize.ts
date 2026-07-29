@@ -1,22 +1,10 @@
 import type { BunFile } from "bun";
-import { resolve, dirname } from "node:path";
-import { existsSync } from "node:fs";
 import { formatBytes } from "./format";
+import { findExecutable } from "./find-executable";
 import { logger } from "@/logger";
 
 const MAX_DIM = 720;
 const MIN_COMPRESS_SIZE = 512 * 1024; // 视频建议大于 500KB 再压缩
-
-/**
- * 查找 ffmpeg 可执行文件
- * 优先从打包目录的 bin 子目录查找，找不到则回退到系统 PATH
- */
-function findFfmpeg(): string | null {
-  const exeExt = process.platform === "win32" ? ".exe" : "";
-  const bundled = resolve(dirname(process.execPath), "bin", `ffmpeg${exeExt}`);
-  if (existsSync(bundled)) return bundled;
-  return Bun.which("ffmpeg") ?? null;
-}
 
 /**
  * 使用 ffmpeg 转码并压缩视频
@@ -25,7 +13,7 @@ function findFfmpeg(): string | null {
  * - 使用 fast preset加速编码
  */
 async function transcodeVideo(file: BunFile): Promise<Blob> {
-  const ffmpeg = findFfmpeg();
+  const ffmpeg = findExecutable("ffmpeg");
   if (!ffmpeg) {
     logger.warn("未找到 ffmpeg 可执行文件，视频将透传处理");
     return file;
