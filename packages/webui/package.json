@@ -1,0 +1,22 @@
+{
+  "name": "webui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vue-tsc --noEmit && vite build",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@vicons/ionicons5": "^0.13.0",
+    "katex": "^0.18.1",
+    "naive-ui": "^2.44.1",
+    "vue": "^3.5.40"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.8",
+    "typescript": "^5.9.3",
+    "vite": "^8.1.5",
+    "vue-tsc": "^3.3.8"
+  }
+}

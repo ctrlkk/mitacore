@@ -12,6 +12,8 @@
   "scripts": {
     "dev": "bun run packages/bot/src/index.ts --watch",
     "start": "bun run packages/bot/src/index.ts",
+    "webui:dev": "bun run --cwd packages/webui dev",
+    "webui:build": "bun run --cwd packages/webui build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db": "bun --cwd packages/bot drizzle-kit",

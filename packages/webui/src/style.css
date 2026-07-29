@@ -1,0 +1,219 @@
+:root {
+  color: #1f2937;
+  background: #f6f7fb;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background: #f6f7fb;
+}
+.app-header {
+  background: rgb(255 255 255 / 92%);
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.header-content,
+.page-content {
+  width: min(1360px, 100%);
+  margin: 0 auto;
+}
+.header-content {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  color: white;
+  background: #2463eb;
+  border-radius: 10px;
+}
+.eyebrow,
+.section-kicker {
+  margin: 0;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+h1 {
+  margin-bottom: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+h2 {
+  margin-bottom: 8px;
+  font-size: 24px;
+  line-height: 1.25;
+}
+.intro {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 34px;
+}
+.intro > div > p:last-child {
+  margin-bottom: 0;
+  color: #6b7280;
+}
+.restart-note {
+  color: #6b7280;
+  white-space: nowrap;
+}
+.config-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.85fr);
+  gap: 24px;
+  align-items: start;
+}
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  margin-bottom: 14px;
+}
+.section-heading h2 {
+  margin-bottom: 0;
+  font-size: 20px;
+}
+.provider-stack {
+  display: grid;
+  gap: 16px;
+}
+.provider-card,
+.role-card {
+  box-shadow: 0 2px 10px rgb(15 23 42 / 4%);
+}
+.provider-fields {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1.25fr;
+  gap: 12px;
+}
+.provider-form .n-form-item {
+  margin-bottom: 4px;
+}
+.model-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 0 12px;
+}
+.model-toolbar p {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+.model-list {
+  overflow: hidden;
+  border: 1px solid #e7eaf0;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+.model-list-header,
+.model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+}
+.model-list-header {
+  color: #6b7280;
+  background: #fafafa;
+  font-size: 12px;
+  font-weight: 600;
+}
+.model-row + .model-row {
+  border-top: 1px solid #edf0f4;
+}
+.empty-models,
+.model-load-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px;
+  color: #64748b;
+  background: #f8fafc;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.model-load-error {
+  color: #b42318;
+  background: #fff5f5;
+}
+.roles-section {
+  position: sticky;
+  top: 96px;
+}
+.role-form {
+  display: grid;
+  gap: 2px;
+}
+.role-form .n-form-item {
+  margin-bottom: 10px;
+}
+.page-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+@media (max-width: 960px) {
+  .config-grid {
+    grid-template-columns: 1fr;
+  }
+  .roles-section {
+    position: static;
+  }
+}
+
+@media (max-width: 680px) {
+  .header-content,
+  .intro,
+  .section-heading,
+  .model-toolbar,
+  .page-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .header-content {
+    padding: 14px 18px;
+  }
+  .provider-fields {
+    grid-template-columns: 1fr;
+  }
+  .model-list-header {
+    display: none;
+  }
+  .model-row {
+    grid-template-columns: 1fr 1fr 34px;
+    padding: 10px;
+  }
+}
