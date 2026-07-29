@@ -20,47 +20,6 @@
 当一个值只使用一次时，通过内联来减少变量总数。
 任何时候都不要主动删除解释性的注释，这些注释在日后维护时会帮助快速理解代码。对于一些复杂性较高的逻辑建议主动添加注释，说明其作用和实现原理。
 
-```ts
-// 好
-const journal = await Bun.file(path.join(dir, "journal.json")).json()
-
-// 差
-const journalPath = path.join(dir, "journal.json")
-const journal = await Bun.file(journalPath).json()
-```
-
-### 变量
-
-优先使用 `const` 而非 `let`。使用三元运算符或提前返回代替重新赋值。
-
-```ts
-// 好
-const foo = condition ? 1 : 2
-
-// 差
-let foo
-if (condition) foo = 1
-else foo = 2
-```
-
-### 控制流
-
-避免使用 `else` 语句。优先使用提前返回。
-
-```ts
-// 好
-function foo() {
-  if (condition) return 1
-  return 2
-}
-
-// 差
-function foo() {
-  if (condition) return 1
-  else return 2
-}
-```
-
 ### 语言
 
 项目的首选语言为简体中文，无论是注释语言，日志展示语言，还是用户交互语言，优先使用简体中文。

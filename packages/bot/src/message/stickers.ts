@@ -1,14 +1,14 @@
+import type { ImagePart } from "./parts";
 import { join, parse } from "node:path";
 import { readdir, readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { projectPath } from "../utils/path";
-import { blobToDataURL } from "../utils/blob";
-import type { ImagePart } from "./parts";
+import { dataPath } from "@/utils/path";
+import { blobToDataURL } from "@/utils/blob";
 
-const stickersDir = projectPath("references", "stickers");
+const stickersDir = dataPath("workspace", "stickers");
 
 async function getStickers() {
-  const files = await readdir(stickersDir);
+  const files = await readdir(stickersDir).catch(() => []);
   const webpFiles = files.filter((f) => f.endsWith(".webp") && !f.endsWith(".webp.txt"));
 
   return await Promise.all(
@@ -25,18 +25,12 @@ async function getStickers() {
 
 export async function getStickersContext() {
   const stickers = await getStickers();
-  const output = stickers
-    .map(({ name, description }) => {
-      return (
-        `<sticker>\n` +
-        `  <name>${name}</name>\n` +
-        `  <description>\n` +
-        `    ${description}\n` +
-        `  </description>\n` +
-        `</sticker>`
-      );
-    })
-    .join("\n");
+  const output = (() => {
+    if (stickers.length === 0) return "[暂无贴纸资源]";
+    return stickers
+      .map(({ name, description }) => `<sticker>\n<name>${name}</name>\n${description}\n</sticker>`)
+      .join("\n");
+  })();
 
   return {
     stickers,
@@ -64,7 +58,7 @@ export async function resolveSticker(name: string): Promise<ImagePart | null> {
   return {
     type: "image",
     raw: `[${name}]`,
-    data: { file: url, url, sub_type: 1, summary: name },
+    data: { file: url, url, sub_type: 1, summary: `[${name}]` },
   };
 }
 

@@ -1,60 +1,51 @@
-import { getStickersContext } from "@/message/stickers";
 import type { ChatHistory, ChatRecord } from "./chat-history";
 import type { PinoLogger } from "@/logger";
+import { createHash } from "node:crypto";
+import { getStickersContext } from "@/message/stickers";
 import dayjs from "@/utils/time";
 
-export async function injectSystemContext(history: ChatHistory, prompt: string, log: PinoLogger) {
+export async function injectSystemContext(
+  history: ChatHistory,
+  prompt: string,
+  log: PinoLogger,
+): Promise<{ records: ChatRecord[] }> {
   const now = Date.now();
   const formattedDate = dayjs(now).format("YYYY年M月D日 dddd");
-  const previousDate = history.findLast((record) => record.system_update?.current_date)?.system_update?.current_date;
   const stickersContext = await getStickersContext();
-  const stickersHash = Array.from(
-    new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(stickersContext.content))),
-  )
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-  const previousStickers = history.findLast((record) => record.system_update?.stickers)?.system_update?.stickers;
-  const dateChanged = previousDate !== formattedDate;
-  const stickersChanged = previousStickers?.hash !== stickersHash;
+  const stickersHash = createHash("sha256").update(stickersContext.content).digest("hex");
 
-  const updates = [
-    dateChanged ? `  <current_date>${formattedDate}</current_date>` : null,
-    stickersChanged
-      ? [
-          "  <stickers_update>",
-          "    以下内容替换此前的完整贴纸上下文。",
-          ...stickersContext.content.split("\n").map((line) => `    ${line}`),
-          "  </stickers_update>",
-        ].join("\n")
-      : null,
-  ].filter((update): update is string => update !== null);
+  const system_update: NonNullable<ChatRecord["system_update"]> = {};
+  const updates = [];
+  if (history.findLast((record) => record.system_update?.current_date)?.system_update?.current_date !== formattedDate) {
+    log.info(`系统时间更新：${formattedDate}`);
+    system_update.current_date = formattedDate;
+    updates.push(`<current_date>当前时间：${formattedDate}</current_date>`);
+  }
+  if (history.findLast((record) => record.system_update?.stickers)?.system_update?.stickers?.hash !== stickersHash) {
+    log.info({ stickerCount: stickersContext.stickers.length }, "贴纸上下文更新");
+    system_update.stickers = { hash: stickersHash, snapshot: stickersContext.stickers };
+    updates.push(
+      "<stickers_update>",
+      "以下内容替换此前的完整贴纸上下文。",
+      stickersContext.content,
+      "</stickers_update>",
+    );
+  }
 
   if (updates.length === 0) {
     return {
-      records: [{ message: { role: "user" as const, content: prompt }, timestamp: now }],
+      records: [{ message: { role: "user", content: prompt }, timestamp: now }],
     };
   }
-
-  if (dateChanged) {
-    log.info(`系统时间更新：${formattedDate}`);
-  }
-  if (stickersChanged) {
-    log.info({ stickerCount: stickersContext.stickers.length }, "贴纸上下文更新");
-  }
-
-  const system_update: NonNullable<ChatRecord["system_update"]> = {
-    ...(dateChanged ? { current_date: formattedDate } : {}),
-    ...(stickersChanged ? { stickers: { hash: stickersHash, snapshot: stickersContext.stickers } } : {}),
-  };
 
   return {
     records: [
       {
-        message: { role: "user" as const, content: `<system_update>\n${updates.join("\n")}\n</system_update>` },
+        message: { role: "user", content: `<system_update>\n${updates.join("\n")}\n</system_update>` },
         timestamp: now,
         system_update,
       },
-      { message: { role: "user" as const, content: prompt }, timestamp: now },
+      { message: { role: "user", content: prompt }, timestamp: now },
     ],
   };
 }
