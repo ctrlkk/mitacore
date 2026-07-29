@@ -13,7 +13,7 @@ export interface IMemoryStorage {
 }
 
 export async function createFsStorage(): Promise<IMemoryStorage> {
-  const BASE_DIR = dataPath("workspace", "knowledge");
+  const BASE_DIR = dataPath("workspace", "notepad");
   const MAX_LINE_LENGTH = 2000;
   const MAX_LINE_SUFFIX = "...";
   const MAX_MATCHES = 100;
