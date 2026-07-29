@@ -1,3 +1,5 @@
+import { initialDraft, loadModels } from "./mocks/config";
+
 export type ProviderType = "anthropic" | "deepseek" | "openai" | "openai-compatible";
 
 export type ProviderModel = {
@@ -28,6 +30,19 @@ export type ModelConfigDraft = {
   roles: ModelRoles;
 };
 
+export function loadConfig() {
+  return Promise.resolve(structuredClone(initialDraft));
+}
+
+export function saveConfig(_draft: ModelConfigDraft) {
+  return Promise.resolve();
+}
+
+export async function loadProviderModels(provider: Pick<ProviderDraft, "type" | "base_url" | "api_key">) {
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  return loadModels(provider.type);
+}
+
 export function getModelAliases(draft: ModelConfigDraft): string[] {
   return Array.from(
     new Set(draft.providers.flatMap((provider) => provider.models.map((model) => model.alias.trim())).filter(Boolean)),
@@ -37,7 +52,6 @@ export function getModelAliases(draft: ModelConfigDraft): string[] {
 export function removeModel(draft: ModelConfigDraft, providerId: string, modelIndex: number): ModelConfigDraft {
   const model = draft.providers.find((provider) => provider.id === providerId)?.models[modelIndex];
   if (!model) return draft;
-
   return {
     providers: draft.providers.map((provider) =>
       provider.id === providerId

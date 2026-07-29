@@ -8,7 +8,7 @@ import {
   TrashOutline,
 } from "@vicons/ionicons5";
 import { NButton, NCard, NForm, NFormItem, NIcon, NInput, NSelect, NSpace, NTag, NTooltip } from "naive-ui";
-import type { ProviderDraft, ProviderModel, ProviderType } from "../model-config";
+import type { ProviderDraft, ProviderModel, ProviderType } from "../api";
 
 const props = defineProps<{
   provider: ProviderDraft;

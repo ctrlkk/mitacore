@@ -10,6 +10,7 @@ import { config, type Config } from "@/config";
 import { createBot } from "@/queue-loop";
 import { cache } from "@/utils/cache";
 import { logger } from "@/logger";
+import { startWebUi } from "@/webui";
 
 /**
  * 检查ID是否在范围内
@@ -111,6 +112,9 @@ async function handleCommand(
 }
 
 if (import.meta.main) {
+  const webUi = startWebUi();
+  registerShutdownHook("WebUI", () => webUi.stop());
+
   // 先跑数据库迁移：空库走 bootstrap，已 bootstrap 的库只跑新增迁移
   const { db } = await import("@/database/db");
   const { apply } = await import("@/database/migration");

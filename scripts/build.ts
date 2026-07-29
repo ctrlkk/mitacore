@@ -44,6 +44,15 @@ async function buildApp() {
   );
 }
 
+/** 构建 WebUI 并复制到应用同目录，供 Hono 在生产环境托管。 */
+async function buildWebUi() {
+  const webUiDir = join(root, "packages", "webui");
+  const outputDir = join(outDir, "webui");
+  await runCmd(["bun", "run", "build"], webUiDir);
+  await rm(outputDir, { recursive: true, force: true });
+  await cp(join(webUiDir, "dist"), outputDir, { recursive: true });
+}
+
 /**
  * 构建 Node sidecar：调用 packages/playwright 自管的 esbuild 打包，
  * 然后复制产物 + 写最小 package.json + 安装运行时依赖
@@ -158,7 +167,7 @@ async function copyAssets() {
 console.log("==> 开始并行构建...\n");
 await mkdir(outDir, { recursive: true });
 
-await Promise.all([buildApp(), buildSidecar(), copyBin(), copyAssets()]);
+await Promise.all([buildApp(), buildWebUi(), buildSidecar(), copyBin(), copyAssets()]);
 
 console.log("\n==> 构建完成：");
 const files = await readdir(outDir);

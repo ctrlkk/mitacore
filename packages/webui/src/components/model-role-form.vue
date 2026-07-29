@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { NCard, NForm, NFormItem, NSelect, NText } from "naive-ui";
-import type { ModelRoles } from "../model-config";
+import type { ModelRoles } from "../api";
 
 const props = defineProps<{
   aliases: string[];

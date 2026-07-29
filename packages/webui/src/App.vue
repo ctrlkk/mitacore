@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { AddOutline, HardwareChipOutline, SaveOutline } from "@vicons/ionicons5";
 import {
   NButton,
@@ -18,26 +18,33 @@ import {
 import ModelRoleForm from "./components/model-role-form.vue";
 import ProviderCard from "./components/provider-card.vue";
 import {
-  getModelAliases,
-  removeModel,
-  updateProviderConnection,
   type ModelConfigDraft,
   type ProviderDraft,
   type ProviderModel,
-  type ProviderType,
-} from "./model-config";
-import { initialDraft, loadModels } from "./mocks/config";
+  getModelAliases,
+  removeModel,
+  updateProviderConnection,
+  loadConfig,
+  loadProviderModels,
+  saveConfig,
+} from "./api";
 
 const message = useMessage();
-const initial = structuredClone(initialDraft);
-const draft = ref<ModelConfigDraft>(structuredClone(initial));
-const availableModels = ref<Record<string, string[]>>({
-  "provider-deepseek": ["deepseek-v4-flash", "deepseek-v4-pro"],
-  "provider-mimo": ["mimo-v2.5", "mimo-v2.5-thinking"],
+const draft = ref<ModelConfigDraft>({
+  providers: [],
+  roles: { plan: "", reply: "", main: "", multimodal_image: "", multimodal_video: "", multimodal_audio: "" },
 });
+const availableModels = ref<Record<string, string[]>>({});
 
 const aliases = computed(() => getModelAliases(draft.value));
-const isDirty = computed(() => JSON.stringify(draft.value) !== JSON.stringify(initial));
+
+onMounted(async () => {
+  try {
+    draft.value = structuredClone(await loadConfig());
+  } catch (error) {
+    message.error(error instanceof Error ? `读取配置失败：${error.message}` : "读取配置失败");
+  }
+});
 
 function replaceProvider(id: string, update: (provider: ProviderDraft) => ProviderDraft) {
   draft.value = {
@@ -55,7 +62,7 @@ async function onLoadModels(id: string) {
   if (!provider) return;
   replaceProvider(id, (item) => ({ ...item, models_status: "loading" }));
   try {
-    const models = await loadModels(provider.type);
+    const models = await loadProviderModels(provider);
     availableModels.value = { ...availableModels.value, [id]: models };
     replaceProvider(id, (item) => ({ ...item, models_status: "ready" }));
     message.success(`已加载 ${models.length} 个模型`);
@@ -100,17 +107,17 @@ function removeProvider(id: string) {
   };
 }
 
-function resetDraft() {
-  draft.value = structuredClone(initial);
-  message.info("已还原为当前保存的配置");
-}
-
 function onRolesUpdate(roles: ModelConfigDraft["roles"]) {
   draft.value = { ...draft.value, roles };
 }
 
-function saveDraft() {
-  message.success("页面草稿已准备好，接入 Hono 后将保存到 config.toml");
+async function persistDraft() {
+  try {
+    await saveConfig(draft.value);
+    message.success("配置已保存到 config.toml，重启机器人后生效。");
+  } catch (error) {
+    message.error(error instanceof Error ? `保存失败：${error.message}` : "保存失败");
+  }
 }
 </script>
 
@@ -129,8 +136,7 @@ function saveDraft() {
             </div>
           </NSpace>
           <NSpace align="center">
-            <NText :type="isDirty ? 'warning' : 'success'">{{ isDirty ? "草稿未保存" : "配置已同步" }}</NText>
-            <NButton type="primary" @click="saveDraft">
+            <NButton type="primary" @click="persistDraft">
               <template #icon
                 ><NIcon><SaveOutline /></NIcon
               ></template>
@@ -190,10 +196,9 @@ function saveDraft() {
 
           <NDivider />
           <footer class="page-actions">
-            <NText depth="3">模型列表目前使用页面 mock；下一阶段会替换成 Hono + AI SDK 数据源。</NText>
+            <NText depth="3">当前使用模拟数据，所有修改仅存在于内存中。</NText>
             <NSpace>
-              <NButton :disabled="!isDirty" @click="resetDraft">还原未保存修改</NButton>
-              <NButton type="primary" @click="saveDraft">保存配置</NButton>
+              <NButton type="primary" @click="persistDraft">保存配置</NButton>
             </NSpace>
           </footer>
         </main>

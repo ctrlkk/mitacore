@@ -1,4 +1,4 @@
-import type { ModelConfigDraft, ProviderType } from "../model-config";
+import type { ModelConfigDraft, ProviderType } from "../api";
 
 const modelsByProvider: Record<ProviderType, string[]> = {
   anthropic: ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6"],
