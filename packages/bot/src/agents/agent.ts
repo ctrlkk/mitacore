@@ -70,17 +70,9 @@ export async function runMain(
 
   const historyMessages: ChatHistory = await loadHistory();
 
-  const finalUserPrompt = injectSystemContext(historyMessages, userPrompt, log);
-
-  const userRecord: ChatHistory[number] = {
-    message: {
-      role: "user",
-      content: finalUserPrompt,
-    },
-    timestamp: Date.now(),
-  };
-  const runtimeMessages: ChatHistory = [userRecord];
-  const savedMessages: ChatHistory = [userRecord];
+  const { records } = await injectSystemContext(historyMessages, userPrompt, log);
+  const runtimeMessages: ChatHistory = [...records];
+  const savedMessages: ChatHistory = [...records];
 
   let usage: LanguageModelUsage | undefined;
 
@@ -104,7 +96,7 @@ export async function runMain(
   for (let step = 0; step < 20; step++) {
     const result = await generateText({
       model,
-      system,
+      instructions: system,
       messages: toModelMessages([...historyMessages, ...runtimeMessages]),
       tools,
       maxOutputTokens: 4096,

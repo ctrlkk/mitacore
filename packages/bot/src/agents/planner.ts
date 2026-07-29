@@ -9,7 +9,6 @@ import { logger, type PinoLogger } from "@/logger";
 import { imageGen } from "./tools/image-gen";
 import { websearch } from "./tools/web-search";
 import { compactHistory, isOverflow } from "./compaction";
-import { getStickersPrompt } from "@/message/stickers";
 import { injectSystemContext } from "./system-context";
 import { logUsage } from "@/utils/format";
 
@@ -53,13 +52,8 @@ interface PlannerResult {
 export async function runPlanner(userInputMessage: string, log: PinoLogger = logger): Promise<PlannerResult | null> {
   const model = getModel(config.models.plan);
   const historyMessages: ChatHistory = await loadHistory();
-  const processedInputMessage = injectSystemContext(historyMessages, userInputMessage, log);
-  const runtimeMessages: ChatHistory = [
-    {
-      message: { role: "user", content: processedInputMessage },
-      timestamp: Date.now(),
-    },
-  ];
+  const { records } = await injectSystemContext(historyMessages, userInputMessage, log);
+  const runtimeMessages: ChatHistory = [...records];
 
   let planText = "";
   let reasoning: string[] = [];
@@ -72,7 +66,6 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
   const { default: planPrompt } = await import("../prompts/plan.txt");
   const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt");
   const replyPrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
-  const stickersPrompt = await getStickersPrompt();
 
   const system = [
     "<role>",
@@ -82,8 +75,6 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
     "<capabilities>",
     capabilitiesPrompt.trim(),
     "</capabilities>",
-    "",
-    stickersPrompt.trim(),
     "",
     "下面为 `reply agent` 的角色设定：",
     "<reply_role>",
@@ -98,7 +89,7 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
   for (let step = 0; step < 10; step++) {
     const result = await generateText({
       model,
-      system,
+      instructions: system,
       messages: toModelMessages([...historyMessages, ...runtimeMessages]),
       tools,
       maxOutputTokens: 4096,

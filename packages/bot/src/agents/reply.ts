@@ -8,7 +8,6 @@ import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { compactHistory, isOverflow } from "./compaction";
-import { getStickersPrompt } from "@/message/stickers";
 import { injectSystemContext } from "./system-context";
 import { logUsage } from "@/utils/format";
 
@@ -67,7 +66,7 @@ export async function runReply(
   const model = getModel(config.models.reply);
 
   const historyMessages: ChatHistory = await loadHistory();
-  const processedUserPrompt = injectSystemContext(historyMessages, userPrompt, log);
+  const { records } = await injectSystemContext(historyMessages, userPrompt, log);
   const runtimeMessages: ChatHistory = [];
   const savedMessages: ChatHistory = [];
 
@@ -77,7 +76,6 @@ export async function runReply(
   const prompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
   const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt");
   const { default: replyGroupPrompt } = await import("../prompts/reply-group.txt");
-  const stickersPrompt = await getStickersPrompt();
 
   const system = [
     "<role>",
@@ -87,8 +85,6 @@ export async function runReply(
     "<capabilities>",
     capabilitiesPrompt.trim(),
     "</capabilities>",
-    "",
-    stickersPrompt.trim(),
   ].join("\n");
 
   const planContent = reasoning
@@ -96,15 +92,12 @@ export async function runReply(
     : `${replyGroupPrompt.trim()}\n\n<reply_plan>\n${plan}\n</reply_plan>`;
 
   // 追加 user 消息和 plan 消息作为 record
-  historyMessages.push(
-    { message: { role: "user", content: processedUserPrompt }, timestamp: Date.now() },
-    { message: { role: "user", content: planContent }, timestamp: Date.now() },
-  );
+  historyMessages.push(...records, { message: { role: "user", content: planContent }, timestamp: Date.now() });
 
   for (let step = 0; step < 20; step++) {
     const result = await generateText({
       model,
-      system,
+      instructions: system,
       messages: toModelMessages([...historyMessages, ...runtimeMessages]),
       maxOutputTokens: 4096,
       async onLanguageModelCallEnd({ content }) {

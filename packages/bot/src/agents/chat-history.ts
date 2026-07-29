@@ -7,6 +7,14 @@ export type ChatRecord = {
   usage?: LanguageModelUsage;
   /** 是否为摘要记录 */
   summary?: boolean;
+  /** 该消息携带的动态系统上下文，以及更新后的完整状态 */
+  system_update?: {
+    current_date?: string;
+    stickers?: {
+      hash: string;
+      snapshot: Array<{ name: string; description: string }>;
+    };
+  };
 };
 
 export type ChatHistory = ChatRecord[];
