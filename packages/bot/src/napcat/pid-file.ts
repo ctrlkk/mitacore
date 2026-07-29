@@ -38,9 +38,9 @@ export function readPidFile(qqId: string): PidRecord | null {
     ) {
       return {
         launcher: parsed.launcher | 0,
-        qq: Number.isFinite(parsed.qq) ? (parsed.qq | 0) : 0,
+        qq: Number.isFinite(parsed.qq) ? parsed.qq | 0 : 0,
         port: parsed.port | 0,
-        createdAt: Number.isFinite(parsed.createdAt) ? (parsed.createdAt | 0) : 0,
+        createdAt: Number.isFinite(parsed.createdAt) ? parsed.createdAt | 0 : 0,
       };
     }
     return null;
