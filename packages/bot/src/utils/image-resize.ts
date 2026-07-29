@@ -1,4 +1,3 @@
-import type { BunFile } from "bun";
 import { formatBytes } from "./format";
 import { findExecutable } from "./find-executable";
 import { logger } from "@/logger";
@@ -10,7 +9,7 @@ const SUPPORTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image
 /**
  * 使用 gifsicle 缩放并压缩 GIF，保留动画
  */
-async function resizeGif(file: BunFile): Promise<Blob> {
+async function resizeGif(file: File): Promise<Blob> {
   const gifsicle = findExecutable("gifsicle");
   if (!gifsicle) {
     logger.warn("未找到 gifsicle 可执行文件，GIF 将透传处理");
@@ -108,7 +107,7 @@ async function probeWebpCodec(file: Blob): Promise<"webp" | "webp_anim" | null> 
  * - BMP → ffmpeg 转为 PNG
  * - 未知格式 → 透传
  */
-export async function compressImage(file: BunFile): Promise<Blob> {
+export async function compressImage(file: File): Promise<Blob> {
   if (!SUPPORTED_TYPES.has(file.type)) return file;
   if (file.type === "image/gif") return resizeGif(file);
   if (file.size < MIN_COMPRESS_SIZE) return file;

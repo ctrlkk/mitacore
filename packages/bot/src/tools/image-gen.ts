@@ -2,10 +2,10 @@ import type { ToolResultOutput } from "@ai-sdk/provider-utils";
 import type { LanguageModel, ToolSet } from "ai";
 import { z } from "zod";
 import { generateText, tool } from "ai";
-import { basename } from "node:path";
 import { lookup } from "mime-types";
 import { imageToText } from "@/multimedia";
 import { sanitizeImagePath, virtualToRealPath, downloadToCache } from "@/utils/image-cache";
+import { createFsFile, exists } from "@/utils/fs-file";
 import { getImageGenerator } from "@/generate-image";
 import { logger, type PinoLogger } from "@/logger";
 import { compressImage } from "@/utils/image-resize";
@@ -78,11 +78,10 @@ export function imageGen(
         if (!mime || !["image/jpeg", "image/png", "image/webp", "image/bmp"].includes(mime)) {
           return `不支持该类型的图像文件：${ref}`;
         }
-        const file = Bun.file(filePath);
-        if (!(await file.exists())) {
+        if (!(await exists(filePath))) {
           return `图片文件未找到: "${ref}"，可能不存在或已过期，请检查文件是否存在。`;
         }
-        files.push(new File([file], basename(filePath), { type: mime }));
+        files.push(await createFsFile(filePath));
       }
 
       const { generate } = await getImageGenerator();
@@ -91,10 +90,9 @@ export function imageGen(
       const results = await Promise.all(
         urls.map(async (url) => {
           const { virtualPath, realPath } = await downloadToCache(url);
-          const file = Bun.file(realPath);
           return {
             path: virtualPath,
-            image: await compressImage(file),
+            image: await compressImage(await createFsFile(realPath)),
           };
         }),
       );

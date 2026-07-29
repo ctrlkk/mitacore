@@ -6,6 +6,7 @@ import { imageToText, videoToText } from "@/multimedia";
 import { downloadToCache } from "@/utils/image-cache";
 import { compressImage } from "@/utils/image-resize";
 import { compressVideo } from "@/utils/video-resize";
+import { createFsFile } from "@/utils/fs-file";
 import { runReply } from "@/reply";
 import { runPlanner } from "@/planner";
 import { runMain } from "@/agent";
@@ -111,10 +112,10 @@ function createMediaProcessor() {
             let result: string;
 
             if (item.kind === "image") {
-              const blob = await compressImage(Bun.file(item.realPath));
+              const blob = await compressImage(await createFsFile(item.realPath));
               result = (await imageToText(blob)).trim();
             } else {
-              const blob = await compressVideo(Bun.file(item.realPath));
+              const blob = await compressVideo(await createFsFile(item.realPath));
               result = (await videoToText(blob)).trim();
             }
 

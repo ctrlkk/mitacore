@@ -28,7 +28,7 @@ export function startWebUi() {
   const server = Bun.serve({
     fetch: createApp().fetch,
     hostname: "127.0.0.1",
-    port: 3001,
+    port: 0,
   });
   logger.info({ url: `http://127.0.0.1:${server.port}` }, "WebUI 已启动");
   return { stop: () => server.stop() };

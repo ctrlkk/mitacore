@@ -1,4 +1,3 @@
-import type { BunFile } from "bun";
 import { formatBytes } from "./format";
 import { findExecutable } from "./find-executable";
 import { logger } from "@/logger";
@@ -12,7 +11,7 @@ const MIN_COMPRESS_SIZE = 512 * 1024; // 视频建议大于 500KB 再压缩
  * - 转码为 H.264 / AAC (MP4)
  * - 使用 fast preset加速编码
  */
-async function transcodeVideo(file: BunFile): Promise<Blob> {
+async function transcodeVideo(file: File): Promise<Blob> {
   const ffmpeg = findExecutable("ffmpeg");
   if (!ffmpeg) {
     logger.warn("未找到 ffmpeg 可执行文件，视频将透传处理");
@@ -87,7 +86,7 @@ async function transcodeVideo(file: BunFile): Promise<Blob> {
  * 视频压缩入口
  * 仅处理常见视频格式，小文件透传
  */
-export async function compressVideo(file: BunFile): Promise<Blob> {
+export async function compressVideo(file: File): Promise<Blob> {
   const supported = new Set([
     "video/mp4",
     "video/webm",

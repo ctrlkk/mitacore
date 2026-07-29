@@ -1,6 +1,7 @@
 import { describe, expect, test, beforeAll } from "bun:test";
 import { resolve } from "node:path";
 import { writeFile, mkdir } from "node:fs/promises";
+import { createFsFile } from "./fs-file";
 import { compressImage } from "./image-resize";
 
 const FIXTURES_DIR = resolve(import.meta.dir, "__tests__/fixtures");
@@ -34,9 +35,9 @@ beforeAll(async () => {
 describe("compressImage", () => {
   for (const { name, file, expectedType, expectReduced } of testCases) {
     test(name, async () => {
-      const bunFile = Bun.file(resolve(FIXTURES_DIR, file));
-      const originalSize = bunFile.size;
-      const result = await compressImage(bunFile);
+      const fsFile = await createFsFile(resolve(FIXTURES_DIR, file));
+      const originalSize = fsFile.size;
+      const result = await compressImage(fsFile);
 
       // MIME 类型断言
       expect(result.type).toBe(expectedType);
@@ -63,7 +64,7 @@ describe("compressImage", () => {
   }
 
   test("不支持的 MIME 类型透传", async () => {
-    const txtFile = Bun.file(resolve(FIXTURES_DIR, "test.txt"));
+    const txtFile = await createFsFile(resolve(FIXTURES_DIR, "test.txt"));
     const result = await compressImage(txtFile);
     expect(result.type).toStartWith("text/plain");
     // 验证返回的是原始文件（未压缩）
