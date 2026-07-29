@@ -1,16 +1,16 @@
-import { type ChatHistory, migrateHistory, toModelMessages } from "@/types/chat-history";
+import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-history";
 import { generateText, type LanguageModelUsage } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { getModel } from "@/model";
+import { getModel } from "@/ai/model";
 import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message/parts";
 import { splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { compactHistory, isOverflow } from "./compaction";
-import { getStickersPrompt } from "./stickers";
+import { getStickersPrompt } from "@/message/stickers";
 import { injectSystemContext } from "./system-context";
-import { logUsage } from "./utils/format";
+import { logUsage } from "@/utils/format";
 
 async function loadHistory(): Promise<ChatHistory> {
   try {
@@ -75,8 +75,8 @@ export async function runReply(
   let replyText = "";
 
   const prompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
-  const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
-  const { default: replyGroupPrompt } = await import("./prompts/reply-group.txt");
+  const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt");
+  const { default: replyGroupPrompt } = await import("../prompts/reply-group.txt");
   const stickersPrompt = await getStickersPrompt();
 
   const system = [

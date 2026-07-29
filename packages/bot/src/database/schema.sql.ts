@@ -1,5 +1,5 @@
 import { index, integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
-import type { UnifiedInboundMessage } from "@/index";
+import type { UnifiedInboundMessage } from "@/message/types";
 
 // 用户 ID 映射表
 //

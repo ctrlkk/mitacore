@@ -24,7 +24,7 @@ import {
   type ToolSet,
 } from "ai";
 import { z } from "zod";
-import { getModel } from "@/model";
+import { getModel } from "@/ai/model";
 
 const model = getModel("deepseek-v4-flash");
 

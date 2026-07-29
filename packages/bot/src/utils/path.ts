@@ -1,9 +1,11 @@
 import { dirname, resolve } from "node:path";
-import { cwd } from "node:process";
 
 declare const __STANDALONE__: boolean;
 
-const installRoot = typeof __STANDALONE__ !== "undefined" && __STANDALONE__ ? dirname(process.execPath) : cwd();
+const installRoot =
+  typeof __STANDALONE__ !== "undefined" && __STANDALONE__
+    ? dirname(process.execPath)
+    : resolve(import.meta.dir, "../../../..");
 
 /**
  * 获取数据目录下的路径

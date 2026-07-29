@@ -1,6 +1,6 @@
-import { toModelMessages, type ChatHistory, type ChatRecord } from "@/types/chat-history";
+import { toModelMessages, type ChatHistory, type ChatRecord } from "./chat-history";
 import { generateText, type LanguageModel, type LanguageModelUsage, type ToolSet } from "ai";
-import { logger, type PinoLogger } from "./logger";
+import { logger, type PinoLogger } from "@/logger";
 
 /**
  * 获取某条记录的累计 token (即如果再发一轮对话，此时历史的总 input token)
@@ -120,7 +120,7 @@ export async function compactHistory(
     log.warn("无需压缩：头部为空或保留预算未超出");
     return messages;
   }
-  const { default: summaryPrompt } = await import("./prompts/summary.txt");
+  const { default: summaryPrompt } = await import("../prompts/summary.txt");
   const userContent = `<system_reminder>${summaryPrompt.trim()}</system_reminder>`;
 
   log.info({ headCount: head.length, tailCount: tail.length }, "开始执行上下文压缩");

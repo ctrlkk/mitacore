@@ -1,5 +1,5 @@
 import { defineConfig } from "drizzle-kit";
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   dialect: "sqlite",
@@ -7,6 +7,6 @@ export default defineConfig({
   out: "./migration-tmp",
   dbCredentials: {
     // 必须与 src/database/db.ts 中的 DB_PATH 保持一致
-    url: resolve("../..", "data", "db", "app.db"),
+    url: fileURLToPath(new URL("../../data/db/app.db", import.meta.url)),
   },
 });

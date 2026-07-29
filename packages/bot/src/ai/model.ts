@@ -2,7 +2,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { config, type Config } from "./config";
+import { config, type Config } from "@/config";
 import type { LanguageModel } from "ai";
 
 type ProviderFn = (modelId: string) => LanguageModel;

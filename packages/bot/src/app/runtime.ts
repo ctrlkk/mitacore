@@ -1,12 +1,12 @@
 import type { OneBotIncomingMessageSegment, OneBotMessageEvent } from "@/onebot/websocket-client";
-import type { PendingMessage, UnifiedInboundMessage } from "@/types/message";
+import type { PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import type { LanguageModelUsage } from "ai";
 import { OneBotClient, type OneBotEventContext } from "@/onebot/onebot-client";
 import { startBuiltinNapCat } from "@/napcat/loader";
 import { registerShutdownHook } from "@/utils/shutdown";
 import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
 import { config, type Config } from "@/config";
-import { createBot } from "@/queue-loop";
+import { createBot } from "@/app/queue-loop";
 import { cache } from "@/utils/cache";
 import { logger } from "@/logger";
 

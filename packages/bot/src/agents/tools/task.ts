@@ -1,5 +1,5 @@
-import { memoryTools } from "@/memory/tool";
-import { getModel } from "@/model";
+import { memoryTools } from "@/workspace/tool";
+import { getModel } from "@/ai/model";
 import { generateText, isStepCount, tool } from "ai";
 import { websearch } from "./web-search";
 import { z } from "zod";

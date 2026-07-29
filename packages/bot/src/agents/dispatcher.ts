@@ -1,8 +1,8 @@
-import type { ImageMap, PendingMessage, UnifiedInboundMessage } from ".";
+import type { ImageMap, PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import { generateText, type ModelMessage, type UserContent } from "ai";
-import { dataPath, projectPath } from "./utils/path";
+import { dataPath, projectPath } from "@/utils/path";
 import { readFile } from "node:fs/promises";
-import { getModel } from "./model";
+import { getModel } from "@/ai/model";
 import { logger } from "@/logger";
 import dayjs from "dayjs";
 import XMLBuilder from "fast-xml-builder";
@@ -76,8 +76,8 @@ function parseTriggerDecisionText(text: string) {
 
 export async function dispatchMessage(pendingMessages: PendingMessage[], imageMap: ImageMap) {
   const rolePrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
-  const { default: triggerPrompt } = await import("./prompts/trigger.txt");
-  const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
+  const { default: triggerPrompt } = await import("../prompts/trigger.txt");
+  const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt");
 
   const system = [
     "<capabilities>",

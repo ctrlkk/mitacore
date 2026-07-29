@@ -1,4 +1,4 @@
-import type { ChatHistory } from "@/types/chat-history";
+import type { ChatHistory } from "./chat-history";
 import type { PinoLogger } from "@/logger";
 import dayjs from "@/utils/time";
 

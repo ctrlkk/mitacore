@@ -1,7 +1,7 @@
 import { generateText } from "ai";
 import { getModel, getModelConfig } from "./model";
-import { config } from "./config";
-import { blobToDataURL } from "./utils/blob";
+import { config } from "@/config";
+import { blobToDataURL } from "@/utils/blob";
 import { z } from "zod";
 
 const IMAGE_SYSTEM_PROMPT = `你将作为视觉模块，负责解释图片内容。

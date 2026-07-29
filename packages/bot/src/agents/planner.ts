@@ -1,17 +1,17 @@
-import { type ChatHistory, migrateHistory, toModelMessages } from "@/types/chat-history";
+import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-history";
 import { generateText, tool, type LanguageModelUsage, type ToolSet } from "ai";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { getModel } from "@/model";
+import { getModel } from "@/ai/model";
 import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { imageGen } from "./tools/image-gen";
 import { websearch } from "./tools/web-search";
 import { compactHistory, isOverflow } from "./compaction";
-import { getStickersPrompt } from "./stickers";
+import { getStickersPrompt } from "@/message/stickers";
 import { injectSystemContext } from "./system-context";
-import { logUsage } from "./utils/format";
+import { logUsage } from "@/utils/format";
 
 const submitPlanTool = tool({
   description: "提交本轮回复策略，包含语气、角度、要点、长度、工具调用等",
@@ -69,8 +69,8 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
 
   let usage: LanguageModelUsage | undefined;
 
-  const { default: planPrompt } = await import("./prompts/plan.txt");
-  const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
+  const { default: planPrompt } = await import("../prompts/plan.txt");
+  const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt");
   const replyPrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
   const stickersPrompt = await getStickersPrompt();
 

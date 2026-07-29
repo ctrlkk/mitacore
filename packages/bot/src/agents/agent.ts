@@ -1,18 +1,18 @@
 import { generateText, type LanguageModelUsage, type ToolSet } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { getModel } from "@/model";
+import { getModel } from "@/ai/model";
 import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message/parts";
 import { splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { logUsage } from "@/utils/format";
 import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
-import { type ChatHistory, migrateHistory, toModelMessages } from "@/types/chat-history";
+import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-history";
 import { imageGen } from "./tools/image-gen";
 import { websearch } from "./tools/web-search";
 import { compactHistory, isOverflow } from "./compaction";
 import { injectSystemContext } from "./system-context";
-import { memoryTools } from "./memory/tool";
+import { memoryTools } from "@/workspace/tool";
 
 async function loadHistory(): Promise<ChatHistory> {
   try {
@@ -85,7 +85,7 @@ export async function runMain(
   let usage: LanguageModelUsage | undefined;
 
   const replyPrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
-  const { default: capabilitiesPrompt } = await import("./prompts/capabilities.txt");
+  const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt");
 
   const system = [
     "<capabilities>",

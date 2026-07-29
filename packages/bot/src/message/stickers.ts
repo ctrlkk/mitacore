@@ -1,9 +1,9 @@
 import { join, parse } from "node:path";
 import { readdir, readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { projectPath } from "./utils/path";
-import { blobToDataURL } from "./utils/blob";
-import type { ImagePart } from "./message/parts";
+import { projectPath } from "../utils/path";
+import { blobToDataURL } from "../utils/blob";
+import type { ImagePart } from "./parts";
 
 const stickersDir = projectPath("references", "stickers");
 

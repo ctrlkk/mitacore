@@ -11,7 +11,7 @@ import {
 } from "ai";
 import { z } from "zod";
 import { tool } from "ai";
-import { getModel } from "@/model";
+import { getModel } from "@/ai/model";
 import { logger } from "@/logger";
 import { getErrorMessage } from "@ai-sdk/provider-utils";
 

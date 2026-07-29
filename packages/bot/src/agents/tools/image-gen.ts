@@ -3,7 +3,7 @@ import type { LanguageModel, ToolSet } from "ai";
 import { z } from "zod";
 import { generateText, tool } from "ai";
 import { lookup } from "mime-types";
-import { imageToText } from "@/multimedia";
+import { imageToText } from "@/ai/multimedia";
 import { sanitizeImagePath, virtualToRealPath, downloadToCache } from "@/utils/image-cache";
 import { createFsFile, exists } from "@/utils/fs-file";
 import { getImageGenerator } from "@/generate-image";
