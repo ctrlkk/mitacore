@@ -5,8 +5,9 @@
   "private": true,
   "module": "src/index.ts",
   "scripts": {
-    "dev": "bun run . --watch",
-    "start": "bun run .",
+    "supervisor:build": "cargo build --release --manifest-path ../napcat-supervisor/Cargo.toml",
+    "dev": "bun run supervisor:build && bun run . --watch",
+    "start": "bun run supervisor:build && bun run .",
     "db": "drizzle-kit",
     "migration": "bun run scripts/migration.ts",
     "migration:check": "bun run scripts/migration.ts --check"

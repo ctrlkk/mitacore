@@ -10,8 +10,9 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run packages/bot/src/index.ts --watch",
-    "start": "bun run packages/bot/src/index.ts",
+    "supervisor:build": "cargo build --release --manifest-path packages/napcat-supervisor/Cargo.toml",
+    "dev": "bun run supervisor:build && bun run packages/bot/src/index.ts --watch",
+    "start": "bun run supervisor:build && bun run packages/bot/src/index.ts",
     "webui:dev": "bun run --cwd packages/webui dev",
     "webui:build": "bun run --cwd packages/webui build",
     "format": "prettier --write .",

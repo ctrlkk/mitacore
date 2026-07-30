@@ -1,19 +1,21 @@
 import { existsSync, writeFileSync, mkdirSync } from "node:fs";
-import { createNapCatApi, restartNapcatApi } from "./client";
+import { createNapCatApi } from "./client";
 import { resolve, dirname } from "node:path";
 import { spawn, execSync, ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import { PassThrough } from "node:stream";
 import { downloadNapcat } from "./download";
-import { readPidFile, writePidFile } from "./pid-file";
+import { deletePidFile, napcatLockPath, readPidFile, writePidFile } from "./pid-file";
 import { OneBotClient } from "@/onebot/onebot-client";
 import { formatBytes } from "@/utils/format";
-import { dataPath } from "@/utils/path";
+import { binPath, dataPath, projectPath } from "@/utils/path";
 import { logger } from "@/logger";
 import { registerShutdownHook } from "@/utils/shutdown";
 import config from "./onebot-config.json";
 
 const LOAD_SCRIPT_FILE = "loadNapCat.js";
+const SUPERVISOR_NAME = `napcat-supervisor${process.platform === "win32" ? ".exe" : ""}`;
+const SUPERVISOR_READY = "NAPCAT_SUPERVISOR_READY";
 const WEBUI_TOKEN_DEFAULT = Math.random().toString(36).substring(2, 15);
 const IS_WIN = process.platform === "win32";
 
@@ -44,7 +46,7 @@ function forceKill(pid: number): void {
   if (!pid) return;
   try {
     if (IS_WIN) {
-      execSync(`taskkill /F /PID ${pid}`, { stdio: "ignore" });
+      execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore" });
     } else {
       process.kill(pid, "SIGKILL");
     }
@@ -84,10 +86,68 @@ interface NapcatHandle {
 interface PlatformAdapter {
   /** 查找 QQNT 可执行文件路径 */
   findQQ(): string | null;
-  /** 清理上次启动残留的进程（读 PID 文件 + 端口反查） */
+  /** 根据 PID 文件清理上次启动残留的 supervisor 和 QQ 进程 */
   cleanOrphans(qqId: string): Promise<void>;
   /** 启动 NapCat 进程 */
-  spawn(args: SpawnArgs): NapcatHandle;
+  spawn(args: SpawnArgs): Promise<NapcatHandle>;
+}
+
+/** 查找构建产物中的 supervisor；开发环境回退到 Cargo release 目录。 */
+function resolveSupervisorPath(): string {
+  const path = [
+    binPath(SUPERVISOR_NAME),
+    projectPath("packages", "napcat-supervisor", "target", "release", SUPERVISOR_NAME),
+  ].find(existsSync);
+  if (!path) {
+    throw new Error(`未找到 ${SUPERVISOR_NAME}，请先执行 bun run supervisor:build`);
+  }
+  return path;
+}
+
+/** 由 supervisor 启动目标进程，使其生命周期受 Job Object/进程组约束。 */
+function spawnSupervised(qqId: string, command: string, args: string[], env: NodeJS.ProcessEnv): Promise<ChildProcess> {
+  const supervisor = resolveSupervisorPath();
+  logger.info({ supervisor, command, args }, "通过 NapCat supervisor 启动进程");
+  const proc = spawn(supervisor, ["--lock", napcatLockPath(qqId), "--", command, ...args], {
+    env,
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  return new Promise((resolve, reject) => {
+    let stderr = "";
+    const timer = setTimeout(() => {
+      cleanup();
+      proc.kill();
+      reject(new Error("等待 NapCat supervisor 启动超时"));
+    }, 5_000);
+    timer.unref();
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      proc.stderr!.off("data", onData);
+      proc.off("error", onError);
+      proc.off("exit", onExit);
+    };
+    const onData = (data: Buffer) => {
+      stderr += data.toString();
+      if (!stderr.includes(SUPERVISOR_READY)) return;
+      cleanup();
+      proc.stderr!.pause();
+      resolve(proc);
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const onExit = (code: number | null) => {
+      cleanup();
+      reject(new Error(stderr.trim() || `NapCat supervisor 启动失败 (code=${code})`));
+    };
+
+    proc.stderr!.on("data", onData);
+    proc.once("error", onError);
+    proc.once("exit", onExit);
+  });
 }
 
 const win32Adapter: PlatformAdapter = {
@@ -107,23 +167,14 @@ const win32Adapter: PlatformAdapter = {
   async cleanOrphans(qqId: string): Promise<void> {
     const rec = readPidFile(qqId);
     if (!rec) return;
-    if (rec.qq > 0 && isPidAlive(rec.qq)) {
-      logger.info({ qqId, qq: rec.qq }, "检测到残留 QQ 进程，正在清理");
-      forceKill(rec.qq);
-    }
-    if (rec.launcher > 0 && isPidAlive(rec.launcher)) {
-      logger.info({ qqId, launcher: rec.launcher }, "检测到残留 launcher，正在清理");
-      forceKill(rec.launcher);
-    }
+    if (!isPidAlive(rec.launcher)) deletePidFile(qqId);
   },
 
-  spawn(args) {
+  async spawn(args) {
     const { qqId, napcatDir, qqExe, mjsPath, qqntPath } = args;
 
-    const fileUri = "file:///" + mjsPath.replace(/\\/g, "/");
-    writeFileSync(resolve(napcatDir, LOAD_SCRIPT_FILE), `(async () => {await import("${fileUri}")})()`);
-
-    const env: Record<string, string> = {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
       NAPCAT_PATCH_PACKAGE: qqntPath,
       NAPCAT_LOAD_PATH: resolve(napcatDir, LOAD_SCRIPT_FILE),
       NAPCAT_INJECT_PATH: resolve(napcatDir, "NapCatWinBootHook.dll"),
@@ -134,7 +185,7 @@ const win32Adapter: PlatformAdapter = {
     const launcher = resolve(napcatDir, "NapCatWinBootMain.exe");
     const spawnArgs = [resolve(dirname(qqExe), "QQ.exe"), resolve(napcatDir, "NapCatWinBootHook.dll"), qqId];
     logger.info({ launcher, args: spawnArgs }, "启动 NapCat launcher (win32)");
-    const proc = spawn(launcher, spawnArgs, { env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const proc = await spawnSupervised(qqId, launcher, spawnArgs, env);
     const handle: NapcatHandle = {
       proc,
       qqPid: 0,
@@ -162,20 +213,14 @@ const posixAdapter: PlatformAdapter = {
   async cleanOrphans(qqId: string): Promise<void> {
     const rec = readPidFile(qqId);
     if (!rec) return;
-    if (rec.qq > 0 && isPidAlive(rec.qq)) {
-      logger.info({ qqId, qq: rec.qq }, "检测到残留 QQ 进程，正在清理");
-      forceKill(rec.qq);
-    }
-    if (rec.launcher > 0 && isPidAlive(rec.launcher)) {
-      logger.info({ qqId, launcher: rec.launcher }, "检测到残留 launcher，正在清理");
-      forceKill(rec.launcher);
-    }
+    if (!isPidAlive(rec.launcher)) deletePidFile(qqId);
   },
 
-  spawn(args) {
+  async spawn(args) {
     const { qqId, qqExe, mjsPath, qqntPath } = args;
 
-    const env: Record<string, string> = {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
       NAPCAT_PATCH_PACKAGE: qqntPath,
       NAPCAT_MAIN_PATH: mjsPath,
       NAPCAT_DISABLE_MULTI_PROCESS: "1",
@@ -186,7 +231,7 @@ const posixAdapter: PlatformAdapter = {
     const cmd = useXvfb ? "xvfb-run" : qqExe;
     const spawnArgs = useXvfb ? ["-a", qqExe, "--no-sandbox", "-q", qqId] : ["--no-sandbox", "-q", qqId];
     logger.info({ cmd, args: spawnArgs }, "启动 NapCat launcher (posix)");
-    const proc = spawn(cmd, spawnArgs, { env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const proc = await spawnSupervised(qqId, cmd, spawnArgs, env);
     const handle: NapcatHandle = {
       proc,
       qqPid: 0,
@@ -326,104 +371,147 @@ export async function ensureNapcat(napcatDir: string): Promise<void> {
 export async function launchNapCat(config: NapCatConfig) {
   logger.info({ qqId: config.qqId, napcatDir: config.napcatDir }, "准备启动 NapCat");
 
-  await ensureNapcat(config.napcatDir);
   const qqExe = resolveQQPath(config.qqPath);
-  const paths = resolveNapcatPaths(config.napcatDir);
-
   await platform.cleanOrphans(config.qqId);
-  const handle = platform.spawn({
+  const handle = await platform.spawn({
     qqId: config.qqId,
-    napcatDir: paths.shellDir,
+    napcatDir: config.napcatDir,
     qqExe,
-    mjsPath: paths.mjsPath,
-    qqntPath: paths.qqntPath,
+    mjsPath: resolve(config.napcatDir, "napcat.mjs"),
+    qqntPath: resolve(config.napcatDir, "qqnt.json"),
   });
 
-  // 记录本次启动的 PID + 端口，供下次启动的 cleanOrphans 清理残留
-  writePidFile(config.qqId, {
-    launcher: handle.proc.pid ?? 0,
-    qq: 0,
-    port: paths.webuiPort,
-    createdAt: Date.now(),
-  });
-
-  // 内联 waitForWebUI 逻辑，启动即监听，移除缓冲区与超时设定
-  let resolveApi!: (api: NapCatApi) => void;
-  let rejectApi!: (err: any) => void;
-  const apiPromise = new Promise<NapCatApi>((resolve, reject) => {
-    resolveApi = resolve;
-    rejectApi = reject;
-  });
-
-  let resolveReady!: () => void;
-  const readyPromise = new Promise<void>((resolve) => {
-    resolveReady = resolve;
-  });
-
-  const ADAPTER_READY_RE = /\[AdapterManager\]\s*协议适配器初始化完成/;
-
-  const stdoutTee = new PassThrough();
-  handle.proc.stdout!.pipe(stdoutTee);
-  stdoutTee.on("data", (d: Buffer) => {
-    const text = d.toString();
-    for (const line of text.split(/\r?\n/)) {
-      if (line) logger.trace({ line }, "napcat stdout");
+  try {
+    await ensureNapcat(config.napcatDir);
+    if (handle.proc.exitCode !== null || handle.proc.signalCode !== null) {
+      throw new Error(`NapCat supervisor 在初始化期间退出 (code=${handle.proc.exitCode})`);
     }
-    // 记录 PID
-    if (!handle.qqPid) {
-      const m = text.match(MAIN_PID_RE);
-      if (m) {
-        handle.qqPid = parseInt(m[1]!, 10);
-        const rec = readPidFile(config.qqId);
-        if (rec) writePidFile(config.qqId, { ...rec, qq: handle.qqPid });
+    const paths = resolveNapcatPaths(config.napcatDir);
+    if (IS_WIN) {
+      const fileUri = "file:///" + paths.mjsPath.replace(/\\/g, "/");
+      writeFileSync(resolve(config.napcatDir, LOAD_SCRIPT_FILE), `(async () => {await import("${fileUri}")})()`);
+    }
+
+    // 记录 supervisor PID + QQ PID，PID 文件仅作为异常恢复的兜底。
+    writePidFile(config.qqId, {
+      launcher: handle.proc.pid ?? 0,
+      qq: 0,
+      port: paths.webuiPort,
+      createdAt: Date.now(),
+    });
+
+    // 内联 waitForWebUI 逻辑，启动即监听，移除缓冲区与超时设定
+    const { promise: apiPromise, resolve: resolveApi, reject: rejectApi } = Promise.withResolvers<NapCatApi>();
+    const { promise: readyPromise, resolve: resolveReady, reject: rejectReady } = Promise.withResolvers<void>();
+    void readyPromise.catch(() => {});
+
+    const ADAPTER_READY_RE = /\[AdapterManager\]\s*协议适配器初始化完成/;
+
+    const stdoutTee = new PassThrough();
+    let stdoutBuffer = "";
+    handle.proc.stdout!.pipe(stdoutTee);
+    stdoutTee.on("data", (d: Buffer) => {
+      stdoutBuffer += d.toString();
+      const lines = stdoutBuffer.split(/\r?\n/);
+      stdoutBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line) continue;
+        logger.trace({ line }, "napcat stdout");
+
+        if (!handle.qqPid) {
+          const m = line.match(MAIN_PID_RE);
+          if (m) {
+            handle.qqPid = parseInt(m[1]!, 10);
+            const rec = readPidFile(config.qqId);
+            if (rec) writePidFile(config.qqId, { ...rec, qq: handle.qqPid });
+          }
+        }
+
+        if (!handle.webuiPort) {
+          const m = line.match(WEBUI_URL_RE);
+          if (m) {
+            handle.webuiPort = parseInt(m[1]!, 10);
+            handle.webuiToken = m[2]!;
+            createNapCatApi(handle.webuiPort, handle.webuiToken).then(resolveApi).catch(rejectApi);
+          }
+        }
+
+        if (ADAPTER_READY_RE.test(line)) resolveReady();
       }
-    }
-    // 创建 API 实例
-    if (!handle.webuiPort) {
-      const m = text.match(WEBUI_URL_RE);
-      if (m) {
-        handle.webuiPort = parseInt(m[1]!, 10);
-        handle.webuiToken = m[2]!;
-        createNapCatApi(handle.webuiPort, handle.webuiToken).then(resolveApi).catch(rejectApi);
+    });
+
+    handle.proc.stderr!.on("data", (d: Buffer) => {
+      const text = d.toString();
+      for (const line of text.split(/\r?\n/)) {
+        if (line) logger.error({ line }, "napcat stderr");
       }
-    }
-    // 通知准备就绪
-    if (text.match(ADAPTER_READY_RE)) resolveReady();
-  });
+    });
+    handle.proc.stderr!.resume();
+    handle.proc.on("error", (err) => {
+      logger.error({ error: err }, "启动进程失败");
+      rejectApi(err);
+      rejectReady(err);
+    });
 
-  handle.proc.stderr!.on("data", (d: Buffer) => {
-    const text = d.toString();
-    for (const line of text.split(/\r?\n/)) {
-      if (line) logger.error({ line }, "napcat stderr");
-    }
-  });
-  handle.proc.on("error", (err) => {
-    logger.error({ error: err }, "启动进程失败");
-    rejectApi(err);
-  });
+    handle.proc.on("exit", (code) => {
+      logger.info({ code }, "NapCat supervisor 退出");
+      if (readPidFile(config.qqId)?.launcher === handle.proc.pid) deletePidFile(config.qqId);
+      const error = new Error(`NapCat supervisor 已退出 (code=${code})`);
+      rejectApi(error);
+      rejectReady(error);
+    });
+    handle.proc.stdin?.write("1");
 
-  handle.proc.on("exit", (code) => {
-    logger.info({ code }, "NapCat 进程退出");
-    if (handle.proc.pid) forceKill(handle.proc.pid);
-    forceKill(handle.qqPid);
-    rejectApi(new Error(`NapCat 进程已退出 (code=${code})`));
-  });
+    let stopPromise: Promise<void> | undefined;
 
-  return {
-    qqId: config.qqId,
-    get webuiPort() {
-      return handle.webuiPort;
-    },
-    get webuiToken() {
-      return handle.webuiToken;
-    },
-    waitForWebUI: () => apiPromise,
-    waitForReady: () => readyPromise,
-    stop: () => {
-      if (handle.proc.pid) forceKill(handle.proc.pid);
-      forceKill(handle.qqPid);
-    },
-  };
+    return {
+      qqId: config.qqId,
+      get webuiPort() {
+        return handle.webuiPort;
+      },
+      get webuiToken() {
+        return handle.webuiToken;
+      },
+      waitForWebUI: () => apiPromise,
+      waitForReady: () => readyPromise,
+      stop: () =>
+        (stopPromise ??= new Promise<void>((resolve, reject) => {
+          if (handle.proc.exitCode !== null || handle.proc.signalCode !== null) {
+            resolve();
+            return;
+          }
+
+          let settled = false;
+          let timer: ReturnType<typeof setTimeout>;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve();
+          };
+          timer = setTimeout(() => {
+            logger.warn({ pid: handle.proc.pid }, "NapCat supervisor 停止超时，强制结束");
+            if (IS_WIN) {
+              if (handle.proc.pid) forceKill(handle.proc.pid);
+              finish();
+              return;
+            }
+            settled = true;
+            reject(new Error("NapCat supervisor 停止超时，进程组仍在清理中"));
+          }, 8_000);
+          timer.unref();
+          handle.proc.once("exit", finish);
+          if (handle.proc.exitCode !== null || handle.proc.signalCode !== null) {
+            finish();
+            return;
+          }
+          handle.proc.stdin?.end();
+        })),
+    };
+  } catch (error) {
+    handle.proc.stdin?.end();
+    throw error;
+  }
 }
 
 function oneBotConfig(wsPort: number) {
@@ -447,33 +535,40 @@ export async function startBuiltinNapCat(qqId: string) {
   };
 
   logger.info("启动内置 NapCat");
-  const napcat = await launchNapCat(napcatConfig);
-  const api = await napcat.waitForWebUI();
-  logger.info(
-    { port: napcat.webuiPort, url: `http://localhost:${napcat.webuiPort}/webui?token=${napcat.webuiToken}` },
-    "NapCat WebUI 就绪",
-  );
+  let napcat: Awaited<ReturnType<typeof launchNapCat>> | undefined;
+  try {
+    napcat = await launchNapCat(napcatConfig);
+    const api = await napcat.waitForWebUI();
+    const webuiUrl = `http://localhost:${napcat.webuiPort}/webui?token=${napcat.webuiToken}`;
+    logger.info({ port: napcat.webuiPort, url: webuiUrl }, "NapCat WebUI 就绪");
 
-  const version = await api.getNapCatVersion();
-  logger.info({ version }, `NapCat 版本: ${version}`);
+    const version = await api.getNapCatVersion();
+    logger.info({ version }, `NapCat 版本: ${version}`);
 
-  await napcat.waitForReady();
-  logger.info("NapCat 协议适配器已就绪");
+    await napcat.waitForReady();
+    logger.info("NapCat 协议适配器已就绪");
 
-  const isLoggedIn = await api.checkLoginStatus();
-  logger.info({ loggedIn: isLoggedIn }, `QQ 登录状态: ${isLoggedIn ? "已登录" : "未登录"}`);
+    const isLoggedIn = await api.checkLoginStatus();
+    logger.info({ loggedIn: isLoggedIn }, `QQ 登录状态: ${isLoggedIn ? "已登录" : "未登录"}`);
+    if (!isLoggedIn) {
+      logger.warn({ url: webuiUrl }, "尚未登录 QQ，请访问 NapCat WebUI 完成登录：");
+    }
 
-  const wsPort = await acquireEphemeralPort();
-  logger.info({ port: wsPort }, `临时 WebSocket 端口: ${wsPort}`);
+    const wsPort = await acquireEphemeralPort();
+    logger.info({ port: wsPort }, `临时 WebSocket 端口: ${wsPort}`);
 
-  await api.setOB11Config(oneBotConfig(wsPort));
-  logger.info("OneBot 配置已推送");
+    await api.setOB11Config(oneBotConfig(wsPort));
+    logger.info("OneBot 配置已推送");
 
-  return {
-    wsUrl: `ws://127.0.0.1:${wsPort}`,
-    accessToken: "",
-    stop: napcat.stop,
-  };
+    return {
+      wsUrl: `ws://127.0.0.1:${wsPort}`,
+      accessToken: "",
+      stop: napcat.stop,
+    };
+  } catch (error) {
+    await napcat?.stop();
+    throw error;
+  }
 }
 
 if (import.meta.main) {
@@ -489,7 +584,7 @@ if (import.meta.main) {
   await client.connect();
   await Bun.sleep(1000);
   registerShutdownHook("NapCat", async () => {
-    napcat.stop();
+    await napcat.stop();
     logger.info("NapCat 进程已关闭");
   });
 }

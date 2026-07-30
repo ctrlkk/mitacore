@@ -1,13 +1,13 @@
 /**
  * NapCat 进程 PID 持久化文件
  *
- * 记录上次启动 NapCat 时的关键 PID，用于下次启动前做精确的孤儿清理。
+ * 记录当前 NapCat 实例的关键 PID，用于运行状态诊断和清理过期记录。
  * 文件路径：dataPath("runtime", "napcat", `<qqId>.pid`)
  *
  * 字段：
- * - launcher: NapCatWinBootMain.exe / qq / xvfb-run 的 PID
+ * - launcher: napcat-supervisor 的 PID
  * - qq:       解析 Main Process ID 拿到的 QQ 主进程 PID（解析不到则为 0）
- * - port:     webui 端口，用于端口占用反查兜底
+ * - port:     webui 端口
  * - createdAt: 落盘时间戳（毫秒）
  */
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
@@ -24,6 +24,10 @@ function pidFilePath(qqId: string): string {
   return dataPath("runtime", "napcat", `${qqId}.pid`);
 }
 
+export function napcatLockPath(qqId: string): string {
+  return dataPath("runtime", "napcat", `${qqId}.lock`);
+}
+
 export function readPidFile(qqId: string): PidRecord | null {
   const path = pidFilePath(qqId);
   if (!existsSync(path)) return null;
@@ -37,10 +41,10 @@ export function readPidFile(qqId: string): PidRecord | null {
       Number.isFinite(parsed.port)
     ) {
       return {
-        launcher: parsed.launcher | 0,
-        qq: Number.isFinite(parsed.qq) ? parsed.qq | 0 : 0,
-        port: parsed.port | 0,
-        createdAt: Number.isFinite(parsed.createdAt) ? parsed.createdAt | 0 : 0,
+        launcher: Math.trunc(parsed.launcher),
+        qq: Number.isFinite(parsed.qq) ? Math.trunc(parsed.qq) : 0,
+        port: Math.trunc(parsed.port),
+        createdAt: Number.isFinite(parsed.createdAt) ? Math.trunc(parsed.createdAt) : 0,
       };
     }
     return null;

@@ -44,6 +44,20 @@ async function buildApp() {
   );
 }
 
+/** 构建负责约束 NapCat 进程树生命周期的原生 supervisor。 */
+async function buildSupervisor() {
+  const manifest = join(root, "packages", "napcat-supervisor", "Cargo.toml");
+  const binaryName = `napcat-supervisor${exeExt}`;
+  const outputDir = join(outDir, "bin");
+  await runCmd(["cargo", "build", "--release", "--manifest-path", manifest], root);
+  await mkdir(outputDir, { recursive: true });
+  await copyFile(
+    join(root, "packages", "napcat-supervisor", "target", "release", binaryName),
+    join(outputDir, binaryName),
+  );
+  if (process.platform !== "win32") await chmod(join(outputDir, binaryName), 0o755);
+}
+
 /** 构建 WebUI 并复制到应用同目录，供 Hono 在生产环境托管。 */
 async function buildWebUi() {
   const webUiDir = join(root, "packages", "webui");
@@ -167,7 +181,7 @@ async function copyAssets() {
 console.log("==> 开始并行构建...\n");
 await mkdir(outDir, { recursive: true });
 
-await Promise.all([buildApp(), buildWebUi(), buildSidecar(), copyBin(), copyAssets()]);
+await Promise.all([buildApp(), buildSupervisor(), buildWebUi(), buildSidecar(), copyBin(), copyAssets()]);
 
 console.log("\n==> 构建完成：");
 const files = await readdir(outDir);
