@@ -90,6 +90,7 @@ alias = "deepseek-v4-pro"
 # mimo 对于 openai-compatible 端点兼容最为广泛，包括：联网搜索、图像、音频、视频输入
 [[providers]]
 name = "openai-compatible"
+type = "openai-compatible"
 
 [providers.options]
 base_url = "https://api.xiaomimimo.com/v1"

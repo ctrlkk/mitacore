@@ -10,9 +10,9 @@ type ProviderFn = (modelId: string) => LanguageModel;
 const providerCache = new Map<string, ProviderFn>();
 
 function createProvider(cfg: Config["providers"][number]): ProviderFn {
-  const { name, options } = cfg;
+  const { name, type, options } = cfg;
   const common = { apiKey: options.api_key, baseURL: options.base_url };
-  switch (name) {
+  switch (type) {
     case "anthropic":
       return createAnthropic({ name, ...common });
     case "openai":
@@ -33,7 +33,7 @@ export function getModel(alias: string): LanguageModel {
     const modelCfg = providerCfg.models.find((m) => m.alias === alias);
     if (!modelCfg) continue;
 
-    const cacheKey = `${providerCfg.name}:${providerCfg.options.base_url}`;
+    const cacheKey = `${providerCfg.type}:${providerCfg.name}:${providerCfg.options.base_url}`;
     let provider = providerCache.get(cacheKey);
     if (!provider) {
       provider = createProvider(providerCfg);

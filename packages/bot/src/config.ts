@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { parse } from "smol-toml";
+import { rename, unlink, writeFile } from "node:fs/promises";
+import { parse, stringify, type TomlTableWithoutBigInt } from "smol-toml";
 import { z } from "zod";
 import { projectPath } from "./utils/path";
 import { logger } from "@/logger";
@@ -10,59 +11,89 @@ const scopeConfig = z.object({
   ids: z.array(z.string()).default([]).describe("范围控制的 ID 列表"),
 });
 
-const schema = z.object({
-  napcat: z
+const providerType = z.enum(["anthropic", "openai", "openai-compatible", "deepseek"]);
+
+const providerConfig = z.object({
+  name: z.string().trim().min(1, "供应商名称不能为空").describe("供应商名称"),
+  type: providerType.describe("供应商端点类型"),
+  options: z
     .object({
-      ws_url: z.string().optional().describe("外部 NapCat WebSocket 地址"),
-      token: z.string().optional().describe("外部 NapCat token"),
-      qq_id: z.string().optional().describe("内置服务登录的 QQ ID"),
-      groups: scopeConfig.default({ mode: "whitelist", ids: [] }).describe("群聊范围控制"),
-      private_chats: scopeConfig.default({ mode: "whitelist", ids: [] }).describe("私聊范围控制"),
-      group_members: scopeConfig.default({ mode: "blacklist", ids: [] }).describe("群内用户范围控制"),
+      base_url: z
+        .url()
+        .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "仅支持 HTTP 或 HTTPS 地址")
+        .describe("供应商 API 基础 URL"),
+      api_key: z.string().trim().min(1, "API 密钥不能为空").describe("供应商 API 密钥"),
     })
-    .refine(
-      (data) => {
-        return (data.ws_url && data.token) || data.qq_id;
-      },
-      {
-        message: "必须提供 (ws_url + token) 或 qq_id 其中一种配置",
-      },
-    )
-    .describe("NapCat 配置"),
-  providers: z
+    .describe("供应商选项"),
+  models: z
     .array(
       z.object({
-        name: z.enum(["anthropic", "openai", "openai-compatible", "deepseek"]).describe("供应商类型"),
-        options: z
-          .object({
-            base_url: z.url().describe("供应商 API 基础 URL"),
-            api_key: z.string().describe("供应商 API 密钥"),
-          })
-          .describe("供应商选项"),
-        models: z
-          .array(
-            z.object({
-              id: z.string().describe("模型ID"),
-              alias: z.string().describe("模型别名，用于防止模型id冲突"),
-            }),
-          )
-          .describe("供应商提供的模型列表"),
+        id: z.string().trim().min(1, "模型 ID 不能为空").describe("模型ID"),
+        alias: z.string().trim().min(1, "模型别名不能为空").describe("模型别名，用于防止模型id冲突"),
       }),
     )
-    .describe("供应商配置"),
-  models: z
-    .object({
-      plan: z.string().describe("规划层使用的模型"),
-      reply: z.string().describe("执行层使用的模型"),
-      main: z.string().optional().describe("单 agent 模式的主模型，未配置时不可用"),
-      multimodal_image: z.string().describe("用于图像理解的外挂模型"),
-      multimodal_video: z.string().describe("用于视频理解的外挂模型"),
-      multimodal_audio: z.string().describe("用于音频处理的外挂模型"),
-    })
-    .describe("各模块使用的模型配置"),
+    .min(1, "至少需要配置一个模型")
+    .describe("供应商提供的模型列表"),
 });
 
+const schema = z
+  .object({
+    napcat: z
+      .object({
+        ws_url: z.string().optional().describe("外部 NapCat WebSocket 地址"),
+        token: z.string().optional().describe("外部 NapCat token"),
+        qq_id: z.string().optional().describe("内置服务登录的 QQ ID"),
+        groups: scopeConfig.default({ mode: "whitelist", ids: [] }).describe("群聊范围控制"),
+        private_chats: scopeConfig.default({ mode: "whitelist", ids: [] }).describe("私聊范围控制"),
+        group_members: scopeConfig.default({ mode: "blacklist", ids: [] }).describe("群内用户范围控制"),
+      })
+      .refine(
+        (data) => {
+          return (data.ws_url && data.token) || data.qq_id;
+        },
+        {
+          message: "必须提供 (ws_url + token) 或 qq_id 其中一种配置",
+        },
+      )
+      .describe("NapCat 配置"),
+    providers: z.array(providerConfig).min(1, "至少需要配置一个供应商").describe("供应商配置"),
+    models: z
+      .object({
+        plan: z.string().describe("规划层使用的模型"),
+        reply: z.string().describe("执行层使用的模型"),
+        main: z.string().optional().describe("单 agent 模式的主模型，未配置时不可用"),
+        multimodal_image: z.string().describe("用于图像理解的外挂模型"),
+        multimodal_video: z.string().describe("用于视频理解的外挂模型"),
+        multimodal_audio: z.string().describe("用于音频处理的外挂模型"),
+      })
+      .describe("各模块使用的模型配置"),
+  })
+  .superRefine((data, ctx) => {
+    const aliases = data.providers.flatMap((provider) => provider.models.map((model) => model.alias));
+    aliases.forEach((alias, index) => {
+      if (aliases.indexOf(alias) !== index) {
+        ctx.addIssue({ code: "custom", path: ["providers"], message: `模型别名不能重复：${alias}` });
+      }
+    });
+
+    Object.entries(data.models).forEach(([role, alias]) => {
+      if (alias && !aliases.includes(alias)) {
+        ctx.addIssue({ code: "custom", path: ["models", role], message: `未找到别名为 ${alias} 的模型` });
+      }
+    });
+  });
+
 export type Config = z.infer<typeof schema>;
+
+export class ConfigValidationError extends Error {
+  constructor(
+    message: string,
+    readonly issues: z.ZodIssue[],
+  ) {
+    super(message);
+    this.name = "ConfigValidationError";
+  }
+}
 
 function formatZodError(error: z.ZodError): string {
   const lines: string[] = ["配置校验失败，请检查以下字段："];
@@ -96,6 +127,7 @@ function getFieldDescription(path: PropertyKey[]): string | undefined {
     "napcat.private_chats": "私聊范围控制",
     "napcat.group_members": "群内用户范围控制",
     providers: "供应商配置",
+    "providers.type": "供应商端点类型",
     "models.plan": "规划层模型别名",
     "models.reply": "执行层模型别名",
     "models.main": "单 agent 模式主模型别名",
@@ -116,8 +148,14 @@ function getFieldDescription(path: PropertyKey[]): string | undefined {
   return undefined;
 }
 
+export function validateConfig(input: unknown): Config {
+  const result = schema.safeParse(input);
+  if (!result.success) throw new ConfigValidationError(formatZodError(result.error), result.error.issues);
+  return result.data;
+}
+
 /** 加载并校验配置文件，必须在程序入口最先调用 */
-function loadConfig(path = projectPath("config.toml")): Config {
+export function loadConfig(path = projectPath("config.toml")): Config {
   let raw: string;
   try {
     raw = readFileSync(path, "utf8");
@@ -134,11 +172,23 @@ function loadConfig(path = projectPath("config.toml")): Config {
     throw new Error(`配置文件 TOML 解析失败：${msg}`);
   }
 
-  const result = schema.safeParse(parsed);
-  if (!result.success) {
-    throw new Error(formatZodError(result.error));
+  return validateConfig(parsed);
+}
+
+export async function saveConfig(input: unknown, path = projectPath("config.toml")): Promise<Config> {
+  const validated = validateConfig(input);
+  const temporaryPath = `${path}.tmp-${process.pid}-${crypto.randomUUID()}`;
+  try {
+    await writeFile(temporaryPath, `${stringify(validated as unknown as TomlTableWithoutBigInt)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await rename(temporaryPath, path);
+    return validated;
+  } catch (error) {
+    await unlink(temporaryPath).catch(() => undefined);
+    throw error;
   }
-  return result.data;
 }
 
 export const config = loadConfig();
