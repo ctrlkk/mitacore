@@ -20,14 +20,10 @@ type ContentPart = ContentValue[number];
 type ImageGenResult =
   | {
       status: "success";
-      prompt: string;
-      images: string[];
       results: { path: string; image: Blob }[];
     }
   | {
       status: "failed";
-      prompt: string;
-      images: string[];
       error: string;
     };
 
@@ -62,8 +58,6 @@ export function imageGen(
       if (context?.inSubagent) {
         return {
           status: "failed",
-          prompt: "",
-          images: [],
           error: "图像生成分支不允许再次派生图像生成，已忽略本次调用。",
         };
       }
@@ -96,9 +90,7 @@ export function imageGen(
         log.warn({ error: "未匹配到 <prompt> 字段", outputPreview: text.slice(0, 500) }, "图像生成分支输出解析失败");
         return {
           status: "failed",
-          prompt: "",
-          images: [],
-          error: "图像生成分支输出解析失败，未获得可用的提示词与参考图。",
+          error: "图像生成分支输出解析失败，未获得可用的图像生成决策。",
         };
       }
       const { prompt, images } = decision;
@@ -131,33 +123,18 @@ export function imageGen(
           }),
         );
         log.info({ count: results.length }, "图像已生成");
-        return { status: "success", prompt, images, results };
+        return { status: "success", results };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         log.error({ error, prompt, images }, "图像生成失败");
-        return { status: "failed", prompt, images, error: message };
+        return { status: "failed", error: message };
       }
     },
     async toModelOutput({ output }): Promise<ToolResultOutput> {
-      const context = [
-        "<image_generation_context>",
-        `<status>${output.status}</status>`,
-        `<prompt>${output.prompt}</prompt>`,
-        "<reference_images>",
-        ...output.images.map((image) => `<image>${image}</image>`),
-        "</reference_images>",
-        "</image_generation_context>",
-      ].join("\n");
-
       if (output.status === "failed") {
         return {
           type: "content",
-          value: [
-            {
-              type: "text",
-              text: [`图像生成失败：${output.error}`, "本次生成决策如下，可据此调整后重试：", context].join("\n"),
-            },
-          ],
+          value: [{ type: "text", text: `图像生成失败：${output.error}` }],
         };
       }
       if (SUPPORTS_MULTIMODAL) {
@@ -172,7 +149,7 @@ export function imageGen(
         ).then((parts) => parts.flat());
         value.unshift({
           type: "text",
-          text: [`图片生成成功，一共${output.results.length}张，下面是本次生成决策与图片预览：`, context].join("\n"),
+          text: `图片生成成功，一共${output.results.length}张，下面是图片预览；`,
         });
         return {
           type: "content",
@@ -194,11 +171,7 @@ export function imageGen(
         value: [
           {
             type: "text",
-            text: [
-              `图像生成成功，一共${descriptions.length}张，下面是本次生成决策与图片预览：`,
-              context,
-              descriptions.join("\n"),
-            ].join("\n"),
+            text: [`图像生成成功，一共${descriptions.length}张，下面是图片预览；`, descriptions.join("\n")].join("\n"),
           },
         ],
       };
