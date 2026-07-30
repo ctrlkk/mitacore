@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, mkdirSync, statSync, unlinkSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Unzip, UnzipInflate } from "fflate";
 import { logger } from "@/logger";
@@ -102,7 +102,7 @@ export async function downloadNapcat(
       }
       const targetPath = join(targetDir, file.name);
       mkdirSync(dirname(targetPath), { recursive: true });
-      const writer = Bun.file(targetPath).writer();
+      const writer = createWriteStream(targetPath);
       file.ondata = (err, data, final) => {
         if (err) {
           writer.end();
@@ -115,13 +115,11 @@ export async function downloadNapcat(
     });
     unzipper.register(UnzipInflate);
 
-    const reader = Bun.file(zipPath).stream().getReader();
-    let done = false;
-    while (!done) {
-      const result = await reader.read();
-      done = result.done;
-      unzipper.push(result.value ?? new Uint8Array(0), done);
+    const readStream = createReadStream(zipPath);
+    for await (const chunk of readStream) {
+      unzipper.push(chunk as Uint8Array, false);
     }
+    unzipper.push(new Uint8Array(0), true);
     logger.info("解压完成");
   } finally {
     // 确保删除临时 zip 文件
