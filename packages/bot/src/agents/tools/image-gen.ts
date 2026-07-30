@@ -10,7 +10,6 @@ import { getImageGenerator } from "@/generate-image";
 import { logger, type PinoLogger } from "@/logger";
 import { compressImage } from "@/utils/image-resize";
 import { logUsage } from "@/utils/format";
-import imageGenPromptTemplate from "./image-gen.txt";
 
 // 提取 type 为 'content' 的分支
 type ContentResult = Extract<ToolResultOutput, { type: "content" }>;
@@ -62,8 +61,8 @@ export function imageGen(
         };
       }
 
-      const template = imageGenPromptTemplate;
-      const branchInput = template.replace("{task}", task);
+      const { default: template } = await import("./image-gen.txt");
+      const branchInput = `<system_reminder>\n${template.trim().replace("{{task}}", task)}\n</system_reminder>`;
 
       // 子分支只需要知道工具能力，不能实际执行工具而偏离图像决策任务。
       const branchTools = Object.fromEntries(

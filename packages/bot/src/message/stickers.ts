@@ -32,20 +32,10 @@ export async function getStickersContext() {
       .join("\n");
   })();
 
+  const { default: stickerPrompt } = await import("./stickers.txt");
   return {
     stickers,
-    content:
-      "<stickers>\n" +
-      "你可以在回复中插入贴纸来增强情感表达，格式 [name]，name 从下面的列表中选取，例如 [开心]\n" +
-      "使用原则：\n" +
-      "- 自然融入：贴纸应配合文字情绪，不要强行插入。\n" +
-      "- 先匹配：如果多个关键词都合适，选择最贴切当下情绪的一个。\n" +
-      "- 避免重复：连续多条回复中不要使用同一个 id。\n" +
-      "- 不滥用：只有当情绪有明显起伏（开心、害羞、疲惫、困惑等）时才使用。平淡的陈述或事实回答中不要加贴纸。\n" +
-      "- 频率控制：使用之前应当查看历史对话中是否已经多次使用，频率控制在20%以下为最佳，“一图胜千言”。\n\n" +
-      "从下面选择合适的 sticker\n" +
-      `${output}\n` +
-      "</stickers>",
+    content: `<stickers>\n${stickerPrompt.replace("{{list}}", output)}\n</stickers>`,
   };
 }
 
