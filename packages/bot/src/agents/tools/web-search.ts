@@ -4,16 +4,14 @@ import { z } from "zod";
 const TIMEOUT_MS = 25_000;
 const MAX_RESPONSE_BYTES = 256 * 1024;
 
-export type Provider = "exa" | "parallel";
-
-export interface SearchResultItem {
+interface SearchResultItem {
   url: string;
   title: string;
   publish_date: string | null;
   excerpts: string[];
 }
 
-export interface SearchResponse {
+interface SearchResponse {
   search_id: string;
   results: SearchResultItem[];
   warnings: string[] | null;
@@ -21,7 +19,7 @@ export interface SearchResponse {
   session_id: string;
 }
 
-export interface WebSearchInput {
+interface WebSearchInput {
   query: string;
   numResults?: number;
   livecrawl?: "fallback" | "preferred";
@@ -39,20 +37,6 @@ interface McpResponse {
   id: number;
   result?: { content: McpContentItem[] };
   error?: { code: number; message: string };
-}
-
-function checksum(input: string): string {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(36);
-}
-
-function selectProvider(sessionID: string, override?: Provider): Provider {
-  if (override) return override;
-  return Number.parseInt(checksum(sessionID) ?? "0", 36) % 2 === 0 ? "exa" : "parallel";
 }
 
 function parsePayload(payload: string): string | undefined {
@@ -85,7 +69,7 @@ function tryParseJson(text: string): SearchResponse | undefined {
   const trimmed = text.trim();
   if (!trimmed.startsWith("{")) return undefined;
   try {
-    return JSON.parse(trimmed) as SearchResponse;
+    return JSON.parse(trimmed);
   } catch {
     return undefined;
   }
@@ -217,7 +201,7 @@ export function websearch() {
     }),
     execute: async ({ query, numResults, livecrawl, type, contextMaxCharacters }, options) => {
       const sessionID = options?.toolCallId ?? crypto.randomUUID();
-      const provider = selectProvider(sessionID);
+      const provider = "exa";
 
       try {
         const raw =
