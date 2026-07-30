@@ -17,6 +17,20 @@ type ContentResult = Extract<ToolResultOutput, { type: "content" }>;
 type ContentValue = ContentResult["value"];
 type ContentPart = ContentValue[number];
 
+type ImageGenResult =
+  | {
+      status: "success";
+      prompt: string;
+      images: string[];
+      results: { path: string; image: Blob }[];
+    }
+  | {
+      status: "failed";
+      prompt: string;
+      images: string[];
+      error: string;
+    };
+
 function parseImageGenDecisionXml(xml: string): { prompt: string; images: string[] } | null {
   const promptMatch = xml.match(/<prompt>([\s\S]*?)<\/prompt>/i);
   if (!promptMatch || promptMatch[1] === undefined) return null;
@@ -44,21 +58,35 @@ export function imageGen(
     inputSchema: z.object({
       task: z.string().describe("对期望图像的大致任务描述：要画什么、用途或风格意向即可，无需编写完整绘画提示词"),
     }),
-    execute: async ({ task }, { messages, abortSignal, context }) => {
-      if (context?.inSubagent) return "图像生成分支不允许再次派生图像生成，已忽略本次调用。请直接完成手头的任务。";
+    execute: async ({ task }, { messages, abortSignal, context }): Promise<ImageGenResult> => {
+      if (context?.inSubagent) {
+        return {
+          status: "failed",
+          prompt: "",
+          images: [],
+          error: "图像生成分支不允许再次派生图像生成，已忽略本次调用。",
+        };
+      }
 
       const template = imageGenPromptTemplate;
       const branchInput = template.replace("{task}", task);
+
+      // 子分支只需要知道工具能力，不能实际执行工具而偏离图像决策任务。
+      const branchTools = Object.fromEntries(
+        Object.entries(allTools).map(([name, branchTool]) => {
+          const { execute: _execute, ...toolWithoutExecute } = branchTool;
+          return [name, toolWithoutExecute];
+        }),
+      ) as ToolSet;
 
       const { usage, text, finalStep } = await generateText({
         model: parentModel,
         instructions: parentSystem,
         messages: [...messages, { role: "user", content: branchInput }],
-        tools: allTools,
+        tools: branchTools,
         abortSignal,
         runtimeContext: { inSubagent: true },
         maxOutputTokens: 4096,
-        toolChoice: "none",
       });
       logUsage(log, usage);
       log.debug({ reasoningText: finalStep.reasoningText, text }, "图像生成分支输出");
@@ -66,49 +94,75 @@ export function imageGen(
       const decision = parseImageGenDecisionXml(text);
       if (!decision) {
         log.warn({ error: "未匹配到 <prompt> 字段", outputPreview: text.slice(0, 500) }, "图像生成分支输出解析失败");
-        return "图像生成分支输出解析失败，且原始任务为空，无法继续生成图像。";
+        return {
+          status: "failed",
+          prompt: "",
+          images: [],
+          error: "图像生成分支输出解析失败，未获得可用的提示词与参考图。",
+        };
       }
       const { prompt, images } = decision;
       log.info({ prompt, images }, "生成图像");
 
-      const files: File[] = [];
-      for (const ref of images) {
-        const filePath = virtualToRealPath(sanitizeImagePath(ref));
-        const mime = lookup(filePath);
-        if (!mime || !["image/jpeg", "image/png", "image/webp", "image/bmp"].includes(mime)) {
-          return `不支持该类型的图像文件：${ref}`;
-        }
-        if (!(await exists(filePath))) {
-          return `图片文件未找到: "${ref}"，可能不存在或已过期，请检查文件是否存在。`;
-        }
-        files.push(await createFsFile(filePath));
+      try {
+        const files = await Promise.all(
+          images.map(async (ref) => {
+            const filePath = virtualToRealPath(sanitizeImagePath(ref));
+            const mime = lookup(filePath);
+            if (!mime || !["image/jpeg", "image/png", "image/webp", "image/bmp"].includes(mime)) {
+              throw new Error(`不支持该类型的图像文件：${ref}`);
+            }
+            if (!(await exists(filePath))) {
+              throw new Error(`图片文件未找到: "${ref}"，可能不存在或已过期，请检查文件是否存在。`);
+            }
+            return createFsFile(filePath);
+          }),
+        );
+
+        const { generate } = await getImageGenerator();
+        const urls = await generate(prompt, files);
+        const results = await Promise.all(
+          urls.map(async (url) => {
+            const { virtualPath, realPath } = await downloadToCache(url);
+            return {
+              path: virtualPath,
+              image: await compressImage(await createFsFile(realPath)),
+            };
+          }),
+        );
+        log.info({ count: results.length }, "图像已生成");
+        return { status: "success", prompt, images, results };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log.error({ error, prompt, images }, "图像生成失败");
+        return { status: "failed", prompt, images, error: message };
       }
-
-      const { generate } = await getImageGenerator();
-      const urls = await generate(prompt, files);
-
-      const results = await Promise.all(
-        urls.map(async (url) => {
-          const { virtualPath, realPath } = await downloadToCache(url);
-          return {
-            path: virtualPath,
-            image: await compressImage(await createFsFile(realPath)),
-          };
-        }),
-      );
-      log.info({ count: results.length }, "图像已生成");
-      return results;
     },
     async toModelOutput({ output }): Promise<ToolResultOutput> {
-      if (typeof output === "string") {
+      const context = [
+        "<image_generation_context>",
+        `<status>${output.status}</status>`,
+        `<prompt>${output.prompt}</prompt>`,
+        "<reference_images>",
+        ...output.images.map((image) => `<image>${image}</image>`),
+        "</reference_images>",
+        "</image_generation_context>",
+      ].join("\n");
+
+      if (output.status === "failed") {
         return {
           type: "content",
-          value: [{ type: "text", text: output }],
+          value: [
+            {
+              type: "text",
+              text: [`图像生成失败：${output.error}`, "本次生成决策如下，可据此调整后重试：", context].join("\n"),
+            },
+          ],
         };
       }
       if (SUPPORTS_MULTIMODAL) {
         const value: ContentPart[] = await Promise.all(
-          output.flatMap(async ({ path, image }, index): Promise<ContentPart[]> => {
+          output.results.flatMap(async ({ path, image }, index): Promise<ContentPart[]> => {
             const buffer = await image.bytes();
             return [
               { type: "text", text: `#${index} 图片路径：${path}` },
@@ -116,14 +170,17 @@ export function imageGen(
             ];
           }),
         ).then((parts) => parts.flat());
-        value.unshift({ type: "text", text: `图片生成成功，一共${output.length}张，下面是图片预览；` });
+        value.unshift({
+          type: "text",
+          text: [`图片生成成功，一共${output.results.length}张，下面是本次生成决策与图片预览：`, context].join("\n"),
+        });
         return {
           type: "content",
           value,
         };
       }
       const descriptions = await Promise.all(
-        output.map(async ({ path, image }) => {
+        output.results.map(async ({ path, image }) => {
           const description = await imageToText(image).catch(() => {
             log.error({ path }, "图像生成工具：对输出图片转述失败");
             return "图片转述失败";
@@ -137,7 +194,11 @@ export function imageGen(
         value: [
           {
             type: "text",
-            text: [`图像生成成功，一共${descriptions.length}张，下面是图片预览；`, descriptions.join("\n")].join("\n"),
+            text: [
+              `图像生成成功，一共${descriptions.length}张，下面是本次生成决策与图片预览：`,
+              context,
+              descriptions.join("\n"),
+            ].join("\n"),
           },
         ],
       };
