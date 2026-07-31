@@ -12,7 +12,7 @@ import { imageGen } from "./tools/image-gen";
 import { websearch } from "./tools/web-search";
 import { compactHistory, isOverflow } from "./compaction";
 import { injectSystemContext } from "./system-context";
-import { memoryTools } from "@/workspace/tool";
+import { workspaceTools } from "@/workspace/tool";
 
 async function loadHistory(): Promise<ChatHistory> {
   try {
@@ -78,6 +78,7 @@ export async function runMain(
 
   const replyPrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
   const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt");
+  const { default: workspacePrompt } = await import("../workspace/memory.txt");
 
   const system = [
     "<capabilities>",
@@ -87,9 +88,13 @@ export async function runMain(
     "<role>",
     replyPrompt.trim(),
     "</role>",
+    "",
+    "<workspace_instructions>",
+    workspacePrompt.trim(),
+    "</workspace_instructions>",
   ].join("\n");
 
-  const tools: ToolSet = { ...memoryTools };
+  const tools: ToolSet = { ...workspaceTools };
   tools.image_gen = imageGen(tools, system, model);
   tools.web_search = websearch();
 

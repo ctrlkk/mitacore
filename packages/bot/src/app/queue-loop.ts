@@ -327,7 +327,7 @@ export function createBot(sessionId: string) {
 
     const cancelTyping = await ctx.setTyping();
     try {
-      if (1 > 2) {
+      if (1 < 2) {
         const planResult = await runPlanner(prompt, log);
         if (!planResult) {
           log.info("规划层未调用 submit_plan，跳过回复");

@@ -1,7 +1,9 @@
 import type { ChatHistory, ChatRecord } from "./chat-history";
 import type { PinoLogger } from "@/logger";
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { getStickersContext } from "@/message/stickers";
+import { dataPath } from "@/utils/path";
 import dayjs from "@/utils/time";
 
 export async function injectSystemContext(
@@ -10,9 +12,18 @@ export async function injectSystemContext(
   log: PinoLogger,
 ): Promise<{ records: ChatRecord[] }> {
   const now = Date.now();
+  const userTurn = (history.findLast((record) => record.user_turn !== undefined)?.user_turn ?? 0) + 1;
   const formattedDate = dayjs(now).format("YYYY年M月D日 dddd");
   const stickersContext = await getStickersContext();
   const stickersHash = createHash("sha256").update(stickersContext.content).digest("hex");
+  const previousMemoryHash = history.findLast((record) => record.system_update?.memory)?.system_update?.memory?.hash;
+  const memoryContent = await readFile(dataPath("workspace", "notepad", "MEMORY.md"), "utf8").catch(
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined;
+      log.error({ error }, "读取 MEMORY.md 失败");
+      return null;
+    },
+  );
 
   const system_update: NonNullable<ChatRecord["system_update"]> = {};
   const updates = [];
@@ -31,10 +42,28 @@ export async function injectSystemContext(
       "</stickers_update>",
     );
   }
+  if (memoryContent !== null && (memoryContent !== undefined || previousMemoryHash !== undefined)) {
+    const currentMemoryContent = memoryContent ?? "";
+    const memoryHash = createHash("sha256").update(currentMemoryContent).digest("hex");
+    if (previousMemoryHash !== memoryHash) {
+      log.info({ exists: memoryContent !== undefined }, "长期记忆上下文更新");
+      system_update.memory = { hash: memoryHash };
+      updates.push(
+        "<memory_update>",
+        "以下内容替换此前的完整长期记忆。",
+        "File: MEMORY.md",
+        "",
+        "```md",
+        currentMemoryContent,
+        "```",
+        "</memory_update>",
+      );
+    }
+  }
 
   if (updates.length === 0) {
     return {
-      records: [{ message: { role: "user", content: prompt }, timestamp: now }],
+      records: [{ message: { role: "user", content: prompt }, timestamp: now, user_turn: userTurn }],
     };
   }
 
@@ -45,7 +74,7 @@ export async function injectSystemContext(
         timestamp: now,
         system_update,
       },
-      { message: { role: "user", content: prompt }, timestamp: now },
+      { message: { role: "user", content: prompt }, timestamp: now, user_turn: userTurn },
     ],
   };
 }

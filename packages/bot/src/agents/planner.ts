@@ -11,7 +11,10 @@ import { websearch } from "./tools/web-search";
 import { compactHistory, isOverflow } from "./compaction";
 import { injectSystemContext } from "./system-context";
 import { logUsage } from "@/utils/format";
+import { workspaceTools } from "@/workspace/tool";
+import { memoryReview } from "./background-review";
 
+const MEMORY_REVIEW_INTERVAL = 10;
 const submitPlanTool = tool({
   description: "提交本轮回复策略，包含语气、角度、要点、长度、工具调用等",
   inputSchema: z.object({
@@ -65,6 +68,7 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
 
   const { default: planPrompt } = await import("../prompts/plan.txt");
   const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt");
+  const { default: workspacePrompt } = await import("../workspace/memory.txt");
   const replyPrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
 
   const system = [
@@ -80,11 +84,16 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
     "<reply_role>",
     replyPrompt.trim(),
     "</reply_role>",
+    "",
+    "<workspace_instructions>",
+    workspacePrompt.trim(),
+    "</workspace_instructions>",
   ].join("\n");
 
-  const tools: ToolSet = { submit_plan: submitPlanTool };
+  const tools: ToolSet = { ...workspaceTools, submit_plan: submitPlanTool };
   tools.image_gen = imageGen(tools, system, model);
   tools.web_search = websearch();
+  const startMemoryReview = memoryReview(tools, system, model, log);
 
   for (let step = 0; step < 10; step++) {
     const result = await generateText({
@@ -152,6 +161,8 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
   log.info({ plan: planText }, "规划层 plan");
 
   const submitReply = async (replyText: string): Promise<void> => {
+    const userTurn = records.findLast((record) => record.user_turn !== undefined)?.user_turn;
+    const shouldReviewMemory = userTurn !== undefined && userTurn % MEMORY_REVIEW_INTERVAL === 0;
     const toolRecord: ChatHistory[number] = {
       message: {
         role: "tool",
@@ -178,6 +189,9 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
       finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
     }
     await saveHistory(finalHistory, log);
+    if (shouldReviewMemory) {
+      startMemoryReview(finalHistory);
+    }
   };
 
   return { plan: planText, reasoning: reasoning.join("\n"), submitReply };

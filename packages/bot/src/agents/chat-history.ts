@@ -7,12 +7,17 @@ export type ChatRecord = {
   usage?: LanguageModelUsage;
   /** 是否为摘要记录 */
   summary?: boolean;
+  /** 真实用户回合的累计编号，内部系统上下文与压缩提醒不计入 */
+  user_turn?: number;
   /** 该消息携带的动态系统上下文，以及更新后的完整状态 */
   system_update?: {
     current_date?: string;
     stickers?: {
       hash: string;
       snapshot: Array<{ name: string; description: string }>;
+    };
+    memory?: {
+      hash: string;
     };
   };
 };
