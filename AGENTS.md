@@ -1,9 +1,9 @@
-这是一个由 bun 驱动的 ai agent 软件。
+这是一个由 bun 驱动的专为叙事打造的 Hermes Agent 软件。
 
 ## 代码风格
 
-永远使用 posix 风格的路径。
-在编写 ai agent 工具的使用，统一使用 snake_case 风格的 xml 格式返回结果，如需要处理路径时统一转化为 posix 风格。
+统一使用 snake_case 风格的 xml。
+文件路径统一转化为 posix 风格。
 
 ### 通用原则
 

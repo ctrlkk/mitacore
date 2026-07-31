@@ -6,15 +6,17 @@ import { dataPath } from "@/utils/path";
 import { blobToDataURL } from "@/utils/blob";
 
 const stickersDir = dataPath("workspace", "stickers");
+const stickerExtensions = new Set([".webp", ".png", ".jpg", ".jpeg", ".gif"]);
+const isImageFile = (file: string) => stickerExtensions.has(parse(file).ext.toLowerCase());
 
 async function getStickers() {
   const files = await readdir(stickersDir).catch(() => []);
-  const webpFiles = files.filter((f) => f.endsWith(".webp") && !f.endsWith(".webp.txt"));
+  const imageFiles = files.filter(isImageFile);
 
   return await Promise.all(
-    webpFiles.map(async (file) => {
+    imageFiles.map(async (file) => {
       const name = parse(file).name;
-      const description = await readFile(join(stickersDir, `${name}.webp.txt`), "utf-8");
+      const description = await readFile(join(stickersDir, `${file}.txt`), "utf-8");
       return {
         name,
         description: description.trim(),
@@ -40,7 +42,12 @@ export async function getStickersContext() {
 }
 
 export async function resolveSticker(name: string): Promise<ImagePart | null> {
-  const url = await fetch(pathToFileURL(join(stickersDir, `${name}.webp`)))
+  const file = await readdir(stickersDir)
+    .then((files) => files.find((file) => isImageFile(file) && parse(file).name === name))
+    .catch(() => undefined);
+  if (!file) return null;
+
+  const url = await fetch(pathToFileURL(join(stickersDir, file)))
     .then((r) => r.blob())
     .then(blobToDataURL)
     .catch(() => null);

@@ -105,6 +105,15 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
         log.info({ reasoningText, text, step }, "plan响应");
         if (reasoningText) reasoning.push(reasoningText);
       },
+      onToolExecutionStart({ toolCall }) {
+        log.info(
+          { toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input, step },
+          "工具调用",
+        );
+      },
+      onToolExecutionEnd({ toolCall }) {
+        log.info({ toolName: toolCall.toolName, step }, "工具执行结束");
+      },
       onStepEnd(stepResult) {
         currentStepToolCalls = stepResult.toolCalls;
         for (const [index, message] of stepResult.response.messages.entries()) {
