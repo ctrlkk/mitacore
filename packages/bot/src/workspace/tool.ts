@@ -4,7 +4,7 @@ import { createFsStorage } from "./storage";
 
 const storage = await createFsStorage();
 
-export const memoryTools = {
+export const workspaceTools = {
   read: tool({
     description:
       "读取文件内容或列出目录条目。如果是目录，每行列出一个条目，子目录以 `/` 结尾。" +
@@ -56,6 +56,34 @@ export const memoryTools = {
       new_string: z.string().describe("替换后的新文本"),
     }),
     execute: async (args) => storage.edit(args.path, args.old_string, args.new_string),
+  }),
+
+  copy: tool({
+    description:
+      "复制文件或目录。\n\n" +
+      "用法：\n" +
+      "- 复制前先确认源路径和目标路径。\n" +
+      "- 目标路径已存在时会失败，不会隐式覆盖。\n" +
+      "- 复制目录必须显式设置 recursive=true。",
+    inputSchema: z.object({
+      source: z.string().describe("源文件或目录路径"),
+      target: z.string().describe("目标文件或目录路径"),
+      recursive: z.boolean().optional().default(false).describe("复制目录时必须为 true"),
+    }),
+    execute: async (args) => storage.copy(args.source, args.target, args.recursive),
+  }),
+
+  move: tool({
+    description:
+      "移动或重命名文件或目录。\n\n" +
+      "用法：\n" +
+      "- 移动前先确认源路径和目标路径。\n" +
+      "- 目标路径已存在时会失败，不会隐式覆盖。",
+    inputSchema: z.object({
+      source: z.string().describe("源文件或目录路径"),
+      target: z.string().describe("目标文件或目录路径"),
+    }),
+    execute: async (args) => storage.move(args.source, args.target),
   }),
 
   delete: tool({

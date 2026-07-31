@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rm, readdir, stat } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile, rm, readdir, rename, stat } from "node:fs/promises";
 import { resolve, dirname, relative, isAbsolute, posix } from "node:path";
 import { glob } from "glob";
 import { dataPath } from "@/utils/path";
@@ -7,6 +7,8 @@ export interface IMemoryStorage {
   read(path: string, offset: number, limit: number): Promise<string>;
   write(path: string, content: string, overwrite: boolean): Promise<string>;
   edit(path: string, oldString: string, newString: string): Promise<string>;
+  copy(source: string, target: string, recursive: boolean): Promise<string>;
+  move(source: string, target: string): Promise<string>;
   delete(path: string, confirm: boolean): Promise<string>;
   glob(pattern: string, path: string | undefined, limit: number): Promise<string>;
   grep(pattern: string, path: string | undefined, include: string | undefined, ignoreCase: boolean): Promise<string>;
@@ -115,6 +117,73 @@ export async function createFsStorage(): Promise<IMemoryStorage> {
     }
   }
 
+  async function copy(source: string, target: string, recursive: boolean): Promise<string> {
+    const sourcePath = getSafePath(source);
+    const targetPath = getSafePath(target);
+    const sourceStats = await stat(sourcePath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    if (!sourceStats) return `错误：源路径 "${source}" 不存在。`;
+
+    const targetStats = await stat(targetPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    if (targetStats) return `错误：目标路径 "${target}" 已存在，禁止隐式覆盖。`;
+    if (sourceStats.isDirectory() && !recursive) {
+      return `错误：源路径 "${source}" 是目录，复制目录必须设置 recursive=true。`;
+    }
+
+    const targetRelativeToSource = relative(sourcePath, targetPath);
+    if (
+      sourceStats.isDirectory() &&
+      targetRelativeToSource !== "" &&
+      !targetRelativeToSource.startsWith("..") &&
+      !isAbsolute(targetRelativeToSource)
+    ) {
+      return `错误：不能将目录 "${source}" 复制到其自身内部。`;
+    }
+
+    await mkdir(dirname(targetPath), { recursive: true });
+    await cp(sourcePath, targetPath, {
+      recursive: sourceStats.isDirectory(),
+      force: false,
+      errorOnExist: true,
+    });
+    return `已将 "${source}" 复制到 "${target}"。`;
+  }
+
+  async function move(source: string, target: string): Promise<string> {
+    const sourcePath = getSafePath(source);
+    const targetPath = getSafePath(target);
+    const sourceStats = await stat(sourcePath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    if (!sourceStats) return `错误：源路径 "${source}" 不存在。`;
+
+    const targetStats = await stat(targetPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    if (targetStats) return `错误：目标路径 "${target}" 已存在，禁止隐式覆盖。`;
+
+    const targetRelativeToSource = relative(sourcePath, targetPath);
+    if (
+      sourceStats.isDirectory() &&
+      targetRelativeToSource !== "" &&
+      !targetRelativeToSource.startsWith("..") &&
+      !isAbsolute(targetRelativeToSource)
+    ) {
+      return `错误：不能将目录 "${source}" 移动到其自身内部。`;
+    }
+
+    await mkdir(dirname(targetPath), { recursive: true });
+    await rename(sourcePath, targetPath);
+    return `已将 "${source}" 移动到 "${target}"。`;
+  }
+
   async function remove(path: string, confirm: boolean): Promise<string> {
     const fullPath = getSafePath(path);
     const stats = await stat(fullPath).catch(() => null);
@@ -217,5 +286,5 @@ export async function createFsStorage(): Promise<IMemoryStorage> {
     return output.join("\n");
   }
 
-  return { read, write, edit, delete: remove, glob: globFiles, grep };
+  return { read, write, edit, copy, move, delete: remove, glob: globFiles, grep };
 }

@@ -1,4 +1,4 @@
-import { memoryTools } from "@/workspace/tool";
+import { workspaceTools } from "@/workspace/tool";
 import { getModel } from "@/ai/model";
 import { generateText, isStepCount, tool } from "ai";
 import { websearch } from "./web-search";
@@ -28,7 +28,7 @@ export function task() {
             "使用 glob 搜索文件，grep 搜索内容，read 读取已知文件。\n" +
             "禁止创建或修改任何文件。只做搜索和读取。",
           messages: [{ role: "user", content: prompt }],
-          tools: { read: memoryTools.read, grep: memoryTools.grep, glob: memoryTools.glob },
+          tools: { read: workspaceTools.read, grep: workspaceTools.grep, glob: workspaceTools.glob },
           stopWhen: isStepCount(20),
           maxOutputTokens: 5024,
         });
@@ -44,12 +44,14 @@ export function task() {
             "请自主完成任务并返回总结。",
           messages: [{ role: "user", content: prompt }],
           tools: {
-            read: memoryTools.read,
-            grep: memoryTools.grep,
-            glob: memoryTools.glob,
-            write: memoryTools.write,
-            edit: memoryTools.edit,
-            delete: memoryTools.delete,
+            read: workspaceTools.read,
+            grep: workspaceTools.grep,
+            glob: workspaceTools.glob,
+            write: workspaceTools.write,
+            edit: workspaceTools.edit,
+            copy: workspaceTools.copy,
+            move: workspaceTools.move,
+            delete: workspaceTools.delete,
             websearch: websearch(),
           },
           stopWhen: isStepCount(20),

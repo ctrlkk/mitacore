@@ -65,12 +65,12 @@ export function imageGen(
       const branchInput = `<system_reminder>\n${template.trim().replace("{{task}}", task)}\n</system_reminder>`;
 
       // 子分支只需要知道工具能力，不能实际执行工具而偏离图像决策任务。
-      const branchTools = Object.fromEntries(
+      const branchTools: ToolSet = Object.fromEntries(
         Object.entries(allTools).map(([name, branchTool]) => {
           const { execute: _execute, ...toolWithoutExecute } = branchTool;
           return [name, toolWithoutExecute];
         }),
-      ) as ToolSet;
+      );
 
       const { usage, text, finalStep } = await generateText({
         model: parentModel,
