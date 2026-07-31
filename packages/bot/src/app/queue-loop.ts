@@ -2,14 +2,14 @@ import type { MediaKind, MediaMap, PendingMessage, UnifiedInboundMessage } from 
 import type { OneBotMessageEvent } from "@/onebot/websocket-client";
 import type { OneBotEventContext } from "@/onebot/onebot-client";
 import type { ImageMap } from "@/message/types";
+import type { MessagePart } from "@/message/parts";
 import { imageToText, videoToText } from "@/ai/multimedia";
 import { downloadToCache } from "@/utils/image-cache";
 import { compressImage } from "@/utils/image-resize";
 import { compressVideo } from "@/utils/video-resize";
 import { createFsFile } from "@/utils/fs-file";
-import { runReply } from "@/agents/reply";
 import { runPlanner } from "@/agents/planner";
-import { runMain } from "@/agents/agent";
+import { runPlanner as runContinuousPlanner } from "@/agents/planner-continuous";
 import { cache } from "@/utils/cache";
 import { logger } from "@/logger";
 import dayjs from "@/utils/time";
@@ -327,27 +327,20 @@ export function createBot(sessionId: string) {
 
     const cancelTyping = await ctx.setTyping();
     try {
-      if (1 < 2) {
-        const planResult = await runPlanner(prompt, log);
-        if (!planResult) {
-          log.info("规划层未调用 submit_plan，跳过回复");
-          return;
+      const onReply = async (segments: MessagePart[]) => {
+        for (const seg of segments) {
+          await ctx.reply(seg);
+          await Bun.sleep(500);
         }
-        const { plan, reasoning, submitReply } = planResult;
-        const { replyText } = await runReply(prompt, plan, reasoning, async (segments) => {
-          for (const seg of segments) {
-            await ctx.reply(seg);
-            await Bun.sleep(500);
-          }
-        });
-        await submitReply(replyText);
+      };
+      let replied: boolean;
+      if (1 < 2) {
+        replied = await runPlanner(prompt, onReply, log);
       } else {
-        await runMain(prompt, async (segments) => {
-          for (const seg of segments) {
-            await ctx.reply(seg);
-            await Bun.sleep(500);
-          }
-        });
+        replied = await runContinuousPlanner(prompt, onReply, log);
+      }
+      if (!replied) {
+        log.info("规划层未调用 submit_plan，跳过回复");
       }
     } finally {
       cancelTyping();

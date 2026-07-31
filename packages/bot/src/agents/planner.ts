@@ -1,5 +1,5 @@
 import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-history";
-import { generateText, tool, type LanguageModelUsage, type ToolSet } from "ai";
+import { generateText, hasToolCall, isStepCount, tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { getModel } from "@/ai/model";
@@ -13,14 +13,10 @@ import { injectSystemContext } from "./system-context";
 import { logUsage } from "@/utils/format";
 import { workspaceTools } from "@/workspace/tool";
 import { memoryReview } from "./background-review";
+import { createReplySession } from "./reply";
+import type { MessagePart } from "@/message/parts";
 
 const MEMORY_REVIEW_INTERVAL = 10;
-const submitPlanTool = tool({
-  description: "提交本轮回复策略，包含语气、角度、要点、长度、工具调用等",
-  inputSchema: z.object({
-    plan: z.string().describe("回复策略描述，简洁可执行，不超过 200 字"),
-  }),
-});
 
 async function loadHistory(): Promise<ChatHistory> {
   try {
@@ -40,31 +36,26 @@ async function saveHistory(history: ChatHistory, log: PinoLogger = logger) {
   }
 }
 
-interface PlannerResult {
-  plan: string;
-  reasoning: string;
-  /** 由执行层调用：用实际回复替换规划结束标记并落盘 */
-  submitReply: (replyText: string) => Promise<void>;
-}
-
 /**
  * 运行规划层
  * @param userInputMessage 已用 <user_input> 标签包好的用户消息
- * @returns plan + submitReply 回调（调用后把完整 messages 持久化到 .cache/planner.json）
+ * @param onReply 实际发送消息的回调
+ * @returns 本轮是否通过 submit_plan 向用户发送过消息
  */
-export async function runPlanner(userInputMessage: string, log: PinoLogger = logger): Promise<PlannerResult | null> {
+export async function runPlanner(
+  userInputMessage: string,
+  onReply: (segments: MessagePart[]) => Promise<void>,
+  log: PinoLogger = logger,
+): Promise<boolean> {
   const model = getModel(config.models.plan);
   const historyMessages: ChatHistory = await loadHistory();
   const { records } = await injectSystemContext(historyMessages, userInputMessage, log);
   const runtimeMessages: ChatHistory = [...records];
 
-  let planText = "";
-  let reasoning: string[] = [];
-  let toolCallId: string | undefined;
-  // v7 中 result.toolCalls 累积所有 step，需用 currentStepToolCalls 追踪每步的工具调用
-  let currentStepToolCalls: Array<{ toolName: string; toolCallId: string; input: unknown }> = [];
-
-  let usage: LanguageModelUsage | undefined;
+  const reasoning: string[] = [];
+  let replyCount = 0;
+  let replySessionPromise: ReturnType<typeof createReplySession> | undefined;
+  let replyQueue = Promise.resolve();
 
   const { default: planPrompt } = await import("../prompts/plan.txt");
   const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt");
@@ -74,6 +65,8 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
   const system = [
     "<role>",
     planPrompt.trim(),
+    "",
+    "`submit_plan` 会返回 `reply agent` 的思维过程和实际发送给用户的消息内容。调用它表示本轮规划已经完成；工具执行后程序会直接结束本轮，不再向你发起模型请求。",
     "</role>",
     "",
     "<capabilities>",
@@ -90,109 +83,94 @@ export async function runPlanner(userInputMessage: string, log: PinoLogger = log
     "</workspace_instructions>",
   ].join("\n");
 
+  const submitPlanTool = tool({
+    description:
+      "根据回复策略调用 reply agent 向用户发送一条消息。工具返回 reply agent 的思维过程与实际发送内容；调用后本轮规划结束，不会再进行模型请求。",
+    inputSchema: z.object({
+      plan: z.string().describe("回复策略与参考信息，需具体、准确并足以让 reply agent 独立完成消息"),
+    }),
+    execute({ plan }) {
+      const currentReasoning = reasoning.join("\n");
+      const replyTask = replyQueue.then(async () => {
+        replySessionPromise ??= createReplySession(userInputMessage, onReply, log);
+        const { replyText, reasoningText } = await (await replySessionPromise).send(plan, currentReasoning);
+        if (replyText) replyCount++;
+        return [
+          "<reply_result>",
+          "<reasoning>",
+          reasoningText,
+          "</reasoning>",
+          "<content>",
+          replyText,
+          "</content>",
+          "</reply_result>",
+        ].join("\n");
+      });
+      replyQueue = replyTask.then(
+        () => undefined,
+        () => undefined,
+      );
+      return replyTask;
+    },
+  });
+
   const tools: ToolSet = { ...workspaceTools, submit_plan: submitPlanTool };
   tools.image_gen = imageGen(tools, system, model);
   tools.web_search = websearch();
   const startMemoryReview = memoryReview(tools, system, model, log);
 
-  for (let step = 0; step < 10; step++) {
-    const result = await generateText({
-      model,
-      instructions: system,
-      messages: toModelMessages([...historyMessages, ...runtimeMessages]),
-      tools,
-      maxOutputTokens: 4096,
-      async onLanguageModelCallEnd({ content }) {
-        const reasoningText = content
-          .filter((part) => part.type === "reasoning")
-          .map((part) => part.text)
-          .join("");
-        const text = content
-          .filter((part) => part.type === "text")
-          .map((part) => part.text)
-          .join("");
-        log.info({ reasoningText, text, step }, "plan响应");
-        if (reasoningText) reasoning.push(reasoningText);
-      },
-      onToolExecutionStart({ toolCall }) {
-        log.info(
-          { toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input, step },
-          "工具调用",
-        );
-      },
-      onToolExecutionEnd({ toolCall }) {
-        log.info({ toolName: toolCall.toolName, step }, "工具执行结束");
-      },
-      onStepEnd(stepResult) {
-        currentStepToolCalls = stepResult.toolCalls;
-        for (const [index, message] of stepResult.response.messages.entries()) {
-          const timestamp = Date.now();
-          const messageUsage = index === 0 ? stepResult.usage : undefined;
-          runtimeMessages.push({ message, timestamp, usage: messageUsage });
-        }
-      },
-    });
+  const result = await generateText({
+    model,
+    instructions: system,
+    messages: toModelMessages([...historyMessages, ...runtimeMessages]),
+    tools,
+    stopWhen: [isStepCount(10), hasToolCall("submit_plan")],
+    maxOutputTokens: 4096,
+    async onLanguageModelCallEnd({ content }) {
+      const reasoningText = content
+        .filter((part) => part.type === "reasoning")
+        .map((part) => part.text)
+        .join("");
+      const text = content
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("");
+      log.info({ reasoningText, text }, "plan响应");
+      if (reasoningText) reasoning.push(reasoningText);
+    },
+    onToolExecutionStart({ toolCall }) {
+      log.info({ toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input }, "工具调用");
+    },
+    onToolExecutionEnd({ toolCall }) {
+      log.info({ toolName: toolCall.toolName }, "工具执行结束");
+    },
+    onStepEnd(stepResult) {
+      for (const [index, message] of stepResult.response.messages.entries()) {
+        const timestamp = Date.now();
+        const messageUsage = index === 0 ? stepResult.usage : undefined;
+        runtimeMessages.push({ message, timestamp, usage: messageUsage });
+      }
+    },
+  });
 
-    usage = result.usage;
-    logUsage(log, usage);
-
-    const submitCall = currentStepToolCalls.find((tc) => tc.toolName === "submit_plan");
-    if (submitCall) {
-      planText = (submitCall.input as { plan?: string }).plan ?? "";
-      toolCallId = submitCall.toolCallId;
-      break;
-    }
-
-    if (currentStepToolCalls.length === 0) break;
-  }
-
-  // 未调用 submit_plan，无需回复，保存当前上下文后返回 null
-  if (!toolCallId) {
-    log.info("规划层未调用 submit_plan，跳过回复");
-    let finalHistory: ChatHistory = [...historyMessages, ...runtimeMessages];
-    if (isOverflow(usage)) {
-      log.info("检测到上下文溢出，开始执行压缩...");
-      finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
-    }
-    await saveHistory(finalHistory, log);
-    return null;
-  }
-
-  log.info({ plan: planText }, "规划层 plan");
-
-  const submitReply = async (replyText: string): Promise<void> => {
-    const userTurn = records.findLast((record) => record.user_turn !== undefined)?.user_turn;
-    const shouldReviewMemory = userTurn !== undefined && userTurn % MEMORY_REVIEW_INTERVAL === 0;
-    const toolRecord: ChatHistory[number] = {
-      message: {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: toolCallId ?? "submit_plan",
-            toolName: "submit_plan",
-            output: { type: "text", value: replyText },
-          },
-        ],
-      },
-      timestamp: Date.now(),
-    };
-    const doneRecord: ChatHistory[number] = {
+  logUsage(log, result.usage);
+  if (replyCount > 0) {
+    runtimeMessages.push({
       message: { role: "assistant", content: "[Done]" },
       timestamp: Date.now(),
-    };
-    runtimeMessages.push(toolRecord, doneRecord);
+    });
+  }
+  let finalHistory: ChatHistory = [...historyMessages, ...runtimeMessages];
+  if (isOverflow(result.usage)) {
+    log.info("检测到上下文溢出，开始执行压缩...");
+    finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
+  }
+  await saveHistory(finalHistory, log);
 
-    let finalHistory: ChatHistory = [...historyMessages, ...runtimeMessages];
-    if (isOverflow(usage)) {
-      log.info("检测到上下文溢出，开始执行压缩...");
-      finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
-    }
-    await saveHistory(finalHistory, log);
-    if (shouldReviewMemory) {
-      startMemoryReview(finalHistory);
-    }
-  };
+  const userTurn = records.findLast((record) => record.user_turn !== undefined)?.user_turn;
+  if (replyCount > 0 && userTurn !== undefined && userTurn % MEMORY_REVIEW_INTERVAL === 0) {
+    startMemoryReview(finalHistory);
+  }
 
-  return { plan: planText, reasoning: reasoning.join("\n"), submitReply };
+  return replyCount > 0;
 }
