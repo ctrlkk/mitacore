@@ -34,7 +34,7 @@ function sliceReply(chunk: string): ParsedMessagePart[] {
   const result: ParsedMessagePart[] = [];
   for (const part of parts) {
     if (typeof part === "string") {
-      for (const seg of splitMessage(part, { maxSplitNum: 5 })) {
+      for (const seg of splitMessage(part, { maxSplitNum: 10 })) {
         if (seg.trim()) result.push(seg);
       }
     } else {

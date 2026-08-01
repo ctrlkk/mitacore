@@ -343,7 +343,7 @@ export function createBot(sessionId: string) {
         log.info("规划层未调用 submit_plan，跳过回复");
       }
     } finally {
-      cancelTyping();
+      await cancelTyping();
     }
   }
 

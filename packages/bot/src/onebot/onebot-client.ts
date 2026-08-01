@@ -121,7 +121,7 @@ export interface OneBotEventContext<TEvent extends OneBotEvent = OneBotEvent> {
   quickOperation(operation: OneBotApiParams, options?: RequestOptions): Promise<unknown>;
 
   /** 设置"正在输入中"状态（NapCat 扩展，仅私聊消息事件可用）。 */
-  setTyping(): Promise<() => void>;
+  setTyping(): Promise<() => void | Promise<void>>;
 }
 
 /** OneBot v11 业务客户端，基于 {@link OneBotWebSocketClient} 提供中间件事件系统和业务级 API */
@@ -467,20 +467,32 @@ function createEventContext<TEvent extends OneBotEvent>(
 
       const userId = event.user_id;
       let cancelled = false;
+      let updating = false;
+
+      // set_input_status 是提示性 API，超时不应影响消息处理流程。
+      const updateInputStatus = async (eventType: 0 | 1) => {
+        if (updating) return;
+        updating = true;
+        try {
+          await client.setInputStatus(userId, eventType);
+        } catch (error) {
+          client.ws.emitError(error);
+        } finally {
+          updating = false;
+        }
+      };
 
       // 立即发一次
-      await client.setInputStatus(userId, 1);
+      await updateInputStatus(1);
 
-      const timer = setInterval(async () => {
-        if (cancelled) return;
-        await client.setInputStatus(userId, 1);
+      const timer = setInterval(() => {
+        if (!cancelled) void updateInputStatus(1);
       }, 500).unref();
 
       return async () => {
         if (cancelled) return;
         cancelled = true;
         clearInterval(timer);
-        await client.setInputStatus(userId, 0);
       };
     },
   };
