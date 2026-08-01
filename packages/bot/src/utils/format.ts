@@ -1,3 +1,6 @@
+import type { PinoLogger } from "@/logger";
+import type { LanguageModelUsage } from "ai";
+
 /**
  * 将字节数转换为易读格式
  */
@@ -11,7 +14,7 @@ export function formatBytes(bytes: number): string {
 /**
  * 格式化模型 usage 信息（输入、输入缓存、输出、缓存命中率）
  */
-export function formatUsage(u: import("ai").LanguageModelUsage | undefined): string {
+export function formatUsage(u: LanguageModelUsage | undefined): string {
   if (!u) return "usage: 无数据";
   const input = u.inputTokens ?? 0;
   const cached = u.inputTokenDetails?.cacheReadTokens ?? 0;
@@ -24,7 +27,7 @@ export function formatUsage(u: import("ai").LanguageModelUsage | undefined): str
 /**
  * 打印模型 usage 信息，缓存命中率低于阈值时使用 warn 级别
  */
-export function logUsage(log: import("@/logger").PinoLogger, u: import("ai").LanguageModelUsage | undefined) {
+export function logUsage(log: PinoLogger, u: LanguageModelUsage | undefined) {
   const input = u?.inputTokens ?? 0;
   const cached = u?.inputTokenDetails?.cacheReadTokens ?? 0;
   const hitRate = input > 0 ? (cached / input) * 100 : 0;
