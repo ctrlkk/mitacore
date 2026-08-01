@@ -1,5 +1,5 @@
 import { index, integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
-import type { UnifiedInboundMessage } from "@/message/types";
+import type { MediaKind, UnifiedInboundMessage } from "@/message/types";
 
 // 用户 ID 映射表
 //
@@ -40,4 +40,42 @@ export const pendingMessages = sqliteTable(
     segments: text("segments", { mode: "json" }).$type<UnifiedInboundMessage[]>().notNull(),
   },
   (t) => [index("pending_messages_session_idx").on(t.sessionId)],
+);
+
+// 媒体转述缓存。虚拟路径由 `/images/`、`/videos/` 前缀区分，文件名由内容哈希生成。
+export const mediaCache = sqliteTable(
+  "media_cache",
+  {
+    path: text("path").primaryKey(),
+    kind: text("kind", { enum: ["image", "video"] })
+      .$type<MediaKind>()
+      .notNull(),
+    description: text("description").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [index("media_cache_kind_updated_at_idx").on(t.kind, t.updatedAt)],
+);
+
+// 迁移完成后不再由运行时代码使用，保留声明以避免自动迁移误删旧缓存表。
+export const legacyImageCache = sqliteTable(
+  "image_cache",
+  {
+    path: text("path").primaryKey(),
+    description: text("description").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [index("image_cache_updated_at_idx").on(t.updatedAt)],
+);
+
+export const legacyVideoCache = sqliteTable(
+  "video_cache",
+  {
+    path: text("path").primaryKey(),
+    description: text("description").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [index("video_cache_updated_at_idx").on(t.updatedAt)],
 );

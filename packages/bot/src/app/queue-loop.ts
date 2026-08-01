@@ -10,10 +10,11 @@ import { compressVideo } from "@/utils/video-resize";
 import { createFsFile } from "@/utils/fs-file";
 import { runPlanner } from "@/agents/planner";
 import { runPlanner as runContinuousPlanner } from "@/agents/planner-continuous";
-import { cache } from "@/utils/cache";
+import { get_media_description, set_media_description } from "@/database/media-cache";
 import { logger } from "@/logger";
 import dayjs from "@/utils/time";
 import os from "node:os";
+import { basename, posix } from "node:path";
 import XMLBuilder from "fast-xml-builder";
 
 type MediaResource = {
@@ -59,7 +60,7 @@ function createMediaProcessor() {
             } else if (kind === "video") {
               const { downloadToCache } = await import("@/utils/blob");
               const { realPath } = await downloadToCache(url, { cacheDir: os.tmpdir(), limit: 20 * 1024 * 1024 });
-              return { virtualPath: "", realPath };
+              return { virtualPath: posix.join("/videos", basename(realPath)), realPath };
             }
           } catch (error) {
             logger.error({ url, kind, error }, "下载失败");
@@ -105,7 +106,7 @@ function createMediaProcessor() {
         const cacheKey = item.virtualPath;
 
         const description = await singleFlight(pendingDescriptions, cacheKey, async () => {
-          const cached = await cache.get<string>(cacheKey);
+          const cached = get_media_description(cacheKey);
           if (cached) return cached;
 
           try {
@@ -119,7 +120,7 @@ function createMediaProcessor() {
               result = (await videoToText(blob)).trim();
             }
 
-            await cache.set(cacheKey, result).catch((error) => logger.error({ error }, "缓存资源描述失败"));
+            set_media_description(item.kind, cacheKey, result);
 
             return result;
           } catch (error) {

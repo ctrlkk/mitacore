@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import type { Migration } from "../migration";
 
 export default {
+  // 已部署数据库使用的是这个历史 ID；文件名需与 Drizzle 的 SQL 历史保持一致。
   id: "0000_add_user_alias",
   up(tx) {
     tx.run(sql`
