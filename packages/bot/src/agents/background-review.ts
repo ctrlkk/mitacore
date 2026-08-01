@@ -10,7 +10,7 @@ let reviewQueue = Promise.resolve();
 /**
  * 创建继承主代理请求前缀的长期记忆复盘分支。
  * 分支保持 model、instructions 与工具定义一致，以复用主代理的 prompt cache；
- * 非工作区工具只在本地执行阶段拒绝，不改变发送给模型的工具 schema。
+ * 除 task 外的非工作区工具只在本地执行阶段拒绝，不改变发送给模型的工具 schema。
  */
 export function memoryReview(
   allTools: ToolSet,
@@ -29,7 +29,7 @@ export function memoryReview(
         const branchInput = `<system_reminder>\n${template.trim()}\n</system_reminder>`;
         const branchTools: ToolSet = Object.fromEntries(
           Object.entries(allTools).map(([name, branchTool]) => {
-            if (workspaceToolNames.has(name)) return [name, branchTool];
+            if (workspaceToolNames.has(name) || name === "task") return [name, branchTool];
             return [name, { ...branchTool, execute: async () => `后台记忆复盘禁止调用非工作区工具：${name}` }];
           }),
         );

@@ -9,6 +9,7 @@ import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-history";
 import { imageGen } from "./tools/image-gen";
+import { task } from "./tools/task";
 import { websearch } from "./tools/web-search";
 import { compactHistory, isOverflow } from "./compaction";
 import { injectSystemContext } from "./system-context";
@@ -93,6 +94,7 @@ export async function runMain(
   ].join("\n");
 
   const tools: ToolSet = { ...workspaceTools };
+  tools.task = task(log);
   tools.image_gen = imageGen(tools, system, model);
   tools.web_search = websearch();
 
