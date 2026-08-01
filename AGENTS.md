@@ -1,4 +1,4 @@
-这是一个由 bun 驱动的专为叙事打造的 Hermes Agent 软件。
+这是一个由 bun 驱动的专为叙事打造的 Harness Engineering 软件。
 
 ## 代码风格
 
