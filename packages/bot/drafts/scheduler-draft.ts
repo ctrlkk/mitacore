@@ -13,14 +13,15 @@ function createScheduler<T>(process: (items: T[]) => Promise<void>, options: { d
   const queue: T[] = [];
   let wake: (() => void) | null = null;
   let aborted = false;
+  let armed = false;
 
   // 防抖定时器句柄
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function run() {
     while (!aborted) {
-      // 队列为空时，休眠等待
-      if (queue.length === 0) {
+      // 未收到 debounce 结束信号时，休眠等待
+      if (!armed) {
         await new Promise<void>((r) => {
           wake = r;
         });
@@ -28,6 +29,9 @@ function createScheduler<T>(process: (items: T[]) => Promise<void>, options: { d
 
       // 检查是否中止
       if (aborted) break;
+      if (!armed) continue;
+
+      armed = false;
 
       // splice(0) 返回原数组所有元素的数组，并将原数组清空
       const items = queue.splice(0, queue.length);
@@ -48,15 +52,18 @@ function createScheduler<T>(process: (items: T[]) => Promise<void>, options: { d
 
     // 防抖逻辑
     if (delay > 0) {
+      armed = false;
       if (debounceTimer) {
         clearTimeout(debounceTimer);
       }
       debounceTimer = setTimeout(() => {
         debounceTimer = null;
+        armed = true;
         triggerWake();
       }, delay);
     } else {
       // 无延迟，立即唤醒
+      armed = true;
       triggerWake();
     }
   }
@@ -71,6 +78,7 @@ function createScheduler<T>(process: (items: T[]) => Promise<void>, options: { d
 
   function abort() {
     aborted = true;
+    if (debounceTimer) clearTimeout(debounceTimer);
     if (wake) {
       wake();
       wake = null;

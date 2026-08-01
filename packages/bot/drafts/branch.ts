@@ -2,7 +2,7 @@
  * 分支工具草稿：演示一个能"克隆主代理"的分支工具 + 通过 cache 命中率验证对话完全继承。
  *
  * 主代理 = generateText + 多个普通工具 + branch 工具
- * 分支代理 = 同一份 model / system / tools（不裁剪、不改 schema）、同一份 messages
+ * 分支代理 = 同一份 model / system / messages，以及移除 branch 后的工具集
  *
  * 验证思路：
  * - Anthropic 等 provider 支持 prompt cache，相同前缀会命中缓存
@@ -15,12 +15,11 @@
 
 import {
   generateText,
-  stepCountIs,
+  isStepCount,
   tool,
   type LanguageModel,
   type LanguageModelUsage,
   type ModelMessage,
-  type Tool,
   type ToolSet,
 } from "ai";
 import { z } from "zod";
@@ -28,7 +27,7 @@ import { getModel } from "@/ai/model";
 
 const model = getModel("deepseek-v4-flash");
 
-const baseTools: Record<string, Tool> = {
+const baseTools: ToolSet = {
   get_weather: tool({
     description: "获取指定城市的天气",
     inputSchema: z.object({ city: z.string() }),
@@ -38,6 +37,9 @@ const baseTools: Record<string, Tool> = {
     description: "执行数学计算",
     inputSchema: z.object({ expression: z.string() }),
     execute: async ({ expression }) => {
+      if (!/^[\d\s()+\-*/%.]+$/.test(expression)) {
+        throw new Error("表达式只能包含数字、空白和 + - * / % . () 运算符");
+      }
       const result = new Function(`return (${expression})`)();
       return { result };
     },
@@ -82,6 +84,8 @@ function createBranchTool(allTools: ToolSet, parentSystem: string, parentModel: 
         return "[branch] 分支代理不允许再次派生分支，已忽略本次调用。请直接完成手头的任务。";
       }
 
+      const branchTools = Object.fromEntries(Object.entries(allTools).filter(([name]) => name !== "branch"));
+
       const branchInput = [
         `<branch_task>`,
         task,
@@ -93,18 +97,18 @@ function createBranchTool(allTools: ToolSet, parentSystem: string, parentModel: 
 
       console.log(`\n[branch] 派生任务: ${task}`);
       console.log(`[branch] 继承消息数: ${messages.length}`);
-      console.log(`[branch] 工具集（含 branch 自身）: ${Object.keys(allTools).join(", ")}`);
+      console.log(`[branch] 工具集: ${Object.keys(branchTools).join(", ")}`);
 
       const branchAbort = abortSignal ?? AbortSignal.timeout(300_000);
       const result = await generateText({
         model: parentModel,
         instructions: parentSystem,
         messages: [...messages, { role: "user", content: branchInput }],
-        tools: allTools,
+        tools: branchTools,
         abortSignal: branchAbort,
         runtimeContext: { inBranch: true },
-        stopWhen: stepCountIs(5),
-        onStepFinish({ stepNumber, toolCalls, text, usage }) {
+        stopWhen: isStepCount(5),
+        onStepEnd({ stepNumber, toolCalls, text, usage }) {
           const tcList = toolCalls.map((t) => `${t.toolName}(${JSON.stringify(t.input)})`).join(", ") || "无";
           const tx = text ? text.slice(0, 60).replaceAll("\n", " ") : "";
           console.log(`  [branch.step ${stepNumber}] toolCalls=${tcList} text=${tx ? `"${tx}…"` : "无"}`);
@@ -118,10 +122,10 @@ function createBranchTool(allTools: ToolSet, parentSystem: string, parentModel: 
   });
 }
 
-const allTools: Record<string, Tool> = { ...baseTools };
+const allTools: ToolSet = { ...baseTools };
 allTools.branch = createBranchTool(allTools, parentSystem, model);
 
-async function run() {
+async function runBranchDemo() {
   const messages: ModelMessage[] = [
     {
       role: "user",
@@ -137,9 +141,9 @@ async function run() {
     system: parentSystem,
     messages,
     tools: allTools,
-    stopWhen: stepCountIs(5),
+    stopWhen: isStepCount(5),
     abortSignal: outerAbort,
-    onStepFinish({ stepNumber, toolCalls, text, usage }) {
+    onStepEnd({ stepNumber, toolCalls, text, usage }) {
       const tcList = toolCalls.map((t) => `${t.toolName}(${JSON.stringify(t.input)})`).join(", ") || "无";
       const tx = text ? text.slice(0, 60).replaceAll("\n", " ") : "";
       console.log(`[outer.step ${stepNumber}] toolCalls=${tcList} text=${tx ? `"${tx}…"` : "无"}`);
@@ -152,4 +156,6 @@ async function run() {
   console.log(text);
 }
 
-run();
+if (import.meta.main) {
+  void runBranchDemo();
+}

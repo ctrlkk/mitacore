@@ -7,21 +7,22 @@
 
 // ── 类型 ─────────────────────────────────────────────────
 
-interface Msg {
+interface Message {
   id: string;
   text?: string;
 }
 
 // ── 调度器（纯函数 + 闭包，零封装） ─────────────────────
 
-function createBot() {
-  const cache: Msg[] = [];
+function createMessageScheduler(maxQueue = 30) {
+  const cache: Message[] = [];
   let wake: (() => void) | null = null;
   let lastMsgAt = 0;
   let running = false;
 
-  function onMsg(msg: Msg) {
-    cache.push(msg);
+  function enqueue(message: Message) {
+    while (cache.length >= maxQueue) cache.shift();
+    cache.push(message);
     lastMsgAt = Date.now();
     if (wake) {
       wake();
@@ -29,7 +30,7 @@ function createBot() {
     }
   }
 
-  async function run(process: (batch: Msg[]) => Promise<void>) {
+  async function run(process: (batch: Message[]) => Promise<void>) {
     running = true;
     while (running) {
       // 挂起等待，零 CPU 占用（处理期间到达的消息已缓存，跳过等待直接处理）
@@ -56,50 +57,50 @@ function createBot() {
     wake?.(); // 让主循环退出
   }
 
-  return { onMsg, run, stop };
+  return { enqueue, run, stop };
 }
 
 // ── 演示 ─────────────────────────────────────────────────
 
-async function demo(desc: string, fn: (onMsg: (m: Msg) => void) => void) {
+async function demo(desc: string, fn: (enqueue: (message: Message) => void) => void) {
   console.log(`\n── ${desc}`);
-  const bot = createBot();
-  const loop = bot.run(async (batch) => {
+  const scheduler = createMessageScheduler();
+  const loop = scheduler.run(async (batch) => {
     const ids = batch.map((m) => m.id).join(", ");
     console.log(`处理 [${ids}] (${batch.length}条)`);
     await Bun.sleep(200); // 模拟 AI 调用
   });
 
-  fn(bot.onMsg);
+  fn(scheduler.enqueue);
   await Bun.sleep(4000);
-  bot.stop();
+  scheduler.stop();
   await loop;
 }
 
 async function main() {
-  await demo("单条消息立即处理", (onMsg) => {
-    onMsg({ id: "A" });
+  await demo("单条消息立即处理", (enqueue) => {
+    enqueue({ id: "A" });
   });
 
-  await demo("连续消息在静默期后合并为一轮", (onMsg) => {
-    onMsg({ id: "X" });
-    setTimeout(() => onMsg({ id: "Y" }), 200);
-    setTimeout(() => onMsg({ id: "Z" }), 400);
+  await demo("连续消息在静默期后合并为一轮", (enqueue) => {
+    enqueue({ id: "X" });
+    setTimeout(() => enqueue({ id: "Y" }), 200);
+    setTimeout(() => enqueue({ id: "Z" }), 400);
   });
 
-  await demo("处理期间到达的消息不会让主循环卡住（竞态修复验证）", (onMsg) => {
-    onMsg({ id: "P" });
+  await demo("处理期间到达的消息不会让主循环卡住（竞态修复验证）", (enqueue) => {
+    enqueue({ id: "P" });
     // 等第一轮 debounce 结束、开始处理时再发一条（处理耗时 200ms，够宽）
-    setTimeout(() => onMsg({ id: "Q" }), 1100);
+    setTimeout(() => enqueue({ id: "Q" }), 1100);
   });
 
-  await demo("两波消息分开处理（间隔 > 1s）", (onMsg) => {
-    onMsg({ id: "1" });
-    onMsg({ id: "2" });
+  await demo("两波消息分开处理（间隔 > 1s）", (enqueue) => {
+    enqueue({ id: "1" });
+    enqueue({ id: "2" });
     // 等第一轮处理完（~1.2s）后再发第二波
     setTimeout(() => {
-      onMsg({ id: "3" });
-      onMsg({ id: "4" });
+      enqueue({ id: "3" });
+      enqueue({ id: "4" });
     }, 1300);
   });
 
@@ -120,22 +121,22 @@ async function demoMultiSession() {
   console.log("=".repeat(50));
 
   // 会话管理器：按 session_id 路由消息，按需创建 bot（类似 heartflow_manager）
-  const sessions = new Map<string, ReturnType<typeof createBot>>();
+  const sessions = new Map<string, ReturnType<typeof createMessageScheduler>>();
   const loops: Promise<void>[] = [];
 
-  function routeMsg(sessionId: string, msg: Msg) {
+  function routeMsg(sessionId: string, msg: Message) {
     if (!sessions.has(sessionId)) {
-      const bot = createBot();
-      sessions.set(sessionId, bot);
+      const scheduler = createMessageScheduler();
+      sessions.set(sessionId, scheduler);
       loops.push(
-        bot.run(async (batch) => {
+        scheduler.run(async (batch) => {
           const ids = batch.map((m) => m.id).join(", ");
           console.log(`  [${sessionId}] 处理 [${ids}]`);
           await Bun.sleep(200);
         }),
       );
     }
-    sessions.get(sessionId)!.onMsg(msg);
+    sessions.get(sessionId)!.enqueue(msg);
   }
 
   // 三个会话几乎同时收到消息，各自独立处理
@@ -155,4 +156,6 @@ async function demoMultiSession() {
   await Promise.all(loops);
 }
 
-main().catch(console.error);
+if (import.meta.main) {
+  void main().catch(console.error);
+}

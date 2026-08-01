@@ -1,21 +1,17 @@
-import {
-  generateText,
-  isStepCount,
-  streamText,
-  type JSONValue,
-  type LanguageModelUsage,
-  type ModelMessage,
-  type Tool,
-  type ToolResultPart,
-  type ToolSet,
-} from "ai";
+import type { ModelMessage, LanguageModelUsage, ToolSet, ToolResultPart } from "ai";
+import { generateText, streamText, tool } from "ai";
 import { z } from "zod";
-import { tool } from "ai";
 import { getModel } from "@/ai/model";
 import { logger } from "@/logger";
 import { getErrorMessage } from "@ai-sdk/provider-utils";
 
-const tools: ToolSet = {
+type ChatRecord = {
+  message: ModelMessage;
+  timestamp: number;
+  usage?: LanguageModelUsage;
+};
+
+const demoTools: ToolSet = {
   get_weather: tool({
     description: "获取指定城市的天气信息",
     inputSchema: z.object({
@@ -30,6 +26,9 @@ const tools: ToolSet = {
       expression: z.string().describe("数学表达式，如 2+3*4"),
     }),
     execute: async ({ expression }) => {
+      if (!/^[\d\s()+\-*/%.]+$/.test(expression)) {
+        throw new Error("表达式只能包含数字、空白和 + - * / % . () 运算符");
+      }
       const result = new Function(`return ${expression}`)();
       return { expression, result };
     },
@@ -37,15 +36,15 @@ const tools: ToolSet = {
 };
 
 /** 从工具定义中剥离 execute，只保留 schema 给模型看 */
-function stripToolExecutors(tools: ToolSet): ToolSet {
-  return Object.fromEntries(Object.entries(tools).map(([name, { execute, ...rest }]) => [name, rest]));
+function withoutExecutors(toolSet: ToolSet): ToolSet {
+  return Object.fromEntries(Object.entries(toolSet).map(([name, { execute, ...rest }]) => [name, rest]));
 }
 
 /**
  * 工具循环-手动进行工具调用
  */
-async function run() {
-  const toolsForGenerate = stripToolExecutors(tools);
+async function runManualToolLoop() {
+  const toolsForGenerate = withoutExecutors(demoTools);
   let messages: ModelMessage[] = [{ role: "user", content: "北京天气怎么样？顺便算一下 (12 + 8) * 3" }];
 
   for (let step = 0; step < 10; step++) {
@@ -71,7 +70,7 @@ async function run() {
       result.finalStep.toolCalls.map(async (tc) => {
         logger.info({ toolCallId: tc.toolCallId, toolName: tc.toolName, input: tc.input }, "工具调用");
 
-        const toolDef = tools[tc.toolName]!;
+        const toolDef = demoTools[tc.toolName]!;
 
         try {
           const rawOutput = await toolDef.execute!(tc.input, {
@@ -104,12 +103,7 @@ async function run() {
 /**
  * 工具循环-自动进行工具调用，精细化管理上下文
  */
-async function run3() {
-  type ChatRecord = {
-    message: ModelMessage;
-    timestamp: number;
-    usage?: LanguageModelUsage;
-  };
+async function runAutomaticToolLoop() {
   const toModelMessages = (records: ChatRecord[]): ModelMessage[] => records.map((r) => r.message);
 
   const historyMessages: ChatRecord[] = [];
@@ -125,7 +119,7 @@ async function run3() {
       model: getModel("deepseek-v4-flash"),
       instructions: "你是一个助手，可以查询天气和做计算。",
       messages: toModelMessages([...historyMessages, ...runtimeMessages]),
-      tools,
+      tools: demoTools,
       maxOutputTokens: 1024,
       onToolExecutionStart({ toolCall }) {
         logger.info(
@@ -142,8 +136,8 @@ async function run3() {
       },
       onStepEnd(step) {
         logger.info({ response: step.reasoningText, text: step.text }, "助手响应");
-        for (const message of step.response.messages) {
-          runtimeMessages.push({ message, timestamp: Date.now(), usage: step.usage });
+        for (const [index, message] of step.response.messages.entries()) {
+          runtimeMessages.push({ message, timestamp: Date.now(), usage: index === 0 ? step.usage : undefined });
         }
       },
     });
@@ -155,12 +149,7 @@ async function run3() {
 /**
  * 工具循环-自动进行工具调用，精细化管理上下文，流式输出
  */
-async function run4() {
-  type ChatRecord = {
-    message: ModelMessage;
-    timestamp: number;
-    usage?: LanguageModelUsage;
-  };
+async function runStreamingToolLoop() {
   const toModelMessages = (records: ChatRecord[]): ModelMessage[] => records.map((r) => r.message);
 
   const historyMessages: ChatRecord[] = [];
@@ -177,7 +166,7 @@ async function run4() {
       model: getModel("deepseek-v4-flash"),
       instructions: "你是一个助手，可以查询天气和做计算。",
       messages: toModelMessages([...historyMessages, ...runtimeMessages]),
-      tools,
+      tools: demoTools,
       maxOutputTokens: 1024,
     });
 
@@ -205,10 +194,12 @@ async function run4() {
     const responseMessages = await streamResult.responseMessages;
     const finalStep = await streamResult.finalStep;
     logger.info({ response: finalStep.reasoningText, text: finalStep.text }, "助手响应");
-    for (const message of responseMessages) {
-      runtimeMessages.push({ message, timestamp: Date.now(), usage: finalStep.usage });
+    for (const [index, message] of responseMessages.entries()) {
+      runtimeMessages.push({ message, timestamp: Date.now(), usage: index === 0 ? finalStep.usage : undefined });
     }
   }
 }
 
-run4();
+if (import.meta.main) {
+  void runStreamingToolLoop();
+}
