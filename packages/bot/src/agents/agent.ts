@@ -74,8 +74,6 @@ export async function runMain(
   const runtimeMessages: ChatHistory = [...records];
   const savedMessages: ChatHistory = [...records];
 
-  let usage: LanguageModelUsage | undefined;
-
   const replyPrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
   const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt");
   const { default: workspacePrompt } = await import("../workspace/memory.txt");
@@ -105,7 +103,7 @@ export async function runMain(
       messages: toModelMessages([...historyMessages, ...runtimeMessages]),
       tools,
       maxOutputTokens: 4096,
-      async onLanguageModelCallEnd({ content }) {
+      async onLanguageModelCallEnd({ content, usage }) {
         const reasoningText = content
           .filter((part) => part.type === "reasoning")
           .map((part) => part.text)
@@ -114,6 +112,7 @@ export async function runMain(
           .filter((part) => part.type === "text")
           .map((part) => part.text)
           .join("");
+        logUsage(log, usage);
         log.info({ reasoningText, text }, "助手响应");
         for (const part of content) {
           if (part.type !== "text") continue;
@@ -157,20 +156,16 @@ export async function runMain(
         }
       },
     });
-    // 所有 step 的 usage 累加，但是这里只会有一次 step
-    usage = result.usage;
-    logUsage(log, usage);
-    if (result.toolCalls.length === 0) break;
+
+    if (result.toolCalls.length === 0) {
+      let finalHistory: ChatHistory = [...historyMessages, ...savedMessages];
+
+      if (isOverflow(result.finalStep.usage)) {
+        log.info("检测到上下文溢出，开始执行压缩...");
+        finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
+      }
+
+      await saveHistory(finalHistory, log);
+    }
   }
-
-  let finalHistory: ChatHistory = [...historyMessages, ...savedMessages];
-
-  if (isOverflow(usage)) {
-    log.info("检测到上下文溢出，开始执行压缩...");
-    finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
-  }
-
-  await saveHistory(finalHistory, log);
-
-  return { usage };
 }

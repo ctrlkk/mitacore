@@ -126,7 +126,7 @@ export async function runPlanner(
     tools,
     stopWhen: [isStepCount(10), hasToolCall("submit_plan")],
     maxOutputTokens: 4096,
-    async onLanguageModelCallEnd({ content }) {
+    async onLanguageModelCallEnd({ content, usage }) {
       const reasoningText = content
         .filter((part) => part.type === "reasoning")
         .map((part) => part.text)
@@ -135,6 +135,7 @@ export async function runPlanner(
         .filter((part) => part.type === "text")
         .map((part) => part.text)
         .join("");
+      logUsage(log, usage);
       log.info({ reasoningText, text }, "plan响应");
       if (reasoningText) reasoning.push(reasoningText);
     },
@@ -153,7 +154,6 @@ export async function runPlanner(
     },
   });
 
-  logUsage(log, result.usage);
   if (replyCount > 0) {
     runtimeMessages.push({
       message: { role: "assistant", content: "[Done]" },
@@ -161,7 +161,7 @@ export async function runPlanner(
     });
   }
   let finalHistory: ChatHistory = [...historyMessages, ...runtimeMessages];
-  if (isOverflow(result.usage)) {
+  if (isOverflow(result.finalStep.usage)) {
     log.info("检测到上下文溢出，开始执行压缩...");
     finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
   }

@@ -27,6 +27,8 @@ interface WebSearchInput {
   contextMaxCharacters?: number;
 }
 
+type Provider = "exa" | "parallel";
+
 interface McpContentItem {
   type: string;
   text: string;
@@ -37,6 +39,15 @@ interface McpResponse {
   id: number;
   result?: { content: McpContentItem[] };
   error?: { code: number; message: string };
+}
+
+function selectProvider(toolCallId: string): Provider {
+  let hash = 0x811c9dc5;
+  for (const char of toolCallId) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0) % 2 === 0 ? "exa" : "parallel";
 }
 
 function parsePayload(payload: string): string | undefined {
@@ -200,14 +211,14 @@ export function websearch() {
         .describe("上下文最大字符数（默认 10000，最大 50000）"),
     }),
     execute: async ({ query, numResults, livecrawl, type, contextMaxCharacters }, options) => {
-      const sessionID = options?.toolCallId ?? crypto.randomUUID();
-      const provider = "exa";
+      const toolCallId = options?.toolCallId ?? crypto.randomUUID();
+      const provider = selectProvider(toolCallId);
 
       try {
         const raw =
           provider === "exa"
             ? await callExa({ query, numResults, livecrawl, type, contextMaxCharacters })
-            : await callParallel(query, sessionID);
+            : await callParallel(query, toolCallId);
 
         const rawText = raw ?? "No search results found. Please try a different query.";
         const data = tryParseJson(rawText);

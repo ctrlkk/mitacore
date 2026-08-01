@@ -97,7 +97,7 @@ export async function createReplySession(
         instructions: system,
         messages: [...toModelMessages(historyMessages), { role: "user", content: planContent }],
         maxOutputTokens: 4096,
-        async onLanguageModelCallEnd({ content }) {
+        async onLanguageModelCallEnd({ content, usage }) {
           reasoningText = content
             .filter((part) => part.type === "reasoning")
             .map((part) => part.text)
@@ -106,6 +106,7 @@ export async function createReplySession(
             .filter((part) => part.type === "text")
             .map((part) => part.text)
             .join("");
+          logUsage(log, usage);
           log.info({ reasoningText, text }, "助手响应");
           for (const part of content) {
             if (part.type !== "text") continue;
@@ -141,9 +142,8 @@ export async function createReplySession(
         },
       });
 
-      logUsage(log, result.usage);
       let finalHistory: ChatHistory = [...historyMessages, ...savedMessages];
-      if (isOverflow(result.usage)) {
+      if (isOverflow(result.finalStep.usage)) {
         log.info("检测到上下文溢出，开始执行压缩...");
         finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
       }
