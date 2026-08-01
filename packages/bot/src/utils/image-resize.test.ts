@@ -12,6 +12,7 @@ interface TestCase {
   file: string;
   expectedType: string;
   expectReduced: boolean | "maybe";
+  expectedDimensions?: { width: number; height: number };
 }
 
 const testCases: TestCase[] = [
@@ -26,6 +27,13 @@ const testCases: TestCase[] = [
   // 小文件（低于 50KB）→ 透传
   { name: "PNG 小图", file: "test.png", expectedType: "image/png", expectReduced: false },
   { name: "WebP 小图", file: "test.webp", expectedType: "image/webp", expectReduced: false },
+  {
+    name: "JPEG tall image",
+    file: "test_tall.jpg",
+    expectedType: "image/jpeg",
+    expectReduced: true,
+    expectedDimensions: { width: 156, height: 720 },
+  },
 ];
 
 beforeAll(async () => {
@@ -33,7 +41,7 @@ beforeAll(async () => {
 });
 
 describe("compressImage", () => {
-  for (const { name, file, expectedType, expectReduced } of testCases) {
+  for (const { name, file, expectedType, expectReduced, expectedDimensions } of testCases) {
     test(name, async () => {
       const fsFile = await createFsFile(resolve(FIXTURES_DIR, file));
       const originalSize = fsFile.size;
@@ -51,13 +59,24 @@ describe("compressImage", () => {
       const baseName = parts.join(".");
       const outExt = origExt === "bmp" ? "png" : origExt;
       const outName = `${baseName}_${origExt}_compressed.${outExt}`;
-      await writeFile(resolve(OUTPUT_DIR, outName), new Uint8Array(outBuf));
+      const outputPath = resolve(OUTPUT_DIR, outName);
+      await writeFile(outputPath, new Uint8Array(outBuf));
 
       // 文件大小断言
       if (expectReduced === true) {
         expect(result.size).toBeLessThan(originalSize);
       } else if (expectReduced === false) {
         expect(result.size).toBe(originalSize);
+      }
+      if (expectedDimensions) {
+        const proc = Bun.spawn({
+          cmd: ["ffprobe", "-v", "error", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", outputPath],
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [dimensions, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+        expect(exitCode).toBe(0);
+        expect(dimensions.trim()).toBe(`${expectedDimensions.width}x${expectedDimensions.height}`);
       }
       // "maybe" → 不断言大小（GIF 可能不减小）
     });
