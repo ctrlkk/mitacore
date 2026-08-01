@@ -1,7 +1,8 @@
 import type { ChatHistory, ChatRecord } from "./chat-history";
 import type { PinoLogger } from "@/logger";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { getStickersContext } from "@/message/stickers";
 import { dataPath } from "@/utils/path";
 import dayjs from "@/utils/time";
@@ -16,14 +17,23 @@ export async function injectSystemContext(
   const formattedDate = dayjs(now).format("YYYY年M月D日 dddd");
   const stickersContext = await getStickersContext();
   const stickersHash = createHash("sha256").update(stickersContext.content).digest("hex");
-  const previousMemoryHash = history.findLast((record) => record.system_update?.memory)?.system_update?.memory?.hash;
-  const memoryContent = await readFile(dataPath("workspace", "notepad", "MEMORY.md"), "utf8").catch(
-    (error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return undefined;
-      log.error({ error }, "读取 MEMORY.md 失败");
-      return null;
-    },
-  );
+
+  const memoryPath = dataPath("workspace", "notepad", "MEMORY.md");
+  const memoryContent = await readFile(memoryPath, "utf8").catch(async (error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") {
+      try {
+        await mkdir(dirname(memoryPath), { recursive: true });
+        await writeFile(memoryPath, "", { encoding: "utf8", flag: "a" });
+        return await readFile(memoryPath, "utf8");
+      } catch (error) {
+        log.error({ error }, "创建 MEMORY.md 失败");
+        return "";
+      }
+    }
+
+    log.error({ error }, "读取 MEMORY.md 失败");
+    return "";
+  });
 
   const system_update: NonNullable<ChatRecord["system_update"]> = {};
   const updates = [];
@@ -42,23 +52,20 @@ export async function injectSystemContext(
       "</stickers_update>",
     );
   }
-  if (memoryContent !== null && (memoryContent !== undefined || previousMemoryHash !== undefined)) {
-    const currentMemoryContent = memoryContent ?? "";
-    const memoryHash = createHash("sha256").update(currentMemoryContent).digest("hex");
-    if (previousMemoryHash !== memoryHash) {
-      log.info({ exists: memoryContent !== undefined }, "长期记忆上下文更新");
-      system_update.memory = { hash: memoryHash };
-      updates.push(
-        "<memory_update>",
-        "以下内容替换此前的完整长期记忆。",
-        "File: MEMORY.md",
-        "",
-        "```md",
-        currentMemoryContent,
-        "```",
-        "</memory_update>",
-      );
-    }
+  const memoryHash = createHash("sha256").update(memoryContent).digest("hex");
+  if (history.findLast((record) => record.system_update?.memory)?.system_update?.memory?.hash !== memoryHash) {
+    log.info("长期记忆上下文更新");
+    system_update.memory = { hash: memoryHash };
+    updates.push(
+      "<memory_update>",
+      "以下内容替换此前的完整长期记忆。",
+      "File: MEMORY.md",
+      "",
+      "```md",
+      memoryContent,
+      "```",
+      "</memory_update>",
+    );
   }
 
   if (updates.length === 0) {

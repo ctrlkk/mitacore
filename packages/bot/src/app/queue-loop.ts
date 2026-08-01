@@ -334,7 +334,7 @@ export function createBot(sessionId: string) {
         }
       };
       let replied: boolean;
-      if (1 < 2) {
+      if (1 > 2) {
         replied = await runPlanner(prompt, onReply, log);
       } else {
         replied = await runContinuousPlanner(prompt, onReply, log);
