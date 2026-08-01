@@ -66,7 +66,7 @@ export async function runPlanner(
     "<role>",
     planPrompt.trim(),
     "",
-    "`submit_plan` 会返回 `reply agent` 的思维过程和实际发送给用户的消息内容。调用它表示本轮规划已经完成；工具执行后程序会直接结束本轮，不再向你发起模型请求。",
+    "`submit_plan` 会返回 `reply agent` 实际发送给用户的消息内容。调用它表示本轮规划已经完成；工具执行后程序会直接结束本轮，不再向你发起模型请求。",
     "</role>",
     "",
     "<capabilities>",
@@ -85,7 +85,7 @@ export async function runPlanner(
 
   const submitPlanTool = tool({
     description:
-      "根据回复策略调用 reply agent 向用户发送一条消息。工具返回 reply agent 的思维过程与实际发送内容；调用后本轮规划结束，不会再进行模型请求。",
+      "根据回复策略调用 reply agent 向用户发送一条消息。工具返回实际发送内容；调用后本轮规划结束，不会再进行模型请求。",
     inputSchema: z.object({
       plan: z.string().describe("回复策略与参考信息，需具体、准确并足以让 reply agent 独立完成消息"),
     }),
@@ -93,18 +93,9 @@ export async function runPlanner(
       const currentReasoning = reasoning.join("\n");
       const replyTask = replyQueue.then(async () => {
         replySessionPromise ??= createReplySession(userInputMessage, onReply, log);
-        const { replyText, reasoningText } = await (await replySessionPromise).send(plan, currentReasoning);
+        const { replyText } = await (await replySessionPromise).send(plan, currentReasoning);
         if (replyText) replyCount++;
-        return [
-          "<reply_result>",
-          "<reasoning>",
-          reasoningText,
-          "</reasoning>",
-          "<content>",
-          replyText,
-          "</content>",
-          "</reply_result>",
-        ].join("\n");
+        return ["<reply_result>", "<content>", replyText, "</content>", "</reply_result>"].join("\n");
       });
       replyQueue = replyTask.then(
         () => undefined,

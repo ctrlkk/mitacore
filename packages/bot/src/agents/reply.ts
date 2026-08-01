@@ -58,10 +58,7 @@ export async function createReplySession(
   onReply: (segments: MessagePart[]) => Promise<void>,
   log: PinoLogger = logger,
 ): Promise<{
-  send: (
-    plan: string,
-    reasoning: string,
-  ) => Promise<{ replyText: string; reasoningText: string; usage: LanguageModelUsage | undefined }>;
+  send: (plan: string, reasoning: string) => Promise<{ replyText: string; usage: LanguageModelUsage | undefined }>;
 }> {
   const model = getModel(config.models.reply);
 
@@ -87,7 +84,6 @@ export async function createReplySession(
     async send(plan: string, reasoning: string) {
       const savedMessages: ChatHistory = [];
       let replyText = "";
-      let reasoningText = "";
       const planContent = reasoning
         ? `${replyGroupPrompt.trim()}\n\n<reply_plan>\n${plan}\n</reply_plan>\n\n<reply_reasoning>\n${reasoning}\n</reply_reasoning>`
         : `${replyGroupPrompt.trim()}\n\n<reply_plan>\n${plan}\n</reply_plan>`;
@@ -98,16 +94,12 @@ export async function createReplySession(
         messages: [...toModelMessages(historyMessages), { role: "user", content: planContent }],
         maxOutputTokens: 4096,
         async onLanguageModelCallEnd({ content, usage }) {
-          reasoningText = content
-            .filter((part) => part.type === "reasoning")
-            .map((part) => part.text)
-            .join("");
           const text = content
             .filter((part) => part.type === "text")
             .map((part) => part.text)
             .join("");
           logUsage(log, usage);
-          log.info({ reasoningText, text }, "助手响应");
+          log.info({ text }, "助手响应");
           for (const part of content) {
             if (part.type !== "text") continue;
             const segments = await resolveMessageParts(sliceReply(part.text));
@@ -150,7 +142,7 @@ export async function createReplySession(
       await saveHistory(finalHistory, log);
       historyMessages = finalHistory;
 
-      return { replyText, reasoningText, usage: result.usage };
+      return { replyText, usage: result.usage };
     },
   };
 }
