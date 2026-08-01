@@ -151,35 +151,41 @@ function buildPrompt(batch: PendingMessage[], mediaMap: MediaMap) {
   const promptParts: string[] = [];
 
   const formatMessage = (segments: UnifiedInboundMessage[]) => {
-    const parts: string[] = [];
-
-    for (const seg of segments) {
+    const parts = segments.flatMap((seg): { content: string; standalone: boolean }[] => {
       if (seg.type === "text") {
-        parts.push(seg.text);
+        return seg.text.length > 0 ? [{ content: seg.text, standalone: false }] : [];
       } else if (seg.type === "at") {
-        if (seg.data.nickname) {
-          parts.push(`@${seg.data.nickname}`);
-        }
+        return seg.data.nickname ? [{ content: `@${seg.data.nickname}`, standalone: false }] : [];
       } else if (seg.type === "image" || seg.type === "video") {
         const media = mediaMap.get(seg.data.url);
 
         if (media?.path) {
-          parts.push(`\`${media.path}\``);
-        } else {
-          parts.push(seg.type === "image" ? "[图片]" : "[视频]");
+          return [{ content: `\`${media.path}\``, standalone: false }];
         }
+
+        return [{ content: seg.type === "image" ? "[图片]" : "[视频]", standalone: false }];
       } else if (seg.type === "reply") {
         const inner = formatMessage(seg.data.segments);
-        if (inner) {
-          parts.push(`<reply user_id="${seg.data.userId}" nickname="${seg.data.nickname}">${inner}</reply>`);
-        }
-      }
-    }
+        if (inner.length === 0) return [];
 
+        return [
+          {
+            content: `<reply user_id="${seg.data.userId}" nickname="${seg.data.nickname}">${inner}</reply>`,
+            standalone: true,
+          },
+        ];
+      }
+
+      return [];
+    });
+
+    // reply 是块级上下文，必须独占一行；其余片段属于当前消息正文，仍在同一行用空格分隔。
     return parts
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0)
-      .join(" ");
+      .map((part, index) => {
+        const separator = index === 0 ? "" : part.standalone || parts[index - 1]?.standalone ? "\n" : " ";
+        return `${separator}${part.content}`;
+      })
+      .join("");
   };
 
   const today = dayjs();
