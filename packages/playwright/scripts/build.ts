@@ -34,6 +34,7 @@ await esbuild.build({
   banner: { js: `const __import_meta_url = require("url").pathToFileURL(__filename).href;` },
   define: { "import.meta.url": "__import_meta_url" },
   external: ["*.node", ...requirePkgs],
+  minify: true,
   outfile,
   logLevel: "info",
 });

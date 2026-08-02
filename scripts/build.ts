@@ -39,7 +39,17 @@ async function buildApp() {
 
   // 执行 Bun 编译
   await runCmd(
-    ["bun", "build", "--compile", "--define", "__STANDALONE__=true", "--outfile", join(outDir, bunBin), bunEntry],
+    [
+      "bun",
+      "build",
+      "--compile",
+      "--minify",
+      "--define",
+      "__STANDALONE__=true",
+      "--outfile",
+      join(outDir, bunBin),
+      bunEntry,
+    ],
     root,
   );
 }
