@@ -4,7 +4,7 @@ interface UnifiedTextMessage {
 }
 interface UnifiedAtMessage {
   type: "at";
-  data: { id: string; nickname: string };
+  data: { userId: string; nickname: string };
 }
 interface UnifiedImageMessage {
   type: "image";

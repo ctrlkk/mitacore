@@ -45,7 +45,8 @@ async function parseOneBotMessage(
       messages.push({ type: "text", text: seg.data.text });
     } else if (seg.type === "at") {
       const nickname = await getNickname(Number(seg.data.qq));
-      messages.push({ type: "at", data: { id: seg.data.qq, nickname: nickname ?? " " } });
+      const alias = ensureUserAlias("onebot", seg.data.qq, nickname);
+      messages.push({ type: "at", data: { userId: shortIdFor(alias.id), nickname: nickname ?? " " } });
     } else if (seg.type === "image") {
       if (Number(seg.data.file_size) < 5 * 1024 * 1024) {
         messages.push({ type: "image", data: { url: seg.data.url } });
@@ -236,17 +237,14 @@ export async function startBot() {
         async (qq) => {
           if (event.message_type === "group") {
             const { nickname } = await ctx.client.getGroupMemberInfo(Number(event.group_id), qq);
-            ensureUserAlias("onebot", String(qq), nickname);
             return nickname;
           }
           const { nickname } = await ctx.client.getStrangerInfo(qq);
-          ensureUserAlias("onebot", String(qq), nickname);
           return nickname;
         },
         async (id) => {
           const { user_id, message } = await ctx.client.getMessage(Number(id));
-          ensureUserAlias("onebot", String(user_id));
-          return { userId: user_id, message: message };
+          return { userId: user_id, message };
         },
       );
 
