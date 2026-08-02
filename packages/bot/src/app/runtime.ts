@@ -179,7 +179,7 @@ export async function startBot() {
       return;
     }
 
-    const isAdmin = event.sender.user_id === 2870245624;
+    const isAdmin = true;
     // 把发送者写进用户映射表（首次见到时建立短号）
     const alias = ensureUserAlias("onebot", String(event.user_id), event.sender.nickname);
     const rawText = segments
