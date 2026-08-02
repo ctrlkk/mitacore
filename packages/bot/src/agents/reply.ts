@@ -82,60 +82,44 @@ export async function createReplySession(
 
   return {
     async send(plan: string, reasoning: string) {
-      const savedMessages: ChatHistory = [];
-      let replyText = "";
-      const planContent = reasoning
-        ? `${replyGroupPrompt.trim()}\n\n<reply_plan>\n${plan}\n</reply_plan>\n\n<reply_reasoning>\n${reasoning}\n</reply_reasoning>`
-        : `${replyGroupPrompt.trim()}\n\n<reply_plan>\n${plan}\n</reply_plan>`;
+      const planContent = [
+        replyGroupPrompt,
+        "",
+        "<reply_reasoning>",
+        reasoning,
+        "</reply_reasoning>",
+        "",
+        "<reply_plan>",
+        plan,
+        "</reply_plan>",
+      ].join("\n");
 
       const result = await generateText({
         model,
         instructions: system,
         messages: [...toModelMessages(historyMessages), { role: "user", content: planContent }],
         maxOutputTokens: 4096,
-        async onLanguageModelCallEnd({ content, usage }) {
-          const text = content
-            .filter((part) => part.type === "text")
-            .map((part) => part.text)
-            .join("");
-          logUsage(log, usage);
-          log.info({ text }, "助手响应");
-          for (const part of content) {
-            if (part.type !== "text") continue;
-            const segments = await resolveMessageParts(sliceReply(part.text));
-            if (segments.length === 0) continue;
-            await onReply(segments);
-            replyText += segments.map((seg) => (typeof seg === "string" ? seg : seg.raw)).join("\n");
-          }
-        },
-        onStepEnd(step) {
-          for (const [index, message] of step.response.messages.entries()) {
-            if (message.role !== "assistant") continue;
-            const timestamp = Date.now();
-            const messageUsage = index === 0 ? step.usage : undefined;
-
-            if (typeof message.content === "string") {
-              const content = joinReply(sliceReply(message.content));
-              if (content) {
-                savedMessages.push({ message: { ...message, content }, timestamp, usage: messageUsage });
-              }
-              continue;
-            }
-
-            const content = message.content.flatMap((part): typeof message.content => {
-              if (part.type !== "text") return [part];
-              const text = joinReply(sliceReply(part.text));
-              return text ? [{ type: "text", text }] : [];
-            });
-            if (content.length > 0) {
-              savedMessages.push({ message: { ...message, content }, timestamp, usage: messageUsage });
-            }
-          }
-        },
       });
 
-      let finalHistory: ChatHistory = [...historyMessages, ...savedMessages];
-      if (isOverflow(result.finalStep.usage)) {
+      logUsage(log, result.usage);
+      log.info({ text: result.text }, "助手响应");
+
+      const parsedReply = sliceReply(result.text);
+      const replyContent = joinReply(parsedReply);
+      const segments = await resolveMessageParts(parsedReply);
+      if (segments.length > 0) await onReply(segments);
+
+      const replyText = segments.map((segment) => (typeof segment === "string" ? segment : segment.raw)).join("\n");
+      let finalHistory: ChatHistory = [...historyMessages];
+      if (replyContent) {
+        finalHistory.push({
+          message: { role: "assistant", content: replyContent },
+          timestamp: Date.now(),
+          usage: result.usage,
+        });
+      }
+
+      if (isOverflow(result.usage)) {
         log.info("检测到上下文溢出，开始执行压缩...");
         finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
       }

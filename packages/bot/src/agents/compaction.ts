@@ -158,7 +158,6 @@ export async function compactHistory(
  */
 export function isOverflow(usage?: LanguageModelUsage): boolean {
   if (!usage) return false;
-  const input = usage.inputTokens || 0;
-  const output = usage.outputTokens || 0;
-  return input + output >= 108000;
+  const totalTokens = usage.totalTokens || 0;
+  return totalTokens >= 108000;
 }
