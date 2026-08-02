@@ -182,7 +182,7 @@ function buildPrompt(batch: PendingMessage[], mediaMap: MediaMap) {
     // reply 是块级上下文，必须独占一行；其余片段属于当前消息正文，仍在同一行用空格分隔。
     return parts
       .map((part, index) => {
-        const separator = index === 0 ? "" : part.standalone || parts[index - 1]?.standalone ? "\n" : " ";
+        const separator = index === 0 ? "" : part.standalone || parts[index - 1]?.standalone ? "\n" : "";
         return `${separator}${part.content}`;
       })
       .join("");
