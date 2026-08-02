@@ -53,7 +53,7 @@ export async function runPlanner(
   const { records } = await injectSystemContext(historyMessages, userInputMessage, log);
   const runtimeMessages: ChatHistory = [...records];
 
-  const reasoning: string[] = [];
+  let reasoning = "";
   let replyCount = 0;
   let replySessionPromise: ReturnType<typeof createReplySession> | undefined;
   let replyQueue = Promise.resolve();
@@ -91,7 +91,7 @@ export async function runPlanner(
       plan: z.string().describe("回复策略与参考信息，需具体、准确并足以让 reply agent 独立完成消息"),
     }),
     execute({ plan }) {
-      const currentReasoning = reasoning.join("\n");
+      const currentReasoning = reasoning;
       const replyTask = replyQueue.then(async () => {
         replySessionPromise ??= createReplySession(userInputMessage, onReply, log);
         const { replyText } = await (await replySessionPromise).send(plan, currentReasoning);
@@ -130,7 +130,7 @@ export async function runPlanner(
         .join("");
       logUsage(log, usage);
       log.info({ reasoningText, text }, "plan响应");
-      if (reasoningText) reasoning.push(reasoningText);
+      if (reasoningText) reasoning = reasoningText;
     },
     onToolExecutionStart({ toolCall }) {
       log.info({ toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input }, "工具调用");
