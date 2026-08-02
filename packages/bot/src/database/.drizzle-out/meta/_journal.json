@@ -36,6 +36,13 @@
       "when": 1785630281077,
       "tag": "0004_user_alias_last_seen",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1785631256261,
+      "tag": "0005_loving_celestials",
+      "breakpoints": true
     }
   ]
 }

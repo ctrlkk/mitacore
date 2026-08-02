@@ -7,5 +7,6 @@ export const migrations = (
     import("./migration/0002_video_cache"),
     import("./migration/0003_media_cache"),
     import("./migration/0004_user_alias_last_seen"),
+    import("./migration/0005_loving_celestials"),
   ])
 ).map((module) => module.default) satisfies Migration[];
