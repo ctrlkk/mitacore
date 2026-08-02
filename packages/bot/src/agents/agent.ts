@@ -168,6 +168,7 @@ export async function runMain(
       }
 
       await saveHistory(finalHistory, log);
+      return;
     }
   }
 }
