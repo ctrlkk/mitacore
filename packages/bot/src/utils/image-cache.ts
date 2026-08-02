@@ -3,7 +3,7 @@ import { dataPath } from "./path";
 import { downloadToCache as downloadCacheFile } from "./blob";
 
 /** 图片缓存的真实文件系统目录 */
-const IMAGE_CACHE_DIR = dataPath("workspace", "images");
+export const IMAGE_CACHE_DIR = dataPath("workspace", "images");
 const IMAGE_VIRTUAL_PREFIX = "/images/";
 
 /**

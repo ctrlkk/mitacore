@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { NIcon, NSelect } from "naive-ui";
+import ImageCacheManager from "./ImageCacheManager.vue";
 import {
   AddOutline,
   CheckmarkCircle,
@@ -93,6 +94,7 @@ const defaultConfig: AppConfig = {
 };
 
 const config = reactive<AppConfig>(structuredClone(defaultConfig));
+const currentPage = ref<"config" | "images">("config");
 const activeSection = ref("quick-start");
 const advancedOpen = ref(false);
 const showKeys = reactive<Record<number, boolean>>({});
@@ -163,8 +165,10 @@ const modelRoles = computed(() => [
   },
 ]);
 
-function scrollToSection(id: string) {
+async function scrollToSection(id: string) {
+  currentPage.value = "config";
   activeSection.value = id;
+  await nextTick();
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -295,18 +299,27 @@ watch(
         <button
           v-for="item in navItems"
           :key="item.id"
-          :class="{ active: activeSection === item.id }"
+          :class="{ active: currentPage === 'config' && activeSection === item.id }"
           @click="scrollToSection(item.id)"
         >
           <n-icon :component="item.icon" /><span>{{ item.label }}</span>
+        </button>
+        <button :class="{ active: currentPage === 'images' }" @click="currentPage = 'images'">
+          <n-icon :component="ImageOutline" /><span>图片缓存</span>
         </button>
       </nav>
 
       <div class="sidebar-note">
         <n-icon :component="HelpCircleOutline" />
         <div>
-          <strong>第一次配置？</strong>
-          <p>只需填写 QQ 号和 API Key，其他选项可以暂时保持默认。</p>
+          <strong>{{ currentPage === "images" ? "本地图片库" : "第一次配置？" }}</strong>
+          <p>
+            {{
+              currentPage === "images"
+                ? "删除图片会同时移除对应的转述缓存，请确认不再需要后再操作。"
+                : "只需填写 QQ 号和 API Key，其他选项可以暂时保持默认。"
+            }}
+          </p>
         </div>
       </div>
       <div class="version">Mita Core · 本地配置</div>
@@ -315,12 +328,18 @@ watch(
     <main class="main-content">
       <header class="topbar">
         <div>
-          <p class="eyebrow">CONFIGURATION</p>
-          <h1>让你的机器人准备就绪</h1>
+          <p class="eyebrow">{{ currentPage === "images" ? "MEDIA MANAGEMENT" : "CONFIGURATION" }}</p>
+          <h1>{{ currentPage === "images" ? "管理图片缓存" : "让你的机器人准备就绪" }}</h1>
         </div>
         <div class="top-actions">
           <span class="local-badge"><i></i> 数据仅保存在本机</span>
-          <button class="save-button" :class="saveState" :disabled="saveState === 'saving'" @click="saveConfig">
+          <button
+            v-if="currentPage === 'config'"
+            class="save-button"
+            :class="saveState"
+            :disabled="saveState === 'saving'"
+            @click="saveConfig"
+          >
             <n-icon :component="saveState === 'saved' ? CheckmarkCircle : SaveOutline" />
             {{
               saveState === "saving"
@@ -334,20 +353,21 @@ watch(
           </button>
         </div>
       </header>
-      <div v-if="saveError" class="save-error" role="alert">{{ saveError }}</div>
+      <div v-if="currentPage === 'config' && saveError" class="save-error" role="alert">{{ saveError }}</div>
 
       <div class="mobile-nav">
         <button
           v-for="item in navItems"
           :key="item.id"
-          :class="{ active: activeSection === item.id }"
+          :class="{ active: currentPage === 'config' && activeSection === item.id }"
           @click="scrollToSection(item.id)"
         >
           {{ item.label }}
         </button>
+        <button :class="{ active: currentPage === 'images' }" @click="currentPage = 'images'">图片缓存</button>
       </div>
 
-      <div class="content-grid">
+      <div v-if="currentPage === 'config'" class="content-grid">
         <div class="form-column">
           <section id="quick-start" class="section-block hero-card">
             <div class="hero-copy">
@@ -637,6 +657,7 @@ watch(
           </div>
         </aside>
       </div>
+      <ImageCacheManager v-else />
     </main>
   </div>
 </template>
