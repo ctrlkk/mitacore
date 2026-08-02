@@ -128,10 +128,6 @@ export async function getImageGenerator() {
   return _instancePromise;
 }
 
-if (env.PLAYWRIGHT_EAGER_START !== "0") {
-  getImageGenerator();
-}
-
 if (import.meta.main) {
   const { generate } = await getImageGenerator();
   const urls = await generate("一张基于《贤惠幼妻仙狐小姐》的二次创作，仙狐小姐和用户（不显示在镜头中）在沙滩玩耍");

@@ -6,7 +6,6 @@ import { getModel } from "@/ai/model";
 import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
-import { imageGen } from "./tools/image-gen";
 import { task } from "./tools/task";
 import { websearch } from "./tools/web-search";
 import { compactHistory, isOverflow } from "./compaction";
@@ -108,7 +107,7 @@ export async function runPlanner(
 
   const tools: ToolSet = { ...workspaceTools, submit_plan: submitPlanTool };
   tools.task = task(log);
-  tools.image_gen = imageGen(tools, system, model);
+  // tools.image_gen = imageGen(tools, system, model);
   tools.web_search = websearch();
   const startMemoryReview = memoryReview(tools, system, model, log);
 
