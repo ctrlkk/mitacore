@@ -39,9 +39,7 @@
       "indexes": {
         "image_cache_updated_at_idx": {
           "name": "image_cache_updated_at_idx",
-          "columns": [
-            "updated_at"
-          ],
+          "columns": ["updated_at"],
           "isUnique": false
         }
       },
@@ -120,9 +118,7 @@
       "indexes": {
         "pending_messages_session_idx": {
           "name": "pending_messages_session_idx",
-          "columns": [
-            "session_id"
-          ],
+          "columns": ["session_id"],
           "isUnique": false
         }
       },
@@ -173,10 +169,7 @@
       "indexes": {
         "user_alias_platform_unique": {
           "name": "user_alias_platform_unique",
-          "columns": [
-            "platform",
-            "platform_id"
-          ],
+          "columns": ["platform", "platform_id"],
           "isUnique": true
         }
       },
@@ -220,9 +213,7 @@
       "indexes": {
         "video_cache_updated_at_idx": {
           "name": "video_cache_updated_at_idx",
-          "columns": [
-            "updated_at"
-          ],
+          "columns": ["updated_at"],
           "isUnique": false
         }
       },

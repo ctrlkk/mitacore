@@ -51,9 +51,10 @@ export default {
         \`platform\` text NOT NULL,
         \`platform_id\` text NOT NULL,
         \`nickname\` text,
-        \`created_at\` integer NOT NULL
+        \`created_at\` integer NOT NULL,
+        \`last_seen_at\` integer DEFAULT 0 NOT NULL
       );
     `);
     tx.run(sql`CREATE UNIQUE INDEX \`user_alias_platform_unique\` ON \`user_alias\` (\`platform\`,\`platform_id\`);`);
   },
-} satisfies Omit<Migration, "id">
+} satisfies Omit<Migration, "id">;

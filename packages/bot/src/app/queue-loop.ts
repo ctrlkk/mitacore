@@ -11,6 +11,8 @@ import { createFsFile } from "@/utils/fs-file";
 import { runPlanner } from "@/agents/planner";
 import { runPlanner as runContinuousPlanner } from "@/agents/planner-continuous";
 import { get_media_description, set_media_description } from "@/database/media-cache";
+import { listMentionableUserAliases } from "@/database/user-alias";
+import { resolveMentions } from "@/message/mention";
 import { logger } from "@/logger";
 import dayjs from "@/utils/time";
 import os from "node:os";
@@ -335,8 +337,16 @@ export function createBot(sessionId: string) {
     const cancelTyping = await ctx.setTyping();
     try {
       const onReply = async (segments: MessagePart[]) => {
+        const mentionableUsers = (() => {
+          if (ctx.event.message_type !== "group") return [];
+          if (segments.some((segment) => typeof segment === "string" && segment.includes("@"))) {
+            return listMentionableUserAliases("onebot").filter((user) => user.platformId !== String(ctx.event.self_id));
+          }
+          return [];
+        })();
+
         for (const seg of segments) {
-          await ctx.reply(seg);
+          await ctx.reply(typeof seg === "string" ? resolveMentions(seg, mentionableUsers) : seg);
           await Bun.sleep(500);
         }
       };

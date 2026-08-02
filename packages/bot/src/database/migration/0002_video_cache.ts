@@ -14,4 +14,4 @@ export default {
     `);
     tx.run(sql`CREATE INDEX \`video_cache_updated_at_idx\` ON \`video_cache\` (\`updated_at\`);`);
   },
-} satisfies Migration
+} satisfies Migration;

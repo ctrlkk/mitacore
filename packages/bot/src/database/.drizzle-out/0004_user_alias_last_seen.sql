@@ -1,0 +1,1 @@
+ALTER TABLE `user_alias` ADD `last_seen_at` integer DEFAULT 0 NOT NULL;

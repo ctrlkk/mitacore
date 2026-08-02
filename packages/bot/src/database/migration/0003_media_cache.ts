@@ -23,4 +23,4 @@ export default {
       SELECT \`path\`, 'video', \`description\`, \`created_at\`, \`updated_at\` FROM \`video_cache\`;
     `);
   },
-} satisfies Migration
+} satisfies Migration;

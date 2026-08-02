@@ -16,6 +16,7 @@ export const userAlias = sqliteTable(
     platformId: text("platform_id").notNull(),
     nickname: text("nickname"),
     createdAt: integer("created_at").notNull(),
+    lastSeenAt: integer("last_seen_at").notNull().default(0),
   },
   (t) => [unique("user_alias_platform_unique").on(t.platform, t.platformId)],
 );
