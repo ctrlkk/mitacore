@@ -4,7 +4,7 @@ import { dataPath, projectPath } from "@/utils/path";
 import { readFile } from "node:fs/promises";
 import { getModel } from "@/ai/model";
 import { logger } from "@/logger";
-import dayjs from "dayjs";
+import dayjs from "shared/time";
 import XMLBuilder from "fast-xml-builder";
 
 const formatSegments = (segments: UnifiedInboundMessage[], imageMap: ImageMap): string => {

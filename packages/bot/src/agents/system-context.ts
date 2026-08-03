@@ -5,7 +5,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { getStickersContext } from "@/message/stickers";
 import { dataPath } from "@/utils/path";
-import dayjs from "@/utils/time";
+import dayjs from "shared/time";
 
 export async function injectSystemContext(
   history: ChatHistory,

@@ -10,7 +10,7 @@ import { OneBotClient } from "channels/onebot";
 import { formatBytes } from "@/utils/format";
 import { binPath, dataPath, projectPath } from "@/utils/path";
 import { logger } from "@/logger";
-import { sleep } from "@/utils/time";
+import { sleep } from "shared/time";
 import config from "./onebot-config.json";
 
 const LOAD_SCRIPT_FILE = "loadNapCat.js";

@@ -1,5 +1,6 @@
 import { downloadMedia, getTypingTicket, getUpdates, notifyLifecycle, sendImage, sendText, sendTyping } from "./api";
 import { MessageItemType, type MessageItem, type WeixinCredentials, type WeixinMessage } from "./protocol";
+import { sleep } from "shared/time";
 
 export type WeixinInboundSegment =
   | { type: "text"; text: string }
@@ -85,7 +86,7 @@ export class WeixinClient {
         if (controller.signal.aborted) break;
         failures += 1;
         this.logger.error?.("微信长轮询失败", { error, failures });
-        await delay(failures >= 3 ? 30_000 : 2_000);
+        await sleep(failures >= 3 ? 30_000 : 2_000);
         if (failures >= 3) failures = 0;
       }
     }
@@ -189,8 +190,4 @@ export class WeixinClient {
     if (buffer.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
     return "application/octet-stream";
   }
-}
-
-function delay(milliseconds: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 }

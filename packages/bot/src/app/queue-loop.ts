@@ -1,7 +1,7 @@
 import os from "node:os";
 import { basename, posix } from "node:path";
 import XMLBuilder from "fast-xml-builder";
-import dayjs, { sleep } from "@/utils/time";
+import dayjs, { sleep } from "shared/time";
 import type { ChannelReplyContext } from "@/channel/types";
 import type { MessagePart } from "@/message/parts";
 import type { ImageMap, MediaKind, MediaMap, PendingMessage, UnifiedInboundMessage } from "@/message/types";

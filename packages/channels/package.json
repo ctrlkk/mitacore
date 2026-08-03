@@ -5,6 +5,9 @@
   "private": true,
   "module": "src/index.ts",
   "types": "src/index.ts",
+  "dependencies": {
+    "shared": "workspace:*"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./onebot": "./src/onebot/index.ts",

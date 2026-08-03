@@ -1,4 +1,5 @@
 import type { WeixinCredentials } from "./protocol";
+import { sleep } from "shared/time";
 
 const LOGIN_BASE_URL = "https://ilinkai.weixin.qq.com";
 
@@ -86,7 +87,7 @@ export async function loginWithQr(events: WeixinQrLoginEvents, localToken?: stri
     } finally {
       clearTimeout(timeout);
     }
-    await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+    await sleep(1_000);
   }
   throw new Error("微信扫码登录超时");
 }

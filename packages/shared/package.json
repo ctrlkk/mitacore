@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "shared",
+  "type": "module",
+  "private": true,
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "dayjs": "^1.11.21"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./time": "./src/time.ts"
+  }
+}

@@ -8,7 +8,7 @@ import { rename, readdir, unlink } from "node:fs/promises";
 import { mkdirSync } from "node:fs";
 import { dataPath } from "@/utils/path";
 import pretty from "pino-pretty";
-import dayjs from "dayjs";
+import dayjs from "shared/time";
 
 export type { PinoLogger, LoggerOptions };
 
