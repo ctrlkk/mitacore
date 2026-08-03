@@ -265,7 +265,6 @@ async function startWeixinChannel(getBot: (sessionId: string) => ReturnType<type
     return {
       accountId: config.weixin.account_id,
       token: config.weixin.token,
-      baseUrl: config.weixin.base_url,
     };
   })();
   const credentials = configuredCredentials ?? (await loginWithQr());
@@ -277,14 +276,13 @@ async function startWeixinChannel(getBot: (sessionId: string) => ReturnType<type
         ...config.weixin,
         account_id: credentials.accountId,
         token: credentials.token,
-        base_url: credentials.baseUrl,
       },
     });
     logger.info({ accountId: credentials.accountId }, "微信凭证已写入 config.toml");
   }
   ensureUserAlias("weixin", credentials.accountId, "微信 Bot");
 
-  const client = new WeixinClient(credentials, config.weixin);
+  const client = new WeixinClient(credentials);
   void client
     .start(async (event) => {
       if (!isIdInScope(event.senderId, config.weixin.users)) return;

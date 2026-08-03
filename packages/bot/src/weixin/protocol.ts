@@ -48,6 +48,5 @@ export interface GetUpdatesResponse {
 export interface WeixinCredentials {
   accountId: string;
   token: string;
-  baseUrl: string;
   userId?: string;
 }

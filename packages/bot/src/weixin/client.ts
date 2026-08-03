@@ -1,7 +1,6 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { ChannelReplyContext } from "@/channel/types";
-import type { Config } from "@/config";
 import type { MessagePart } from "@/message/parts";
 import type { UnifiedInboundMessage } from "@/message/types";
 import { logger } from "@/logger";
@@ -24,10 +23,7 @@ export class WeixinClient {
   private abortController: AbortController | null = null;
   private readonly contextTokens = new Map<string, string>();
 
-  constructor(
-    private readonly credentials: WeixinCredentials,
-    private readonly options: Config["weixin"],
-  ) {}
+  constructor(private readonly credentials: WeixinCredentials) {}
 
   private get syncPath() {
     const safeAccountId = this.credentials.accountId.replace(/[^a-zA-Z0-9_.-]/g, "_");
@@ -131,7 +127,7 @@ export class WeixinClient {
         segments.push({ type: "text", text: `[语音转文字] ${item.voice_item.text}` });
       } else if (item.type === MessageItemType.IMAGE || item.type === MessageItemType.VIDEO) {
         try {
-          const buffer = await downloadMedia(item, this.options.cdn_base_url);
+          const buffer = await downloadMedia(item);
           if (!buffer) continue;
           const mime = item.type === MessageItemType.IMAGE ? this.guessImageMime(buffer) : "video/mp4";
           const url = `data:${mime};base64,${buffer.toString("base64")}`;
@@ -153,13 +149,7 @@ export class WeixinClient {
     if (typeof part === "string") return await sendText(this.credentials, to, contextToken, part);
     const response = await fetch(part.data.file || part.data.url);
     if (!response.ok) throw new Error(`读取待发送图片失败：HTTP ${response.status}`);
-    return await sendImage(
-      this.credentials,
-      this.options.cdn_base_url,
-      to,
-      contextToken,
-      Buffer.from(await response.arrayBuffer()),
-    );
+    return await sendImage(this.credentials, to, contextToken, Buffer.from(await response.arrayBuffer()));
   }
 
   private async setTyping(to: string) {

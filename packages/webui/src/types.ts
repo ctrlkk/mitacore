@@ -21,8 +21,6 @@ export type Config = {
     enabled: boolean;
     account_id?: string;
     token?: string;
-    base_url: string;
-    cdn_base_url: string;
     users: Scope;
   };
   models: Record<"plan" | "reply" | "main" | "multimodal_image" | "multimodal_video" | "multimodal_audio", string>;
@@ -51,8 +49,6 @@ export const defaultConfig: Config = {
     enabled: false,
     account_id: "",
     token: "",
-    base_url: "https://ilinkai.weixin.qq.com",
-    cdn_base_url: "https://novac2c.cdn.weixin.qq.com/c2c",
     users: { mode: "blacklist", ids: [] },
   },
   models: { plan: "", reply: "", main: "", multimodal_image: "", multimodal_video: "", multimodal_audio: "" },

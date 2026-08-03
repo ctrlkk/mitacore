@@ -62,14 +62,10 @@ const schema = z
         enabled: z.boolean().default(false).describe("是否启用微信渠道"),
         account_id: z.string().trim().optional().describe("扫码后获得的微信 Bot 账号 ID"),
         token: z.string().trim().optional().describe("扫码后获得的微信 Bot token"),
-        base_url: z.url().default("https://ilinkai.weixin.qq.com").describe("微信 iLink API 地址"),
-        cdn_base_url: z.url().default("https://novac2c.cdn.weixin.qq.com/c2c").describe("微信媒体 CDN 地址"),
         users: scopeConfig.default({ mode: "blacklist", ids: [] }).describe("微信用户范围控制"),
       })
       .default({
         enabled: false,
-        base_url: "https://ilinkai.weixin.qq.com",
-        cdn_base_url: "https://novac2c.cdn.weixin.qq.com/c2c",
         users: { mode: "blacklist", ids: [] },
       })
       .describe("微信渠道配置"),
@@ -158,8 +154,6 @@ function getFieldDescription(path: PropertyKey[]): string | undefined {
     "weixin.enabled": "是否启用微信渠道",
     "weixin.account_id": "微信 Bot 账号 ID",
     "weixin.token": "微信 Bot token",
-    "weixin.base_url": "微信 iLink API 地址",
-    "weixin.cdn_base_url": "微信媒体 CDN 地址",
     "weixin.users": "微信用户范围控制",
     providers: "供应商配置",
     "providers.type": "供应商端点类型",

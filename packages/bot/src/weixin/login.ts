@@ -78,7 +78,6 @@ export async function loginWithQr(localToken?: string): Promise<WeixinCredential
         const credentials: WeixinCredentials = {
           accountId: status.ilink_bot_id,
           token: status.bot_token,
-          baseUrl: status.baseurl || pollingBaseUrl,
           userId: status.ilink_user_id,
         };
         logger.info({ accountId: credentials.accountId }, "微信扫码登录成功");

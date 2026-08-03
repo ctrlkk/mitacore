@@ -3,9 +3,10 @@ import { MessageItemType, type GetUpdatesResponse, type MessageItem, type Weixin
 
 const CHANNEL_VERSION = "2.4.6";
 const CLIENT_VERSION = (2 << 16) | (4 << 8) | 6;
+const WEIXIN_API_BASE_URL = "https://ilinkai.weixin.qq.com";
+const WEIXIN_CDN_BASE_URL = "https://novac2c.cdn.weixin.qq.com/c2c";
 
 interface ApiOptions {
-  baseUrl: string;
   token?: string;
   signal?: AbortSignal;
   timeoutMs?: number;
@@ -27,8 +28,8 @@ function headers(token?: string): Record<string, string> {
   };
 }
 
-function url(baseUrl: string, endpoint: string) {
-  return new URL(endpoint, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
+function url(endpoint: string) {
+  return new URL(endpoint, `${WEIXIN_API_BASE_URL}/`).toString();
 }
 
 async function requestJson<T>(endpoint: string, body: unknown, options: ApiOptions): Promise<T> {
@@ -38,7 +39,7 @@ async function requestJson<T>(endpoint: string, body: unknown, options: ApiOptio
   options.signal?.addEventListener("abort", abort, { once: true });
 
   try {
-    const response = await fetch(url(options.baseUrl, endpoint), {
+    const response = await fetch(url(endpoint), {
       method: "POST",
       headers: headers(options.token),
       body: JSON.stringify(body),
@@ -63,7 +64,7 @@ export async function getUpdates(
     return await requestJson<GetUpdatesResponse>(
       "ilink/bot/getupdates",
       { get_updates_buf: syncBuffer, base_info: baseInfo() },
-      { baseUrl: credentials.baseUrl, token: credentials.token, timeoutMs, signal },
+      { token: credentials.token, timeoutMs, signal },
     );
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError" && !signal?.aborted) {
@@ -93,7 +94,7 @@ export async function sendText(
       },
       base_info: baseInfo(),
     },
-    { baseUrl: credentials.baseUrl, token: credentials.token },
+    { token: credentials.token },
   );
   if (response.ret && response.ret !== 0) throw new Error(`微信发送失败：${response.errmsg ?? response.ret}`);
 }
@@ -102,7 +103,7 @@ export async function getTypingTicket(credentials: WeixinCredentials, userId: st
   return await requestJson<{ ret?: number; typing_ticket?: string }>(
     "ilink/bot/getconfig",
     { ilink_user_id: userId, context_token: contextToken, base_info: baseInfo() },
-    { baseUrl: credentials.baseUrl, token: credentials.token, timeoutMs: 10_000 },
+    { token: credentials.token, timeoutMs: 10_000 },
   );
 }
 
@@ -110,7 +111,7 @@ export async function sendTyping(credentials: WeixinCredentials, userId: string,
   await requestJson(
     "ilink/bot/sendtyping",
     { ilink_user_id: userId, typing_ticket: ticket, status, base_info: baseInfo() },
-    { baseUrl: credentials.baseUrl, token: credentials.token, timeoutMs: 10_000 },
+    { token: credentials.token, timeoutMs: 10_000 },
   );
 }
 
@@ -118,7 +119,7 @@ export async function notifyLifecycle(credentials: WeixinCredentials, state: "st
   return await requestJson<{ ret?: number; errmsg?: string }>(
     `ilink/bot/msg/notify${state}`,
     { base_info: baseInfo() },
-    { baseUrl: credentials.baseUrl, token: credentials.token, timeoutMs: 10_000 },
+    { token: credentials.token, timeoutMs: 10_000 },
   );
 }
 
@@ -131,7 +132,7 @@ function parseAesKey(encoded: string) {
   throw new Error(`无效的微信媒体 AES key 长度：${decoded.length}`);
 }
 
-export async function downloadMedia(item: MessageItem, cdnBaseUrl: string): Promise<Buffer | null> {
+export async function downloadMedia(item: MessageItem): Promise<Buffer | null> {
   const media = item.image_item?.media ?? item.video_item?.media ?? item.file_item?.media ?? item.voice_item?.media;
   if (!media) return null;
   const aesKey = (() => {
@@ -141,7 +142,7 @@ export async function downloadMedia(item: MessageItem, cdnBaseUrl: string): Prom
   })();
   let mediaUrl = media.full_url;
   if (!mediaUrl && media.encrypt_query_param) {
-    mediaUrl = `${cdnBaseUrl}/download?encrypted_query_param=${encodeURIComponent(media.encrypt_query_param)}`;
+    mediaUrl = `${WEIXIN_CDN_BASE_URL}/download?encrypted_query_param=${encodeURIComponent(media.encrypt_query_param)}`;
   }
   if (!mediaUrl) return null;
   const response = await fetch(mediaUrl);
@@ -168,7 +169,6 @@ async function uploadEncrypted(buffer: Buffer, targetUrl: string, aesKey: Buffer
 
 export async function sendImage(
   credentials: WeixinCredentials,
-  cdnBaseUrl: string,
   to: string,
   contextToken: string | undefined,
   buffer: Buffer,
@@ -189,11 +189,11 @@ export async function sendImage(
       aeskey: aesKey.toString("hex"),
       base_info: baseInfo(),
     },
-    { baseUrl: credentials.baseUrl, token: credentials.token },
+    { token: credentials.token },
   );
   let targetUrl = upload.upload_full_url;
   if (!targetUrl && upload.upload_param) {
-    targetUrl = `${cdnBaseUrl}/upload?encrypted_query_param=${encodeURIComponent(upload.upload_param)}&filekey=${encodeURIComponent(fileKey)}`;
+    targetUrl = `${WEIXIN_CDN_BASE_URL}/upload?encrypted_query_param=${encodeURIComponent(upload.upload_param)}&filekey=${encodeURIComponent(fileKey)}`;
   }
   if (!targetUrl) throw new Error("微信 getUploadUrl 未返回上传地址");
   const uploaded = await uploadEncrypted(buffer, targetUrl, aesKey);
@@ -225,7 +225,7 @@ export async function sendImage(
       },
       base_info: baseInfo(),
     },
-    { baseUrl: credentials.baseUrl, token: credentials.token },
+    { token: credentials.token },
   );
   if (response.ret && response.ret !== 0) throw new Error(`微信图片发送失败：${response.errmsg ?? response.ret}`);
 }
