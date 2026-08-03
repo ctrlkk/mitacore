@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { OneBotIncomingMessageSegment, OneBotMessageEvent } from "@/onebot/websocket-client";
 import type { PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import type { ChannelReplyContext } from "@/channel/types";
@@ -10,6 +12,34 @@ import { startBuiltinNapCat } from "@/napcat/loader";
 import { logger } from "@/logger";
 import { WeixinClient } from "@/weixin/client";
 import { loginWithQr } from "@/weixin/login";
+import { dataPath } from "@/utils/path";
+
+function createWeixinSyncBufferStore(accountId: string) {
+  const safeAccountId = accountId.replace(/[^a-zA-Z0-9_.-]/g, "_");
+  const syncPath = dataPath("weixin", "accounts", `${safeAccountId}.sync.json`);
+
+  return {
+    async load() {
+      try {
+        return (JSON.parse(await readFile(syncPath, "utf8")) as { get_updates_buf?: string }).get_updates_buf ?? "";
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+        throw error;
+      }
+    },
+    async save(value: string) {
+      await mkdir(dirname(syncPath), { recursive: true });
+      const temporaryPath = `${syncPath}.tmp-${process.pid}`;
+      try {
+        await writeFile(temporaryPath, JSON.stringify({ get_updates_buf: value }), "utf8");
+        await rename(temporaryPath, syncPath);
+      } catch (error) {
+        await unlink(temporaryPath).catch(() => undefined);
+        throw error;
+      }
+    },
+  };
+}
 
 /**
  * 检查ID是否在范围内
@@ -282,7 +312,7 @@ async function startWeixinChannel(getBot: (sessionId: string) => ReturnType<type
   }
   ensureUserAlias("weixin", credentials.accountId, "微信 Bot");
 
-  const client = new WeixinClient(credentials);
+  const client = new WeixinClient(credentials, createWeixinSyncBufferStore(credentials.accountId));
   void client
     .start(async (event) => {
       if (!isIdInScope(event.senderId, config.weixin.users)) return;

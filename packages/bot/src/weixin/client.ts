@@ -1,10 +1,7 @@
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import type { ChannelReplyContext } from "@/channel/types";
 import type { MessagePart } from "@/message/parts";
 import type { UnifiedInboundMessage } from "@/message/types";
 import { logger } from "@/logger";
-import { dataPath } from "@/utils/path";
 import { sleep } from "@/utils/time";
 import { downloadMedia, getTypingTicket, getUpdates, notifyLifecycle, sendImage, sendText, sendTyping } from "./api";
 import { MessageItemType, type MessageItem, type WeixinCredentials, type WeixinMessage } from "./protocol";
@@ -19,20 +16,23 @@ export interface WeixinInboundEvent {
   sessionId: string;
 }
 
+export interface WeixinSyncBufferStore {
+  load(): Promise<string>;
+  save(value: string): Promise<void>;
+}
+
 export class WeixinClient {
   private abortController: AbortController | null = null;
   private readonly contextTokens = new Map<string, string>();
 
-  constructor(private readonly credentials: WeixinCredentials) {}
-
-  private get syncPath() {
-    const safeAccountId = this.credentials.accountId.replace(/[^a-zA-Z0-9_.-]/g, "_");
-    return dataPath("weixin", "accounts", `${safeAccountId}.sync.json`);
-  }
+  constructor(
+    private readonly credentials: WeixinCredentials,
+    private readonly syncBufferStore: WeixinSyncBufferStore,
+  ) {}
 
   async start(handler: (event: WeixinInboundEvent) => Promise<void>) {
     if (this.abortController) throw new Error("微信客户端已经启动");
-    let syncBuffer = await this.loadSyncBuffer();
+    let syncBuffer = await this.syncBufferStore.load();
     const controller = new AbortController();
     this.abortController = controller;
     let timeoutMs = 35_000;
@@ -56,7 +56,7 @@ export class WeixinClient {
         }
         if (response.get_updates_buf) {
           syncBuffer = response.get_updates_buf;
-          await this.saveSyncBuffer(syncBuffer);
+          await this.syncBufferStore.save(syncBuffer);
         }
         for (const message of response.msgs ?? []) {
           const inbound = await this.normalizeMessage(message);
@@ -175,26 +175,5 @@ export class WeixinClient {
     if (buffer.subarray(0, 4).toString("ascii") === "GIF8") return "image/gif";
     if (buffer.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
     return "application/octet-stream";
-  }
-
-  private async loadSyncBuffer() {
-    try {
-      return (JSON.parse(await readFile(this.syncPath, "utf8")) as { get_updates_buf?: string }).get_updates_buf ?? "";
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
-      throw error;
-    }
-  }
-
-  private async saveSyncBuffer(value: string) {
-    await mkdir(dirname(this.syncPath), { recursive: true });
-    const temporaryPath = `${this.syncPath}.tmp-${process.pid}`;
-    try {
-      await writeFile(temporaryPath, JSON.stringify({ get_updates_buf: value }), "utf8");
-      await rename(temporaryPath, this.syncPath);
-    } catch (error) {
-      await unlink(temporaryPath).catch(() => undefined);
-      throw error;
-    }
   }
 }
