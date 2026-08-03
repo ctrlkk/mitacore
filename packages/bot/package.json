@@ -13,6 +13,7 @@
     "migration:check": "bun run scripts/migration.ts --check"
   },
   "dependencies": {
+    "bilibili": "workspace:*",
     "@ai-sdk/anthropic": "^4.0.18",
     "@ai-sdk/deepseek": "^3.0.13",
     "@ai-sdk/openai": "^4.0.20",

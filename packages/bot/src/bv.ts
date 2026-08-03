@@ -1,16 +1,13 @@
-import { logger } from "./logger";
 import type { OneBotEventContext } from "./onebot/onebot-client";
 import type { OneBotMessageEvent } from "./onebot/websocket-client";
-import { findExecutable } from "./utils/find-executable";
-import { spawn } from "./utils/spawn";
+import { findExecutable } from "@/utils/find-executable";
+import { spawn } from "@/utils/spawn";
+import { logger } from "@/logger";
 
-async function handleBilibiliDownload(input: string, ctx: OneBotEventContext<OneBotMessageEvent>) {
+export async function handleBilibiliDownload(input: string, ctx: OneBotEventContext<OneBotMessageEvent>) {
   const { mkdir } = await import("node:fs/promises");
   const { dataPath } = await import("@/utils/path");
-  const { aid2bvid } = await import("./bilibili/bvid");
-  const { extractVideoId, resolveShortUrl } = await import("./bilibili/parse-link");
-  const { getVideoInfo } = await import("./bilibili/api");
-  const { downloadBilibiliVideo } = await import("./bilibili/download");
+  const { aid2bvid, extractVideoId, resolveShortUrl, getVideoInfo, downloadBilibiliVideo } = await import("bilibili");
 
   let id = extractVideoId(input);
 

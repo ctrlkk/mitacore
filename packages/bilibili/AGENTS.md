@@ -58,7 +58,7 @@ B 站视频相关能力的 TypeScript 实现。本目录的代码**不是从零�
 ## 典型用法
 
 ```ts
-import { extractVideoId, resolveShortUrl, getVideoInfo, downloadBilibiliVideo } from "./bilibili";
+import { extractVideoId, resolveShortUrl, getVideoInfo, downloadBilibiliVideo } from "bilibili";
 
 // 1. 解析用户输入
 const shortUrl = "https://b23.tv/xxxxx";
