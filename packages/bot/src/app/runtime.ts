@@ -1,4 +1,3 @@
-import type { LanguageModelUsage } from "ai";
 import type { OneBotIncomingMessageSegment, OneBotMessageEvent } from "@/onebot/websocket-client";
 import type { PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import type { ChannelReplyContext } from "@/channel/types";
@@ -9,7 +8,6 @@ import { OneBotClient, type OneBotEventContext } from "@/onebot/onebot-client";
 import { resolveMentions } from "@/message/mention";
 import { startBuiltinNapCat } from "@/napcat/loader";
 import { logger } from "@/logger";
-import { cache } from "@/utils/cache";
 import { WeixinClient } from "@/weixin/client";
 import { loginWithQr } from "@/weixin/login";
 
@@ -93,7 +91,7 @@ async function handleCommand(
     return true;
   }
 
-  if (rawText === "/usage") {
+  /* 已移除 /usage 指令：
     const u = await cache.get<LanguageModelUsage>("usage");
     const fmt = (v: number | undefined) => (v ?? 0).toLocaleString();
     await ctx.reply(
@@ -109,6 +107,7 @@ async function handleCommand(
     );
     return true;
   }
+  */
 
   return false;
 }
@@ -302,7 +301,7 @@ async function startWeixinChannel(getBot: (sessionId: string) => ReturnType<type
         await event.context.reply(`pong (${latency}ms)`);
         return;
       }
-      if (rawText === "/usage") {
+      /* 已移除 /usage 指令：
         const usage = await cache.get<LanguageModelUsage>("usage");
         const format = (value: number | undefined) => (value ?? 0).toLocaleString();
         await event.context.reply(
@@ -316,6 +315,7 @@ async function startWeixinChannel(getBot: (sessionId: string) => ReturnType<type
         );
         return;
       }
+      */
 
       const message: PendingMessage = {
         userId: shortIdFor(alias.id),
