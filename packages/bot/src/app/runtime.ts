@@ -10,7 +10,6 @@ import { resolveMentions } from "@/message/mention";
 import { startBuiltinNapCat } from "@/napcat/loader";
 import { logger } from "@/logger";
 import { cache } from "@/utils/cache";
-import { registerShutdownHook } from "@/utils/shutdown";
 import { WeixinClient } from "@/weixin/client";
 import { loginWithQr } from "@/weixin/login";
 
@@ -123,7 +122,6 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
     const result = await startBuiltinNapCat(config.napcat.qq_id);
     wsUrl = result.wsUrl;
     accessToken = result.accessToken;
-    registerShutdownHook("NapCat", () => result.stop());
   } else {
     wsUrl = config.napcat.ws_url!;
     accessToken = config.napcat.token ?? "";
@@ -288,7 +286,6 @@ async function startWeixinChannel(getBot: (sessionId: string) => ReturnType<type
   ensureUserAlias("weixin", credentials.accountId, "微信 Bot");
 
   const client = new WeixinClient(credentials, config.weixin);
-  registerShutdownHook("微信", () => client.stop());
   void client
     .start(async (event) => {
       if (!isIdInScope(event.senderId, config.weixin.users)) return;

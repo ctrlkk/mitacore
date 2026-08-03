@@ -10,7 +10,6 @@ import { OneBotClient } from "@/onebot/onebot-client";
 import { formatBytes } from "@/utils/format";
 import { binPath, dataPath, projectPath } from "@/utils/path";
 import { logger } from "@/logger";
-import { registerShutdownHook } from "@/utils/shutdown";
 import { sleep } from "@/utils/time";
 import config from "./onebot-config.json";
 
@@ -522,11 +521,11 @@ function oneBotConfig(wsPort: number) {
 
 /**
  * 启动内置 NapCat 进程
+ * NapCat 进程树由 Rust supervisor 绑定父进程生命周期，无需在 TypeScript 中注册退出清理。
  * @param qqId QQ ID
- * @returns 包含 WebSocket URL、访问令牌和停止函数的对象
+ * @returns 包含 WebSocket URL 和访问令牌的对象
  *  - wsUrl: WebSocket 连接 URL
  *  - accessToken: 访问令牌，用于身份验证
- *  - stop: 停止 NapCat 进程的函数
  */
 export async function startBuiltinNapCat(qqId: string) {
   const napcatConfig: NapCatConfig = {
@@ -564,7 +563,6 @@ export async function startBuiltinNapCat(qqId: string) {
     return {
       wsUrl: `ws://127.0.0.1:${wsPort}`,
       accessToken: "",
-      stop: napcat.stop,
     };
   } catch (error) {
     await napcat?.stop();
@@ -584,8 +582,4 @@ if (import.meta.main) {
   });
   await client.connect();
   await sleep(1000);
-  registerShutdownHook("NapCat", async () => {
-    await napcat.stop();
-    logger.info("NapCat 进程已关闭");
-  });
 }
