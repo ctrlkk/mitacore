@@ -106,7 +106,7 @@ export class WeixinClient {
       context,
       segments,
       senderId,
-      nickname: senderId,
+      nickname: "",
       conversationType,
       sessionId,
     };
