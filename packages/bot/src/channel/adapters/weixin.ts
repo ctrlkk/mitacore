@@ -1,42 +1,13 @@
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-import { WeixinClient, loginWithQr, type WeixinCredentials, type WeixinInboundSegment } from "channels/weixin";
-import { config, saveConfig } from "@/config";
 import type { ChannelReplyContext } from "@/channel/types";
-import { channelController } from "@/app/channel-controller";
-import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
 import type { PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import type { MessagePart } from "@/message/parts";
+import { WeixinClient, loginWithQr, type WeixinCredentials, type WeixinInboundSegment } from "channels/weixin";
+import { config, saveConfig } from "@/config";
+import { channelController } from "@/app/channel-controller";
+import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
 import { createBot } from "@/app/queue-loop";
 import { logger } from "@/logger";
-import { dataPath } from "@/utils/path";
-
-function createSyncBufferStore(accountId: string) {
-  const safeAccountId = accountId.replace(/[^a-zA-Z0-9_.-]/g, "_");
-  const syncPath = dataPath("weixin", "accounts", `${safeAccountId}.sync.json`);
-
-  return {
-    async load() {
-      try {
-        return (JSON.parse(await readFile(syncPath, "utf8")) as { get_updates_buf?: string }).get_updates_buf ?? "";
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
-        throw error;
-      }
-    },
-    async save(value: string) {
-      await mkdir(dirname(syncPath), { recursive: true });
-      const temporaryPath = `${syncPath}.tmp-${process.pid}`;
-      try {
-        await writeFile(temporaryPath, JSON.stringify({ get_updates_buf: value }), "utf8");
-        await rename(temporaryPath, syncPath);
-      } catch (error) {
-        await unlink(temporaryPath).catch(() => undefined);
-        throw error;
-      }
-    },
-  };
-}
+import { createWeixinSyncBufferStore } from "@/channel/weixin-sync-store";
 
 function toUnifiedSegments(segments: WeixinInboundSegment[]): UnifiedInboundMessage[] {
   return segments.flatMap((segment): UnifiedInboundMessage[] => {
@@ -118,7 +89,9 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
   channelController.updateWeixin({ status: "ready", qrcode_content: undefined, error: undefined });
   ensureUserAlias("weixin", credentials.accountId, "微信 Bot");
 
-  const client = new WeixinClient(credentials, createSyncBufferStore(credentials.accountId), { logger: clientLogger });
+  const client = new WeixinClient(credentials, createWeixinSyncBufferStore(credentials.accountId), {
+    logger: clientLogger,
+  });
   void client
     .start(async (event) => {
       if (!isIdInScope(event.senderId, config.weixin.users)) return;
