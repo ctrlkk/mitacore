@@ -1,7 +1,7 @@
 import os from "node:os";
 import { basename, posix } from "node:path";
 import XMLBuilder from "fast-xml-builder";
-import dayjs from "@/utils/time";
+import dayjs, { sleep } from "@/utils/time";
 import type { ChannelReplyContext } from "@/channel/types";
 import type { MessagePart } from "@/message/parts";
 import type { ImageMap, MediaKind, MediaMap, PendingMessage, UnifiedInboundMessage } from "@/message/types";
@@ -344,7 +344,7 @@ export function createBot(sessionId: string) {
 
         for (const seg of segments) {
           await ctx.reply(seg, mentionableUsers);
-          await Bun.sleep(500);
+          await sleep(500);
         }
       };
       let replied: boolean;
@@ -380,7 +380,7 @@ export function createBot(sessionId: string) {
       while (true) {
         // 等待用户停止输入 1s
         while (Date.now() - lastMsgAt < debounceMs) {
-          await Bun.sleep(100);
+          await sleep(100);
         }
 
         const queueSnapshot = scheduler.snapshot();

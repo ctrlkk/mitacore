@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
-import { readdir, stat, unlink } from "node:fs/promises";
+import { access, readFile, readdir, stat, unlink } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { logger } from "@/logger";
 import { projectPath } from "@/utils/path";
@@ -181,8 +181,12 @@ export function createApp() {
   app.get("/api/images/:filename/content", async (c) => {
     try {
       const { realPath } = getSafeImagePath(c.req.param("filename"));
-      const file = Bun.file(realPath);
-      if (!(await file.exists())) return c.json({ error: { message: "图片不存在" } }, 404);
+      try {
+        await access(realPath);
+      } catch {
+        return c.json({ error: { message: "图片不存在" } }, 404);
+      }
+      const file = await readFile(realPath);
       return new Response(file, { headers: { "cache-control": "private, max-age=300" } });
     } catch (error) {
       const response = errorResponse(error);
@@ -193,7 +197,11 @@ export function createApp() {
   app.patch("/api/images/:filename", async (c) => {
     try {
       const { virtualPath, realPath } = getSafeImagePath(c.req.param("filename"));
-      if (!(await Bun.file(realPath).exists())) return c.json({ error: { message: "图片不存在" } }, 404);
+      try {
+        await access(realPath);
+      } catch {
+        return c.json({ error: { message: "图片不存在" } }, 404);
+      }
       const request = imageUpdateSchema.parse(await c.req.json());
       set_media_description("image", virtualPath, request.description);
       return c.json({ saved: true, description: request.description });

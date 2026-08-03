@@ -11,6 +11,7 @@ import { formatBytes } from "@/utils/format";
 import { binPath, dataPath, projectPath } from "@/utils/path";
 import { logger } from "@/logger";
 import { registerShutdownHook } from "@/utils/shutdown";
+import { sleep } from "@/utils/time";
 import config from "./onebot-config.json";
 
 const LOAD_SCRIPT_FILE = "loadNapCat.js";
@@ -582,7 +583,7 @@ if (import.meta.main) {
     logger.debug({ msg }, "收到 OneBot 消息");
   });
   await client.connect();
-  await Bun.sleep(1000);
+  await sleep(1000);
   registerShutdownHook("NapCat", async () => {
     await napcat.stop();
     logger.info("NapCat 进程已关闭");

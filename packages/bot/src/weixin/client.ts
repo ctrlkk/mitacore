@@ -6,6 +6,7 @@ import type { MessagePart } from "@/message/parts";
 import type { UnifiedInboundMessage } from "@/message/types";
 import { logger } from "@/logger";
 import { dataPath } from "@/utils/path";
+import { sleep } from "@/utils/time";
 import { downloadMedia, getTypingTicket, getUpdates, notifyLifecycle, sendImage, sendText, sendTyping } from "./api";
 import { MessageItemType, type MessageItem, type WeixinCredentials, type WeixinMessage } from "./protocol";
 
@@ -69,7 +70,7 @@ export class WeixinClient {
         if (controller.signal.aborted) break;
         failures += 1;
         logger.error({ error, failures }, "微信长轮询失败");
-        await Bun.sleep(failures >= 3 ? 30_000 : 2_000);
+        await sleep(failures >= 3 ? 30_000 : 2_000);
         if (failures >= 3) failures = 0;
       }
     }
