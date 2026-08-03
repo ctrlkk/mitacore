@@ -4,11 +4,9 @@ import { z } from "zod";
 import { generateText, tool } from "ai";
 import { lookup } from "mime-types";
 import { imageToText } from "@/ai/multimedia";
-import { sanitizeImagePath, virtualToRealPath, downloadToCache } from "@/utils/image-cache";
+import { sanitizeImagePath, virtualToRealPath } from "@/utils/image-cache";
 import { createFsFile, exists } from "@/utils/fs-file";
-import { getImageGenerator } from "@/generate-image";
 import { logger, type PinoLogger } from "@/logger";
-import { compressImage } from "@/utils/image-resize";
 import { logUsage } from "@/utils/format";
 
 // 提取 type 为 'content' 的分支
@@ -110,19 +108,20 @@ export function imageGen(
           }),
         );
 
-        const { generate } = await getImageGenerator();
-        const urls = await generate(prompt, files);
-        const results = await Promise.all(
-          urls.map(async (url) => {
-            const { virtualPath, realPath } = await downloadToCache(url);
-            return {
-              path: virtualPath,
-              image: await compressImage(await createFsFile(realPath)),
-            };
-          }),
-        );
-        log.info({ count: results.length }, "图像已生成");
-        return { status: "success", results };
+        return { status: "failed", error: "暂时不支持图像生成功能。" };
+        // const { generate } = await getImageGenerator();
+        // const urls = await generate(prompt, files);
+        // const results = await Promise.all(
+        //   urls.map(async (url) => {
+        //     const { virtualPath, realPath } = await downloadToCache(url);
+        //     return {
+        //       path: virtualPath,
+        //       image: await compressImage(await createFsFile(realPath)),
+        //     };
+        //   }),
+        // );
+        // log.info({ count: results.length }, "图像已生成");
+        // return { status: "success", results };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         log.error({ error, prompt, images }, "图像生成失败");
