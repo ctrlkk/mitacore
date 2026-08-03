@@ -312,6 +312,13 @@ h2,
   color: #176c58;
   font-weight: 700;
 }
+.text-button {
+  padding: 0;
+  color: #176c58;
+  background: transparent;
+  font-weight: 700;
+  cursor: pointer;
+}
 .channel-title {
   display: flex;
   justify-content: space-between;
@@ -677,9 +684,41 @@ summary {
   }
 }
 .dialog-overlay {
+  z-index: 10;
   position: fixed;
   inset: 0;
   background: #17212bbd;
+}
+.napcat-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(1200px, calc(100vw - 32px));
+  height: min(820px, calc(100vh - 32px));
+  overflow: hidden;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 64px #0004;
+  transform: translate(-50%, -50%);
+}
+.napcat-dialog-heading {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 58px;
+  padding: 14px 58px 14px 20px;
+  border-bottom: 1px solid #e3e6eb;
+}
+.napcat-dialog-heading h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.napcat-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
 }
 .image-dialog {
   position: fixed;

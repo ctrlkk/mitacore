@@ -76,6 +76,12 @@ async function buildWebUi() {
   await cp(join(webUiDir, "dist"), outputDir, { recursive: true });
 }
 
+/** 构建 Electron 桌面程序的主进程、预加载脚本和渲染进程。 */
+async function buildDesktop() {
+  const desktopDir = join(root, "packages", "desktop");
+  await runCmd(["bun", "run", "build"], desktopDir);
+}
+
 /**
  * 构建 Node sidecar：调用 packages/playwright 的 Vite 多入口 ESM 构建，
  * 产物目录已包含外置运行时依赖，根构建只负责完整复制。
@@ -162,7 +168,15 @@ async function copyAssets() {
 console.log("==> 开始并行构建...\n");
 await mkdir(outDir, { recursive: true });
 
-await Promise.all([buildApp(), buildSupervisor(), buildWebUi(), buildSidecar(), copyBin(), copyAssets()]);
+await Promise.all([
+  buildApp(),
+  buildSupervisor(),
+  buildWebUi(),
+  buildDesktop(),
+  buildSidecar(),
+  copyBin(),
+  copyAssets(),
+]);
 
 console.log("\n==> 构建完成：");
 const files = await readdir(outDir);
