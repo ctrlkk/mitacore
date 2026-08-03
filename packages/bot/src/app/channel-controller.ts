@@ -1,4 +1,4 @@
-import type { WeixinCredentials } from "@/weixin/protocol";
+import type { WeixinCredentials } from "channels/weixin";
 
 export type WeixinStatus = "idle" | "waiting_qr" | "scanned" | "waiting_verify_code" | "ready" | "failed";
 export type NapCatStatus = "idle" | "starting" | "ready" | "external" | "failed";

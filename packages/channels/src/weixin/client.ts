@@ -1,19 +1,23 @@
-import type { ChannelReplyContext } from "@/channel/types";
-import type { MessagePart } from "@/message/parts";
-import type { UnifiedInboundMessage } from "@/message/types";
-import { logger } from "@/logger";
-import { sleep } from "@/utils/time";
 import { downloadMedia, getTypingTicket, getUpdates, notifyLifecycle, sendImage, sendText, sendTyping } from "./api";
 import { MessageItemType, type MessageItem, type WeixinCredentials, type WeixinMessage } from "./protocol";
 
+export type WeixinInboundSegment =
+  | { type: "text"; text: string }
+  | { type: "image"; data: { url: string } }
+  | { type: "video"; data: { url: string } }
+  | { type: "reply"; data: { title: string; segments: WeixinInboundSegment[] } };
+
+export type WeixinOutgoingMessage = string | { type: "image"; url: string };
+
 export interface WeixinInboundEvent {
   message: WeixinMessage;
-  context: ChannelReplyContext;
-  segments: UnifiedInboundMessage[];
+  segments: WeixinInboundSegment[];
   senderId: string;
   nickname: string;
   conversationType: "private" | "group";
   sessionId: string;
+  reply(message: WeixinOutgoingMessage): Promise<void>;
+  setTyping(): Promise<() => void | Promise<void>>;
 }
 
 export interface WeixinSyncBufferStore {
@@ -21,14 +25,29 @@ export interface WeixinSyncBufferStore {
   save(value: string): Promise<void>;
 }
 
+export interface WeixinLogger {
+  debug?(message: string, details?: unknown): void;
+  info?(message: string, details?: unknown): void;
+  warn?(message: string, details?: unknown): void;
+  error?(message: string, details?: unknown): void;
+}
+
+export interface WeixinClientOptions {
+  logger?: WeixinLogger;
+}
+
 export class WeixinClient {
   private abortController: AbortController | null = null;
   private readonly contextTokens = new Map<string, string>();
+  private readonly logger: WeixinLogger;
 
   constructor(
     private readonly credentials: WeixinCredentials,
     private readonly syncBufferStore: WeixinSyncBufferStore,
-  ) {}
+    options: WeixinClientOptions = {},
+  ) {
+    this.logger = options.logger ?? {};
+  }
 
   async start(handler: (event: WeixinInboundEvent) => Promise<void>) {
     if (this.abortController) throw new Error("微信客户端已经启动");
@@ -39,9 +58,9 @@ export class WeixinClient {
     let failures = 0;
 
     await notifyLifecycle(this.credentials, "start").catch((error) => {
-      logger.warn({ error }, "通知微信渠道启动失败，继续运行");
+      this.logger.warn?.("通知微信渠道启动失败，继续运行", error);
     });
-    logger.info({ accountId: this.credentials.accountId }, "微信渠道已连接");
+    this.logger.info?.("微信渠道已连接", { accountId: this.credentials.accountId });
     while (!controller.signal.aborted) {
       try {
         const response = await getUpdates(this.credentials, syncBuffer, timeoutMs, controller.signal);
@@ -65,8 +84,8 @@ export class WeixinClient {
       } catch (error) {
         if (controller.signal.aborted) break;
         failures += 1;
-        logger.error({ error, failures }, "微信长轮询失败");
-        await sleep(failures >= 3 ? 30_000 : 2_000);
+        this.logger.error?.("微信长轮询失败", { error, failures });
+        await delay(failures >= 3 ? 30_000 : 2_000);
         if (failures >= 3) failures = 0;
       }
     }
@@ -76,7 +95,7 @@ export class WeixinClient {
   async stop() {
     this.abortController?.abort();
     await notifyLifecycle(this.credentials, "stop").catch((error) => {
-      logger.warn({ error }, "通知微信渠道停止失败");
+      this.logger.warn?.("通知微信渠道停止失败", error);
     });
   }
 
@@ -90,34 +109,28 @@ export class WeixinClient {
     const conversationType = message.group_id ? "group" : "private";
     const peerId = message.group_id || senderId;
     const sessionId = `weixin:${this.credentials.accountId}:${conversationType}:${peerId}`;
-    const context: ChannelReplyContext = {
-      platform: "weixin",
-      conversationType,
-      selfId: this.credentials.accountId,
-      reply: async (part) => await this.reply(senderId, part),
-      setTyping: async () => await this.setTyping(senderId),
-    };
 
     return {
       message,
-      context,
       segments,
       senderId,
       nickname: "",
       conversationType,
       sessionId,
+      reply: async (part) => await this.reply(senderId, part),
+      setTyping: async () => await this.setTyping(senderId),
     };
   }
 
   private async parseItems(items: MessageItem[]) {
-    const segments: UnifiedInboundMessage[] = [];
+    const segments: WeixinInboundSegment[] = [];
     for (const item of items) {
       if (item.ref_msg?.message_item) {
         const inner = await this.parseItems([item.ref_msg.message_item]);
         if (inner.length > 0) {
           segments.push({
             type: "reply",
-            data: { userId: "unknown", nickname: item.ref_msg.title || "引用消息", segments: inner },
+            data: { title: item.ref_msg.title || "引用消息", segments: inner },
           });
         }
       }
@@ -137,17 +150,17 @@ export class WeixinClient {
             segments.push({ type: "video", data: { url } });
           }
         } catch (error) {
-          logger.error({ error, messageId: item.msg_id }, "微信媒体解析失败");
+          this.logger.error?.("微信媒体解析失败", { error, messageId: item.msg_id });
         }
       }
     }
     return segments;
   }
 
-  private async reply(to: string, part: MessagePart) {
+  private async reply(to: string, part: WeixinOutgoingMessage) {
     const contextToken = this.contextTokens.get(to);
     if (typeof part === "string") return await sendText(this.credentials, to, contextToken, part);
-    const response = await fetch(part.data.file || part.data.url);
+    const response = await fetch(part.url);
     if (!response.ok) throw new Error(`读取待发送图片失败：HTTP ${response.status}`);
     return await sendImage(this.credentials, to, contextToken, Buffer.from(await response.arrayBuffer()));
   }
@@ -160,11 +173,11 @@ export class WeixinClient {
       await sendTyping(this.credentials, to, config.typing_ticket, 1);
       return async () => {
         await sendTyping(this.credentials, to, config.typing_ticket!, 2).catch((error) => {
-          logger.debug({ error }, "取消微信输入状态失败");
+          this.logger.debug?.("取消微信输入状态失败", error);
         });
       };
     } catch (error) {
-      logger.debug({ error }, "设置微信输入状态失败");
+      this.logger.debug?.("设置微信输入状态失败", error);
       return () => {};
     }
   }
@@ -176,4 +189,8 @@ export class WeixinClient {
     if (buffer.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
     return "application/octet-stream";
   }
+}
+
+function delay(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 }

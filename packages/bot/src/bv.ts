@@ -1,5 +1,4 @@
-import type { OneBotEventContext } from "./onebot/onebot-client";
-import type { OneBotMessageEvent } from "./onebot/websocket-client";
+import type { OneBotEventContext, OneBotMessageEvent } from "channels/onebot";
 import { findExecutable } from "@/utils/find-executable";
 import { spawn } from "@/utils/spawn";
 import { logger } from "@/logger";

@@ -1,46 +1,15 @@
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-import type { OneBotIncomingMessageSegment, OneBotMessageEvent } from "@/onebot/websocket-client";
+import type { OneBotIncomingMessageSegment, OneBotMessageEvent } from "channels/onebot";
 import type { PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import type { ChannelReplyContext } from "@/channel/types";
 import { createBot } from "@/app/queue-loop";
 import { config, saveConfig, type Config } from "@/config";
 import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
-import { OneBotClient, type OneBotEventContext } from "@/onebot/onebot-client";
+import { OneBotClient, type OneBotEventContext } from "channels/onebot";
 import { resolveMentions } from "@/message/mention";
 import { startBuiltinNapCat } from "@/napcat/loader";
 import { logger } from "@/logger";
-import { WeixinClient } from "@/weixin/client";
-import { loginWithQr } from "@/weixin/login";
-import { dataPath } from "@/utils/path";
 import { channelController } from "@/app/channel-controller";
-
-function createWeixinSyncBufferStore(accountId: string) {
-  const safeAccountId = accountId.replace(/[^a-zA-Z0-9_.-]/g, "_");
-  const syncPath = dataPath("weixin", "accounts", `${safeAccountId}.sync.json`);
-
-  return {
-    async load() {
-      try {
-        return (JSON.parse(await readFile(syncPath, "utf8")) as { get_updates_buf?: string }).get_updates_buf ?? "";
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
-        throw error;
-      }
-    },
-    async save(value: string) {
-      await mkdir(dirname(syncPath), { recursive: true });
-      const temporaryPath = `${syncPath}.tmp-${process.pid}`;
-      try {
-        await writeFile(temporaryPath, JSON.stringify({ get_updates_buf: value }), "utf8");
-        await rename(temporaryPath, syncPath);
-      } catch (error) {
-        await unlink(temporaryPath).catch(() => undefined);
-        throw error;
-      }
-    },
-  };
-}
+import { startWeixinChannel } from "@/channel-adapters/weixin";
 
 /**
  * 检查ID是否在范围内
@@ -299,78 +268,6 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
       logger.error({ sessionId, error }, "消息解析或入队失败");
     }
   });
-}
-
-async function startWeixinChannel(getBot: (sessionId: string) => ReturnType<typeof createBot>) {
-  const configuredCredentials = (() => {
-    if (!config.weixin.account_id || !config.weixin.token) return null;
-    return {
-      accountId: config.weixin.account_id,
-      token: config.weixin.token,
-    };
-  })();
-  const credentials =
-    configuredCredentials ??
-    (await channelController.loginWithQr(
-      async (waitForVerifyCode) =>
-        await loginWithQr({
-          onQrCode: (qrcode_content) => channelController.updateWeixin({ status: "waiting_qr", qrcode_content }),
-          onScanned: () => channelController.updateWeixin({ status: "scanned" }),
-          onVerifyCodeRequired: () => channelController.updateWeixin({ status: "waiting_verify_code" }),
-          waitForVerifyCode,
-        }),
-    ));
-
-  if (!configuredCredentials) {
-    try {
-      await saveConfig({
-        ...config,
-        weixin: {
-          ...config.weixin,
-          account_id: credentials.accountId,
-          token: credentials.token,
-        },
-      });
-      logger.info({ accountId: credentials.accountId }, "微信凭证已写入 config.toml");
-    } catch (error) {
-      channelController.updateWeixin({
-        status: "failed",
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    }
-  }
-  channelController.updateWeixin({ status: "ready", qrcode_content: undefined, error: undefined });
-  ensureUserAlias("weixin", credentials.accountId, "微信 Bot");
-
-  const client = new WeixinClient(credentials, createWeixinSyncBufferStore(credentials.accountId));
-  void client
-    .start(async (event) => {
-      if (!isIdInScope(event.senderId, config.weixin.users)) return;
-
-      const alias = ensureUserAlias("weixin", event.senderId, event.nickname);
-      const rawText = event.segments
-        .filter((segment): segment is Extract<UnifiedInboundMessage, { type: "text" }> => segment.type === "text")
-        .map((segment) => segment.text)
-        .join(" ")
-        .trim();
-
-      if (rawText === "/ping") {
-        const latency = event.message.create_time_ms ? Date.now() - event.message.create_time_ms : 0;
-        await event.context.reply(`pong (${latency}ms)`);
-        return;
-      }
-
-      const message: PendingMessage = {
-        userId: shortIdFor(alias.id),
-        unifiedMessages: event.segments,
-        nickname: event.nickname,
-        date: new Date(event.message.create_time_ms ?? Date.now()),
-        isAt: true,
-      };
-      getBot(event.sessionId).enqueue(message, event.context);
-    })
-    .catch((error) => logger.error({ error }, "微信渠道异常退出"));
 }
 
 export async function startBot() {

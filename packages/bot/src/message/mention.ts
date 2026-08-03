@@ -1,4 +1,4 @@
-import type { OneBotOutgoingMessage, OneBotOutgoingMessageSegment } from "@/onebot/websocket-client";
+import type { OneBotOutgoingMessage, OneBotOutgoingMessageSegment } from "channels/onebot";
 
 export interface MentionableUser {
   nickname: string | null;

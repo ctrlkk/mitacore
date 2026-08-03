@@ -1,5 +1,3 @@
-import { logger } from "@/logger";
-import { sleep } from "@/utils/time";
 import type { WeixinCredentials } from "./protocol";
 
 const LOGIN_BASE_URL = "https://ilinkai.weixin.qq.com";
@@ -65,7 +63,6 @@ export async function loginWithQr(events: WeixinQrLoginEvents, localToken?: stri
       if (status.status === "scaned") {
         verifyCode = undefined;
         events.onScanned();
-        logger.info("微信二维码已扫描，等待手机确认");
       } else if (status.status === "need_verifycode") {
         events.onVerifyCodeRequired();
         verifyCode = await events.waitForVerifyCode();
@@ -78,7 +75,6 @@ export async function loginWithQr(events: WeixinQrLoginEvents, localToken?: stri
           token: status.bot_token,
           userId: status.ilink_user_id,
         };
-        logger.info({ accountId: credentials.accountId }, "微信扫码登录成功");
         return credentials;
       } else if (status.status === "binded_redirect") {
         throw new Error("微信账号已绑定，但配置中没有可用凭证，请删除旧绑定后重试");
@@ -90,7 +86,7 @@ export async function loginWithQr(events: WeixinQrLoginEvents, localToken?: stri
     } finally {
       clearTimeout(timeout);
     }
-    await sleep(1_000);
+    await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
   }
   throw new Error("微信扫码登录超时");
 }

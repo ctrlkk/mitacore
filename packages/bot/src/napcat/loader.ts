@@ -6,7 +6,7 @@ import { createServer } from "node:net";
 import { PassThrough } from "node:stream";
 import { downloadNapcat } from "./download";
 import { deletePidFile, napcatLockPath, readPidFile, writePidFile } from "./pid-file";
-import { OneBotClient } from "@/onebot/onebot-client";
+import { OneBotClient } from "channels/onebot";
 import { formatBytes } from "@/utils/format";
 import { binPath, dataPath, projectPath } from "@/utils/path";
 import { logger } from "@/logger";

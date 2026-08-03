@@ -32,6 +32,7 @@
         "async-mutex": "^0.5.0",
         "bilibili": "workspace:*",
         "bs58": "^6.0.0",
+        "channels": "workspace:*",
         "dayjs": "^1.11.21",
         "drizzle-orm": "^0.45.2",
         "fast-xml-builder": "^1.3.0",
@@ -47,6 +48,9 @@
         "smol-toml": "^1.7.0",
         "zod": "^4.4.3",
       },
+    },
+    "packages/channels": {
+      "name": "channels",
     },
     "packages/desktop": {
       "name": "desktop",
@@ -555,6 +559,8 @@
     "caniuse-lite": ["caniuse-lite@1.0.30001806", "https://registry.npmmirror.com/caniuse-lite/-/caniuse-lite-1.0.30001806.tgz", {}, "sha512-72Cuvd95zbSYPKq6Fhg8eDJRlzgWDf7/mtoZv6Qe/DYNCEBdNxoA3+rZAU2ZhGCpZlns3EssFavaZomckT5Uuw=="],
 
     "chalk": ["chalk@4.1.2", "https://registry.npmmirror.com/chalk/-/chalk-4.1.2.tgz", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
+
+    "channels": ["channels@workspace:packages/channels"],
 
     "chownr": ["chownr@3.0.0", "https://registry.npmmirror.com/chownr/-/chownr-3.0.0.tgz", {}, "sha512-+IxzY9BZOQd/XuYPRmrvEVjF/nqj5kgT4kEq7VofrDoM1MxoRjEWkrCC3EtLi59TVawxTAn+orJwFQcrqEN1+g=="],
 
