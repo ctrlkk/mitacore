@@ -40,6 +40,7 @@ const schema = z
   .object({
     napcat: z
       .object({
+        enabled: z.boolean().default(true).describe("是否启用 NapCat 渠道"),
         ws_url: z.string().optional().describe("外部 NapCat WebSocket 地址"),
         token: z.string().optional().describe("外部 NapCat token"),
         qq_id: z.string().optional().describe("内置服务登录的 QQ ID"),
@@ -49,13 +50,29 @@ const schema = z
       })
       .refine(
         (data) => {
-          return (data.ws_url && data.token) || data.qq_id;
+          return !data.enabled || Boolean((data.ws_url && data.token) || data.qq_id);
         },
         {
           message: "必须提供 (ws_url + token) 或 qq_id 其中一种配置",
         },
       )
       .describe("NapCat 配置"),
+    weixin: z
+      .object({
+        enabled: z.boolean().default(false).describe("是否启用微信渠道"),
+        account_id: z.string().trim().optional().describe("扫码后获得的微信 Bot 账号 ID"),
+        token: z.string().trim().optional().describe("扫码后获得的微信 Bot token"),
+        base_url: z.url().default("https://ilinkai.weixin.qq.com").describe("微信 iLink API 地址"),
+        cdn_base_url: z.url().default("https://novac2c.cdn.weixin.qq.com/c2c").describe("微信媒体 CDN 地址"),
+        users: scopeConfig.default({ mode: "blacklist", ids: [] }).describe("微信用户范围控制"),
+      })
+      .default({
+        enabled: false,
+        base_url: "https://ilinkai.weixin.qq.com",
+        cdn_base_url: "https://novac2c.cdn.weixin.qq.com/c2c",
+        users: { mode: "blacklist", ids: [] },
+      })
+      .describe("微信渠道配置"),
     providers: z.array(providerConfig).min(1, "至少需要配置一个供应商").describe("供应商配置"),
     models: z
       .object({
@@ -69,6 +86,17 @@ const schema = z
       .describe("各模块使用的模型配置"),
   })
   .superRefine((data, ctx) => {
+    if (!data.napcat.enabled && !data.weixin.enabled) {
+      ctx.addIssue({ code: "custom", path: ["napcat", "enabled"], message: "NapCat 与微信至少启用一个渠道" });
+    }
+
+    if (data.weixin.enabled && Boolean(data.weixin.account_id) !== Boolean(data.weixin.token)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["weixin"],
+        message: "account_id 与 token 必须同时配置；都不配置时会启动扫码登录",
+      });
+    }
     const aliases = data.providers.flatMap((provider) => provider.models.map((model) => model.alias));
     aliases.forEach((alias, index) => {
       if (aliases.indexOf(alias) !== index) {
@@ -121,11 +149,18 @@ function formatPath(path: PropertyKey[]): string {
 
 function getFieldDescription(path: PropertyKey[]): string | undefined {
   const descMap: Record<string, string> = {
+    "napcat.enabled": "是否启用 NapCat 渠道",
     "napcat.ws_url": "napcat 服务 URL",
     "napcat.token": "napcat 服务 token",
     "napcat.groups": "群聊范围控制",
     "napcat.private_chats": "私聊范围控制",
     "napcat.group_members": "群内用户范围控制",
+    "weixin.enabled": "是否启用微信渠道",
+    "weixin.account_id": "微信 Bot 账号 ID",
+    "weixin.token": "微信 Bot token",
+    "weixin.base_url": "微信 iLink API 地址",
+    "weixin.cdn_base_url": "微信媒体 CDN 地址",
+    "weixin.users": "微信用户范围控制",
     providers: "供应商配置",
     "providers.type": "供应商端点类型",
     "models.plan": "规划层模型别名",

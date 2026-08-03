@@ -1,23 +1,20 @@
-import type { MediaKind, MediaMap, PendingMessage, UnifiedInboundMessage } from "@/message/types";
-import type { OneBotMessageEvent } from "@/onebot/websocket-client";
-import type { OneBotEventContext } from "@/onebot/onebot-client";
-import type { ImageMap } from "@/message/types";
+import os from "node:os";
+import { basename, posix } from "node:path";
+import XMLBuilder from "fast-xml-builder";
+import dayjs from "@/utils/time";
+import type { ChannelReplyContext } from "@/channel/types";
 import type { MessagePart } from "@/message/parts";
+import type { ImageMap, MediaKind, MediaMap, PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import { imageToText, videoToText } from "@/ai/multimedia";
-import { downloadToCache } from "@/utils/image-cache";
-import { compressImage } from "@/utils/image-resize";
-import { compressVideo } from "@/utils/video-resize";
-import { createFsFile } from "@/utils/fs-file";
 import { runPlanner } from "@/agents/planner";
 import { runPlanner as runContinuousPlanner } from "@/agents/planner-continuous";
 import { get_media_description, set_media_description } from "@/database/media-cache";
 import { listMentionableUserAliases } from "@/database/user-alias";
-import { resolveMentions } from "@/message/mention";
 import { logger } from "@/logger";
-import dayjs from "@/utils/time";
-import os from "node:os";
-import { basename, posix } from "node:path";
-import XMLBuilder from "fast-xml-builder";
+import { createFsFile } from "@/utils/fs-file";
+import { downloadToCache } from "@/utils/image-cache";
+import { compressImage } from "@/utils/image-resize";
+import { compressVideo } from "@/utils/video-resize";
 
 type MediaResource = {
   url: string;
@@ -323,7 +320,7 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, o
 export function createBot(sessionId: string) {
   const log = logger.child({ sessionId });
 
-  async function processBatch(batch: PendingMessage[], ctx: OneBotEventContext<OneBotMessageEvent>) {
+  async function processBatch(batch: PendingMessage[], ctx: ChannelReplyContext) {
     const mediaMaps = await Promise.all(batch.map((m) => m.resourcesPromise!));
     const mediaMap: MediaMap = new Map();
     for (const map of mediaMaps) {
@@ -338,20 +335,20 @@ export function createBot(sessionId: string) {
     try {
       const onReply = async (segments: MessagePart[]) => {
         const mentionableUsers = (() => {
-          if (ctx.event.message_type !== "group") return [];
+          if (ctx.platform !== "onebot" || ctx.conversationType !== "group") return [];
           if (segments.some((segment) => typeof segment === "string" && segment.includes("@"))) {
-            return listMentionableUserAliases("onebot").filter((user) => user.platformId !== String(ctx.event.self_id));
+            return listMentionableUserAliases("onebot").filter((user) => user.platformId !== ctx.selfId);
           }
           return [];
         })();
 
         for (const seg of segments) {
-          await ctx.reply(typeof seg === "string" ? resolveMentions(seg, mentionableUsers) : seg);
+          await ctx.reply(seg, mentionableUsers);
           await Bun.sleep(500);
         }
       };
       let replied: boolean;
-      if (1 > 2) {
+      if (1 < 2) {
         replied = await runPlanner(prompt, onReply, log);
       } else {
         replied = await runContinuousPlanner(prompt, onReply, log);
@@ -372,7 +369,7 @@ export function createBot(sessionId: string) {
   let dirty = false;
   let evaluating = false;
 
-  async function evaluationLoop(ctx: OneBotEventContext<OneBotMessageEvent>) {
+  async function evaluationLoop(ctx: ChannelReplyContext) {
     if (evaluating) {
       dirty = true;
       return;
@@ -476,7 +473,7 @@ export function createBot(sessionId: string) {
   }
 
   return {
-    enqueue: (message: PendingMessage, ctx: OneBotEventContext<OneBotMessageEvent>) => {
+    enqueue: (message: PendingMessage, ctx: ChannelReplyContext) => {
       // 启动资源预处理（不阻塞入队）
       message.resourcesPromise = (async () => {
         const resources = new Map<string, MediaResource>();

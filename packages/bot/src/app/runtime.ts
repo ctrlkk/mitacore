@@ -1,14 +1,18 @@
+import type { LanguageModelUsage } from "ai";
 import type { OneBotIncomingMessageSegment, OneBotMessageEvent } from "@/onebot/websocket-client";
 import type { PendingMessage, UnifiedInboundMessage } from "@/message/types";
-import type { LanguageModelUsage } from "ai";
-import { OneBotClient, type OneBotEventContext } from "@/onebot/onebot-client";
-import { startBuiltinNapCat } from "@/napcat/loader";
-import { registerShutdownHook } from "@/utils/shutdown";
-import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
-import { config, type Config } from "@/config";
+import type { ChannelReplyContext } from "@/channel/types";
 import { createBot } from "@/app/queue-loop";
-import { cache } from "@/utils/cache";
+import { config, saveConfig, type Config } from "@/config";
+import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
+import { OneBotClient, type OneBotEventContext } from "@/onebot/onebot-client";
+import { resolveMentions } from "@/message/mention";
+import { startBuiltinNapCat } from "@/napcat/loader";
 import { logger } from "@/logger";
+import { cache } from "@/utils/cache";
+import { registerShutdownHook } from "@/utils/shutdown";
+import { WeixinClient } from "@/weixin/client";
+import { loginWithQr } from "@/weixin/login";
 
 /**
  * 检查ID是否在范围内
@@ -110,12 +114,7 @@ async function handleCommand(
   return false;
 }
 
-export async function startBot() {
-  // 先跑数据库迁移：空库走 bootstrap，已 bootstrap 的库只跑新增迁移
-  const { db } = await import("@/database/db");
-  const { apply } = await import("@/database/migration");
-  await apply(db);
-
+async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<typeof createBot>) {
   // 根据配置选择启动方式
   let wsUrl: string;
   let accessToken: string;
@@ -145,18 +144,6 @@ export async function startBot() {
   ensureUserAlias("onebot", selfId, user.nickname);
 
   logger.info({ selfId, nickname: user.nickname }, "Bot 已连接并运行");
-
-  const getBot = (() => {
-    const botMap = new Map<string, ReturnType<typeof createBot>>();
-    return (sessionId: string) => {
-      let bot = botMap.get(sessionId);
-      if (!bot) {
-        bot = createBot(sessionId);
-        botMap.set(sessionId, bot);
-      }
-      return bot;
-    };
-  })();
 
   bot.onMessage(async (event, ctx) => {
     const segments = event.message;
@@ -260,9 +247,107 @@ export async function startBot() {
         date: new Date(event.time * 1000),
         isAt,
       };
-      getBot(sessionId).enqueue(message, ctx);
+      const channelContext: ChannelReplyContext = {
+        platform: "onebot",
+        conversationType: event.message_type,
+        selfId,
+        reply: async (part, mentionableUsers = []) =>
+          await ctx.reply(typeof part === "string" ? resolveMentions(part, mentionableUsers) : part),
+        setTyping: async () => await ctx.setTyping(),
+      };
+      getBot(sessionId).enqueue(message, channelContext);
     } catch (error) {
       logger.error({ sessionId, error }, "消息解析或入队失败");
     }
   });
+}
+
+async function startWeixinChannel(getBot: (sessionId: string) => ReturnType<typeof createBot>) {
+  const configuredCredentials = (() => {
+    if (!config.weixin.account_id || !config.weixin.token) return null;
+    return {
+      accountId: config.weixin.account_id,
+      token: config.weixin.token,
+      baseUrl: config.weixin.base_url,
+    };
+  })();
+  const credentials = configuredCredentials ?? (await loginWithQr());
+
+  if (!configuredCredentials) {
+    await saveConfig({
+      ...config,
+      weixin: {
+        ...config.weixin,
+        account_id: credentials.accountId,
+        token: credentials.token,
+        base_url: credentials.baseUrl,
+      },
+    });
+    logger.info({ accountId: credentials.accountId }, "微信凭证已写入 config.toml");
+  }
+  ensureUserAlias("weixin", credentials.accountId, "微信 Bot");
+
+  const client = new WeixinClient(credentials, config.weixin);
+  registerShutdownHook("微信", () => client.stop());
+  void client
+    .start(async (event) => {
+      if (!isIdInScope(event.senderId, config.weixin.users)) return;
+
+      const alias = ensureUserAlias("weixin", event.senderId, event.nickname);
+      const rawText = event.segments
+        .filter((segment): segment is Extract<UnifiedInboundMessage, { type: "text" }> => segment.type === "text")
+        .map((segment) => segment.text)
+        .join(" ")
+        .trim();
+
+      if (rawText === "/ping") {
+        const latency = event.message.create_time_ms ? Date.now() - event.message.create_time_ms : 0;
+        await event.context.reply(`pong (${latency}ms)`);
+        return;
+      }
+      if (rawText === "/usage") {
+        const usage = await cache.get<LanguageModelUsage>("usage");
+        const format = (value: number | undefined) => (value ?? 0).toLocaleString();
+        await event.context.reply(
+          [
+            `├ 输入 ${format(usage?.inputTokens)}`,
+            `│  ├ 缓存读 ${format(usage?.inputTokenDetails?.cacheReadTokens)}`,
+            `│  └ 缓存写 ${format(usage?.inputTokenDetails?.cacheWriteTokens)}`,
+            `├ 输出 ${format(usage?.outputTokens)}`,
+            `└ 总计 ${format(usage?.totalTokens)}`,
+          ].join("\n"),
+        );
+        return;
+      }
+
+      const message: PendingMessage = {
+        userId: shortIdFor(alias.id),
+        unifiedMessages: event.segments,
+        nickname: event.nickname,
+        date: new Date(event.message.create_time_ms ?? Date.now()),
+        isAt: true,
+      };
+      getBot(event.sessionId).enqueue(message, event.context);
+    })
+    .catch((error) => logger.error({ error }, "微信渠道异常退出"));
+}
+
+export async function startBot() {
+  // 先跑数据库迁移：空库走 bootstrap，已 bootstrap 的库只跑新增迁移
+  const { db } = await import("@/database/db");
+  const { apply } = await import("@/database/migration");
+  await apply(db);
+
+  const botMap = new Map<string, ReturnType<typeof createBot>>();
+  const getBot = (sessionId: string) => {
+    let bot = botMap.get(sessionId);
+    if (!bot) {
+      bot = createBot(sessionId);
+      botMap.set(sessionId, bot);
+    }
+    return bot;
+  };
+
+  if (config.napcat.enabled) await startNapCatChannel(getBot);
+  if (config.weixin.enabled) await startWeixinChannel(getBot);
 }

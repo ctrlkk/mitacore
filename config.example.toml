@@ -6,6 +6,7 @@
 
 # napcat 平台配置
 [napcat]
+enabled = true
 # ws_url: 自定义 napcat WebSocket 地址，为空时使用内置服务
 # token: napcat 服务 token，为空时使用内置服务
 # tip: 如果你不懂这些配置，那么建议直接无视它们
@@ -32,6 +33,19 @@ ids = ["123456789"]
 
 # group_members: 群内用户范围控制（在已允许的群内，进一步控制哪些成员可以触发）
 [napcat.group_members]
+mode = "blacklist"
+ids = []
+
+# 微信渠道。启用且未填写 account_id/token 时，启动后会在终端显示登录二维码；
+# 扫码成功后 account_id、token 与服务端分配的 base_url 会自动写回 config.toml。
+[weixin]
+enabled = false
+# account_id = ""
+# token = ""
+base_url = "https://ilinkai.weixin.qq.com"
+cdn_base_url = "https://novac2c.cdn.weixin.qq.com/c2c"
+
+[weixin.users]
 mode = "blacklist"
 ids = []
 
