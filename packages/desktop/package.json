@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "desktop",
+  "private": true,
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "prepackage": "bun run --cwd ../.. build",
+    "package": "electron-builder --config electron-builder.config.ts"
+  },
+  "dependencies": {
+    "electron": "^42.0.0"
+  },
+  "devDependencies": {
+    "electron-builder": "^26.0.0",
+    "electron-vite": "^5.0.0",
+    "vite": "^8.0.0"
+  }
+}
