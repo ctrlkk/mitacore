@@ -13,6 +13,7 @@ import { logger } from "@/logger";
 import { WeixinClient } from "@/weixin/client";
 import { loginWithQr } from "@/weixin/login";
 import { dataPath } from "@/utils/path";
+import { channelController } from "@/app/channel-controller";
 
 function createWeixinSyncBufferStore(accountId: string) {
   const safeAccountId = accountId.replace(/[^a-zA-Z0-9_.-]/g, "_");
@@ -148,12 +149,23 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
   let accessToken: string;
 
   if (config.napcat.qq_id) {
-    const result = await startBuiltinNapCat(config.napcat.qq_id);
-    wsUrl = result.wsUrl;
-    accessToken = result.accessToken;
+    channelController.updateNapcat({ status: "starting", error: undefined });
+    try {
+      const result = await startBuiltinNapCat(config.napcat.qq_id);
+      wsUrl = result.wsUrl;
+      accessToken = result.accessToken;
+      channelController.updateNapcat({ status: "ready", embed_url: result.webuiUrl });
+    } catch (error) {
+      channelController.updateNapcat({
+        status: "failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   } else {
     wsUrl = config.napcat.ws_url!;
     accessToken = config.napcat.token ?? "";
+    channelController.updateNapcat({ status: "external", embed_url: undefined, error: undefined });
     logger.info({ wsUrl }, "使用外置 NapCat");
   }
 
@@ -297,19 +309,38 @@ async function startWeixinChannel(getBot: (sessionId: string) => ReturnType<type
       token: config.weixin.token,
     };
   })();
-  const credentials = configuredCredentials ?? (await loginWithQr());
+  const credentials =
+    configuredCredentials ??
+    (await channelController.loginWithQr(
+      async (waitForVerifyCode) =>
+        await loginWithQr({
+          onQrCode: (qrcode_content) => channelController.updateWeixin({ status: "waiting_qr", qrcode_content }),
+          onScanned: () => channelController.updateWeixin({ status: "scanned" }),
+          onVerifyCodeRequired: () => channelController.updateWeixin({ status: "waiting_verify_code" }),
+          waitForVerifyCode,
+        }),
+    ));
 
   if (!configuredCredentials) {
-    await saveConfig({
-      ...config,
-      weixin: {
-        ...config.weixin,
-        account_id: credentials.accountId,
-        token: credentials.token,
-      },
-    });
-    logger.info({ accountId: credentials.accountId }, "微信凭证已写入 config.toml");
+    try {
+      await saveConfig({
+        ...config,
+        weixin: {
+          ...config.weixin,
+          account_id: credentials.accountId,
+          token: credentials.token,
+        },
+      });
+      logger.info({ accountId: credentials.accountId }, "微信凭证已写入 config.toml");
+    } catch (error) {
+      channelController.updateWeixin({
+        status: "failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   }
+  channelController.updateWeixin({ status: "ready", qrcode_content: undefined, error: undefined });
   ensureUserAlias("weixin", credentials.accountId, "微信 Bot");
 
   const client = new WeixinClient(credentials, createWeixinSyncBufferStore(credentials.accountId));
@@ -329,21 +360,6 @@ async function startWeixinChannel(getBot: (sessionId: string) => ReturnType<type
         await event.context.reply(`pong (${latency}ms)`);
         return;
       }
-      /* 已移除 /usage 指令：
-        const usage = await cache.get<LanguageModelUsage>("usage");
-        const format = (value: number | undefined) => (value ?? 0).toLocaleString();
-        await event.context.reply(
-          [
-            `├ 输入 ${format(usage?.inputTokens)}`,
-            `│  ├ 缓存读 ${format(usage?.inputTokenDetails?.cacheReadTokens)}`,
-            `│  └ 缓存写 ${format(usage?.inputTokenDetails?.cacheWriteTokens)}`,
-            `├ 输出 ${format(usage?.outputTokens)}`,
-            `└ 总计 ${format(usage?.totalTokens)}`,
-          ].join("\n"),
-        );
-        return;
-      }
-      */
 
       const message: PendingMessage = {
         userId: shortIdFor(alias.id),
@@ -373,6 +389,12 @@ export async function startBot() {
     return bot;
   };
 
-  if (config.napcat.enabled) await startNapCatChannel(getBot);
-  if (config.weixin.enabled) await startWeixinChannel(getBot);
+  await Promise.all([
+    (async () => {
+      if (config.napcat.enabled) await startNapCatChannel(getBot);
+    })(),
+    (async () => {
+      if (config.weixin.enabled) await startWeixinChannel(getBot);
+    })(),
+  ]);
 }

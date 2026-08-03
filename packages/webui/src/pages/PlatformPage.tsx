@@ -1,13 +1,45 @@
 import type { Config } from "../types";
 import { ScopeEditor } from "../components/ScopeEditor";
+import { QRCode } from "antd";
+import { useEffect, useState } from "react";
+import { useChannels } from "../hooks/useChannels";
 
-type Props = { config: Config; setConfig: React.Dispatch<React.SetStateAction<Config>> };
+type Props = {
+  config: Config;
+  setConfig: React.Dispatch<React.SetStateAction<Config>>;
+  reloadConfig(): Promise<void>;
+};
 
-export function PlatformPage({ config, setConfig }: Props) {
+export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
+  const channels = useChannels();
+  const [verifyCode, setVerifyCode] = useState("");
+  const [verifyError, setVerifyError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  useEffect(() => {
+    if (channels.weixin.status === "ready") void reloadConfig();
+  }, [channels.weixin.status, reloadConfig]);
   const updateNapcat = (patch: Partial<Config["napcat"]>) =>
     setConfig((value) => ({ ...value, napcat: { ...value.napcat, ...patch } }));
   const updateWeixin = (patch: Partial<Config["weixin"]>) =>
     setConfig((value) => ({ ...value, weixin: { ...value.weixin, ...patch } }));
+  const submitVerifyCode = async () => {
+    setSubmitting(true);
+    setVerifyError("");
+    try {
+      const response = await fetch("/api/weixin/login/verify-code", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: verifyCode }),
+      });
+      const data = (await response.json()) as { error?: { message?: string } };
+      if (!response.ok) throw new Error(data.error?.message ?? "验证码提交失败");
+      setVerifyCode("");
+    } catch (error) {
+      setVerifyError(error instanceof Error ? error.message : "验证码提交失败");
+    } finally {
+      setSubmitting(false);
+    }
+  };
   return (
     <div className="content">
       <section className="card">
@@ -36,6 +68,19 @@ export function PlatformPage({ config, setConfig }: Props) {
             </div>
             {config.napcat.enabled && (
               <>
+                {channels.napcat.status === "starting" && <p className="notice">NapCat 正在启动…</p>}
+                {channels.napcat.status === "ready" && channels.napcat.embed_url && (
+                  <div className="napcat-panel">
+                    <div className="panel-heading">
+                      <strong>NapCat 管理面板</strong>
+                      <a href={channels.napcat.embed_url} target="_blank" rel="noreferrer">
+                        打开管理后台
+                      </a>
+                    </div>
+                  </div>
+                )}
+                {channels.napcat.status === "external" && <p className="notice">外置 NapCat 不提供内嵌管理面板。</p>}
+                {channels.napcat.error && <p className="notice error">{channels.napcat.error}</p>}
                 <label className="field">
                   机器人 QQ 号
                   <input
@@ -84,7 +129,34 @@ export function PlatformPage({ config, setConfig }: Props) {
             </div>
             {config.weixin.enabled && (
               <>
-                <p className="notice">扫码登录接口将在后端接入时显示在这里。现有凭证仍可在下方管理。</p>
+                {channels.weixin.status === "waiting_qr" && channels.weixin.qrcode_content && (
+                  <div className="weixin-login">
+                    <div>
+                      <strong>请使用微信扫描二维码</strong>
+                      <p>扫描后请在手机上确认授权。</p>
+                    </div>
+                    <QRCode value={channels.weixin.qrcode_content} size={176} />
+                  </div>
+                )}
+                {channels.weixin.status === "scanned" && <p className="notice">二维码已扫描，正在等待手机确认。</p>}
+                {channels.weixin.status === "waiting_verify_code" && (
+                  <div className="verify-code">
+                    <label className="field">
+                      请输入微信显示的数字验证码
+                      <input
+                        value={verifyCode}
+                        inputMode="numeric"
+                        onChange={(event) => setVerifyCode(event.target.value)}
+                      />
+                    </label>
+                    <button className="button" disabled={submitting || !verifyCode.trim()} onClick={submitVerifyCode}>
+                      提交验证码
+                    </button>
+                    {verifyError && <p className="notice error">{verifyError}</p>}
+                  </div>
+                )}
+                {channels.weixin.status === "ready" && <p className="notice success">微信渠道已连接。</p>}
+                {channels.weixin.error && <p className="notice error">{channels.weixin.error}</p>}
                 <label className="field">
                   Bot 账号 ID
                   <input

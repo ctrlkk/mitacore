@@ -12,7 +12,7 @@ const pageMeta = {
 } as const;
 
 function Page({ page }: { page: keyof typeof pageMeta }) {
-  const { config, setConfig, loading, error, saveState, saveConfig, updateProvider } = useConfig();
+  const { config, setConfig, loading, error, saveState, saveConfig, updateProvider, reloadConfig } = useConfig();
   const [eyebrow, title] = pageMeta[page];
   if (loading)
     return (
@@ -23,7 +23,7 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
     );
   const content =
     page === "platform" ? (
-      <PlatformPage config={config} setConfig={setConfig} />
+      <PlatformPage config={config} setConfig={setConfig} reloadConfig={reloadConfig} />
     ) : page === "models" ? (
       <ModelsPage config={config} setConfig={setConfig} updateProvider={updateProvider} />
     ) : (

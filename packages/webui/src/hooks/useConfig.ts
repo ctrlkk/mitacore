@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { defaultConfig, type Config, type Provider } from "../types";
 
 export function useConfig() {
@@ -6,16 +6,21 @@ export function useConfig() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  useEffect(() => {
-    fetch("/api/config")
-      .then(async (response) => {
-        if (!response.ok) throw new Error("加载配置失败");
-        return response.json();
-      })
-      .then(setConfig)
-      .catch((exception) => setError(exception instanceof Error ? exception.message : "加载配置失败"))
-      .finally(() => setLoading(false));
+  const reloadConfig = useCallback(async () => {
+    try {
+      const response = await fetch("/api/config");
+      if (!response.ok) throw new Error("加载配置失败");
+      setConfig((await response.json()) as Config);
+      setError("");
+    } catch (exception) {
+      setError(exception instanceof Error ? exception.message : "加载配置失败");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+  useEffect(() => {
+    void reloadConfig();
+  }, [reloadConfig]);
   const saveConfig = async () => {
     setSaveState("saving");
     setError("");
@@ -41,5 +46,5 @@ export function useConfig() {
         providerIndex === index ? { ...provider, ...patch } : provider,
       ),
     }));
-  return { config, setConfig, loading, error, saveState, saveConfig, updateProvider };
+  return { config, setConfig, loading, error, saveState, saveConfig, updateProvider, reloadConfig };
 }

@@ -563,6 +563,7 @@ export async function startBuiltinNapCat(qqId: string) {
     return {
       wsUrl: `ws://127.0.0.1:${wsPort}`,
       accessToken: "",
+      webuiUrl,
     };
   } catch (error) {
     await napcat?.stop();

@@ -8,6 +8,7 @@ import { ConfigValidationError, loadConfig, saveConfig } from "@/config";
 import { delete_image_description, list_image_descriptions, set_media_description } from "@/database/media-cache";
 import { IMAGE_CACHE_DIR, sanitizeImagePath, virtualToRealPath } from "@/utils/image-cache";
 import { z } from "zod";
+import { channelController } from "@/app/channel-controller";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"]);
 
@@ -37,6 +38,10 @@ const modelRequestSchema = z.object({
     .url()
     .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "仅支持 HTTP 或 HTTPS 地址"),
   api_key: z.string().trim().min(1, "请先填写 API Key"),
+});
+
+const verifyCodeSchema = z.object({
+  code: z.string().trim().min(1, "请输入验证码").max(32, "验证码格式不正确"),
 });
 
 function errorResponse(error: unknown) {
@@ -72,6 +77,46 @@ export function createApp() {
   const app = new Hono();
 
   app.get("/api/health", (c) => c.json({ status: "ok" }));
+
+  app.get("/api/runtime", (c) => c.json(channelController.getSnapshot()));
+
+  app.get("/api/runtime/events", (c) => {
+    const encoder = new TextEncoder();
+    let unsubscribe: (() => void) | undefined;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const send = (snapshot: ReturnType<typeof channelController.getSnapshot>) => {
+          controller.enqueue(encoder.encode(`event: runtime\ndata: ${JSON.stringify(snapshot)}\n\n`));
+        };
+        send(channelController.getSnapshot());
+        unsubscribe = channelController.subscribe(send);
+      },
+      cancel() {
+        unsubscribe?.();
+      },
+    });
+    c.req.raw.signal.addEventListener("abort", () => unsubscribe?.(), { once: true });
+    return new Response(stream, {
+      headers: {
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+        "content-type": "text/event-stream",
+      },
+    });
+  });
+
+  app.post("/api/weixin/login/verify-code", async (c) => {
+    try {
+      const { code } = verifyCodeSchema.parse(await c.req.json());
+      if (!channelController.submitVerifyCode(code)) {
+        return c.json({ error: { message: "当前没有等待输入验证码的登录请求" } }, 409);
+      }
+      return c.json({ accepted: true });
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
 
   app.get("/api/config", (c) => {
     try {
@@ -231,8 +276,14 @@ export function createApp() {
 }
 
 export function startWebUi() {
+  const app = createApp();
   const server = Bun.serve({
-    fetch: createApp().fetch,
+    fetch(request, server) {
+      if (new URL(request.url).pathname === "/api/runtime/events") {
+        server.timeout(request, 0);
+      }
+      return app.fetch(request);
+    },
     hostname: "127.0.0.1",
     port: 14251,
   });

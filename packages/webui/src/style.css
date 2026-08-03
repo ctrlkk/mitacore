@@ -279,6 +279,39 @@ h2,
   align-content: start;
   gap: 15px;
 }
+.weixin-login,
+.verify-code,
+.napcat-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #d3e4dc;
+  border-radius: 8px;
+  background: #f5fbf8;
+}
+.weixin-login {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+.weixin-login p {
+  margin-top: 5px;
+  color: #71808e;
+  font-size: 12px;
+}
+.verify-code .button {
+  width: fit-content;
+}
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+.panel-heading a {
+  color: #176c58;
+  font-weight: 700;
+}
 .channel-title {
   display: flex;
   justify-content: space-between;
