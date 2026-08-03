@@ -2,6 +2,7 @@ import { logger } from "./logger";
 import type { OneBotEventContext } from "./onebot/onebot-client";
 import type { OneBotMessageEvent } from "./onebot/websocket-client";
 import { findExecutable } from "./utils/find-executable";
+import { spawn } from "./utils/spawn";
 
 async function handleBilibiliDownload(input: string, ctx: OneBotEventContext<OneBotMessageEvent>) {
   const { mkdir } = await import("node:fs/promises");
@@ -35,14 +36,21 @@ async function handleBilibiliDownload(input: string, ctx: OneBotEventContext<One
   const ffmpeg = findExecutable("ffmpeg");
   if (ffmpeg) {
     try {
-      const proc = Bun.spawn(
-        [ffmpeg, "-ss", "0", "-i", outputPath, "-vframes", "1", "-q:v", "2", "-f", "image2pipe", "-"],
-        { stderr: "ignore" },
-      );
-      const buffer = await new Response(proc.stdout).arrayBuffer();
-      const exitCode = await proc.exited;
-      if (exitCode === 0 && buffer.byteLength > 0) {
-        const base64 = Buffer.from(buffer).toString("base64");
+      const { stdout, exitCode } = await spawn(ffmpeg, [
+        "-ss",
+        "0",
+        "-i",
+        outputPath,
+        "-vframes",
+        "1",
+        "-q:v",
+        "2",
+        "-f",
+        "image2pipe",
+        "-",
+      ]);
+      if (exitCode === 0 && stdout.byteLength > 0) {
+        const base64 = stdout.toString("base64");
         cover = `data:image/jpeg;base64,${base64}`;
       } else {
         logger.warn("封面提取失败");

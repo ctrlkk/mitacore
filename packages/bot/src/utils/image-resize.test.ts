@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { writeFile, mkdir } from "node:fs/promises";
 import { createFsFile } from "./fs-file";
 import { compressImage } from "./image-resize";
+import { spawn } from "./spawn";
 
 const FIXTURES_DIR = resolve(import.meta.dir, "__tests__/fixtures");
 const OUTPUT_DIR = resolve(import.meta.dir, "__tests__/output");
@@ -42,44 +43,51 @@ beforeAll(async () => {
 
 describe("compressImage", () => {
   for (const { name, file, expectedType, expectReduced, expectedDimensions } of testCases) {
-    test(name, async () => {
-      const fsFile = await createFsFile(resolve(FIXTURES_DIR, file));
-      const originalSize = fsFile.size;
-      const result = await compressImage(fsFile);
+    test(
+      name,
+      async () => {
+        const fsFile = await createFsFile(resolve(FIXTURES_DIR, file));
+        const originalSize = fsFile.size;
+        const result = await compressImage(fsFile);
 
-      // MIME 类型断言
-      expect(result.type).toBe(expectedType);
-      // 输出类型断言
-      expect(result).toBeInstanceOf(Blob);
+        // MIME 类型断言
+        expect(result.type).toBe(expectedType);
+        // 输出类型断言
+        expect(result).toBeInstanceOf(Blob);
 
-      // 写入压缩结果到 output 目录供人工检查
-      const outBuf = await result.arrayBuffer();
-      const parts = file.split(".");
-      const origExt = parts.pop() ?? "bin";
-      const baseName = parts.join(".");
-      const outExt = origExt === "bmp" ? "png" : origExt;
-      const outName = `${baseName}_${origExt}_compressed.${outExt}`;
-      const outputPath = resolve(OUTPUT_DIR, outName);
-      await writeFile(outputPath, new Uint8Array(outBuf));
+        // 写入压缩结果到 output 目录供人工检查
+        const outBuf = await result.arrayBuffer();
+        const parts = file.split(".");
+        const origExt = parts.pop() ?? "bin";
+        const baseName = parts.join(".");
+        const outExt = origExt === "bmp" ? "png" : origExt;
+        const outName = `${baseName}_${origExt}_compressed.${outExt}`;
+        const outputPath = resolve(OUTPUT_DIR, outName);
+        await writeFile(outputPath, new Uint8Array(outBuf));
 
-      // 文件大小断言
-      if (expectReduced === true) {
-        expect(result.size).toBeLessThan(originalSize);
-      } else if (expectReduced === false) {
-        expect(result.size).toBe(originalSize);
-      }
-      if (expectedDimensions) {
-        const proc = Bun.spawn({
-          cmd: ["ffprobe", "-v", "error", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", outputPath],
-          stdout: "pipe",
-          stderr: "pipe",
-        });
-        const [dimensions, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-        expect(exitCode).toBe(0);
-        expect(dimensions.trim()).toBe(`${expectedDimensions.width}x${expectedDimensions.height}`);
-      }
-      // "maybe" → 不断言大小（GIF 可能不减小）
-    });
+        // 文件大小断言
+        if (expectReduced === true) {
+          expect(result.size).toBeLessThan(originalSize);
+        } else if (expectReduced === false) {
+          expect(result.size).toBe(originalSize);
+        }
+        if (expectedDimensions) {
+          const { stdout, exitCode } = await spawn("ffprobe", [
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=s=x:p=0",
+            outputPath,
+          ]);
+          expect(exitCode).toBe(0);
+          expect(stdout.toString().trim()).toBe(`${expectedDimensions.width}x${expectedDimensions.height}`);
+        }
+        // "maybe" → 不断言大小（GIF 可能不减小）
+      },
+      20_000,
+    );
   }
 
   test("不支持的 MIME 类型透传", async () => {

@@ -1,5 +1,6 @@
 import { formatBytes } from "./format";
 import { findExecutable } from "./find-executable";
+import { spawn } from "./spawn";
 import { logger } from "@/logger";
 
 const MAX_DIM = 720;
@@ -28,9 +29,9 @@ async function transcodeVideo(file: File): Promise<Blob> {
     // -movflags frag_keyframe+empty_moov: 允许 MP4 流式输出到管道
     // -c:a aac: 音频转 AAC
     // -f mp4: 强制输出格式为 MP4
-    const proc = Bun.spawn({
-      cmd: [
-        ffmpeg,
+    const { stdout, stderr, exitCode } = await spawn(
+      ffmpeg,
+      [
         "-i",
         "-",
         "-vf",
@@ -51,21 +52,15 @@ async function transcodeVideo(file: File): Promise<Blob> {
         "mp4",
         "-",
       ],
-      stdin: file.stream(),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+      { stdin: file },
+    );
 
-    const buffer = await new Response(proc.stdout).arrayBuffer();
-    const exitCode = await proc.exited;
-
-    if (exitCode !== 0 || buffer.byteLength === 0) {
-      const stderrText = await new Response(proc.stderr).text();
-      logger.warn({ exitCode, stderr: stderrText }, "ffmpeg 处理失败");
+    if (exitCode !== 0 || stdout.byteLength === 0) {
+      logger.warn({ exitCode, stderr }, "ffmpeg 处理失败");
       return file;
     }
 
-    const result = new Blob([buffer], { type: "video/mp4" });
+    const result = new Blob([stdout], { type: "video/mp4" });
     logger.info(
       {
         file: file.name,

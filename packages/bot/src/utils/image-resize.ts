@@ -1,5 +1,6 @@
 import { formatBytes } from "./format";
 import { findExecutable } from "./find-executable";
+import { spawn } from "./spawn";
 import { logger } from "@/logger";
 
 const MAX_DIM = 720;
@@ -17,9 +18,9 @@ async function resizeGif(file: File): Promise<Blob> {
   }
 
   try {
-    const proc = Bun.spawn({
-      cmd: [
-        gifsicle,
+    const { stdout, stderr, exitCode } = await spawn(
+      gifsicle,
+      [
         `--resize-fit=${MAX_DIM}x${MAX_DIM}`, // 等比缩放，限制在 MAX_DIM 以内
         "--optimize=3", // 无损 LZW 重组优化
         "--lossy=90", // 有损压缩（如果编译版本支持）
@@ -28,23 +29,15 @@ async function resizeGif(file: File): Promise<Blob> {
         "-", // 输出到 stdout
         "-", // 从 stdin 读取
       ],
-      stdin: file.stream(),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+      { stdin: file },
+    );
 
-    const [buffer, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).arrayBuffer(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-
-    if (exitCode !== 0 || buffer.byteLength === 0) {
+    if (exitCode !== 0 || stdout.byteLength === 0) {
       logger.warn({ exitCode, stderr }, "gifsicle 处理失败");
       return file;
     }
 
-    const result = new Blob([buffer], { type: "image/gif" });
+    const result = new Blob([stdout], { type: "image/gif" });
     logger.info(
       {
         file: file.name,
@@ -72,24 +65,19 @@ async function probeWebpCodec(file: Blob): Promise<"webp" | "webp_anim" | null> 
   }
 
   try {
-    const proc = Bun.spawn({
-      cmd: [ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name", "-of", "json", "-"],
-      stdin: file.stream(),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
+    const { stdout, stderr, exitCode } = await spawn(
+      ffprobe,
+      ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name", "-of", "json", "-"],
+      { stdin: file },
+    );
 
     if (exitCode !== 0) {
       logger.warn({ exitCode, stderr }, "ffprobe 图片探测失败");
       return null;
     }
 
-    const codecName = (JSON.parse(stdout) as { streams?: Array<{ codec_name?: string }> }).streams?.[0]?.codec_name;
+    const codecName = (JSON.parse(stdout.toString()) as { streams?: Array<{ codec_name?: string }> }).streams?.[0]
+      ?.codec_name;
     if (codecName === "webp" || codecName === "webp_anim") return codecName;
 
     logger.warn({ codecName }, "ffprobe 返回了未知的 WebP 编码类型");
@@ -163,9 +151,9 @@ export async function compressImage(file: File): Promise<Blob> {
   })();
 
   try {
-    const proc = Bun.spawn({
-      cmd: [
-        ffmpeg,
+    const { stdout, stderr, exitCode } = await spawn(
+      ffmpeg,
+      [
         "-hide_banner",
         "-loglevel",
         "error",
@@ -179,22 +167,15 @@ export async function compressImage(file: File): Promise<Blob> {
         ...profile.args,
         "-",
       ],
-      stdin: file.stream(),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [buffer, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).arrayBuffer(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
+      { stdin: file },
+    );
 
-    if (exitCode !== 0 || buffer.byteLength === 0) {
+    if (exitCode !== 0 || stdout.byteLength === 0) {
       logger.warn({ exitCode, stderr }, "ffmpeg 图片处理失败");
       return file;
     }
 
-    const result = new Blob([buffer], { type: profile.type });
+    const result = new Blob([stdout], { type: profile.type });
 
     logger.info(
       {
