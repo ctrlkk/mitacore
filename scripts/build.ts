@@ -1,6 +1,5 @@
 import { join } from "node:path";
-import { requirePkgs } from "../packages/playwright/scripts/build";
-import { rm, mkdir, copyFile, readFile, writeFile, access, stat, chmod, readdir, cp } from "node:fs/promises";
+import { rm, mkdir, copyFile, readFile, access, stat, chmod, readdir, cp } from "node:fs/promises";
 
 const root = join(import.meta.dir, "..");
 const outDir = join(root, "dist");
@@ -78,59 +77,31 @@ async function buildWebUi() {
 }
 
 /**
- * 构建 Node sidecar：调用 packages/playwright 自管的 esbuild 打包，
- * 然后复制产物 + 写最小 package.json + 安装运行时依赖
+ * 构建 Node sidecar：调用 packages/playwright 的 Vite 多入口 ESM 构建，
+ * 产物目录已包含外置运行时依赖，根构建只负责完整复制。
  */
 async function buildSidecar() {
   const sidecarDir = join(outDir, "sidecar");
   const pkgDir = join(root, "packages", "playwright");
-  const bundleOut = join(sidecarDir, "playwright.cjs");
 
-  // 清理旧依赖并创建目录
-  await rm(join(sidecarDir, "node_modules"), { recursive: true, force: true });
+  // 清理旧产物，避免残留已废弃的 CJS 文件
+  await rm(sidecarDir, { recursive: true, force: true });
   await mkdir(sidecarDir, { recursive: true });
 
-  // 子包自管打包
+  // 子包自管多入口打包
   await runCmd(["bun", "run", "build"], pkgDir);
 
-  // 复制产物
-  const bundleSrc = join(pkgDir, "dist", "playwright.cjs");
-  try {
-    await access(bundleSrc);
-  } catch {
-    throw new Error(`找不到子包 build 产物：${bundleSrc}`);
+  const sidecarEntries = ["entries/server.js", "entries/html-renderer.js"];
+  for (const entry of sidecarEntries) {
+    const bundleSrc = join(pkgDir, "dist", entry);
+    try {
+      await access(bundleSrc);
+    } catch {
+      throw new Error(`找不到子包 build 产物：${bundleSrc}`);
+    }
   }
-  await copyFile(bundleSrc, bundleOut);
-
-  // 生成最小 package.json
-  const pkgRaw = await readFile(join(pkgDir, "package.json"), "utf-8");
-  const sidecarPkg = JSON.parse(pkgRaw) as {
-    type?: string;
-    dependencies?: Record<string, string>;
-  };
-
-  const runtimeDeps: Record<string, string> = {};
-  for (const name of [...requirePkgs, "playwright"]) {
-    const ver = sidecarPkg.dependencies?.[name];
-    if (ver) runtimeDeps[name] = ver;
-  }
-
-  await writeFile(
-    join(sidecarDir, "package.json"),
-    JSON.stringify(
-      {
-        name: "sidecar-runtime",
-        private: true,
-        type: sidecarPkg.type ?? "commonjs",
-        dependencies: runtimeDeps,
-      },
-      null,
-      2,
-    ),
-  );
-
-  // 安装运行时依赖
-  await runCmd(["bun", "install", "--linker=hoisted", "--omit=dev", "--omit=peer"], sidecarDir);
+  // 子包的 dist 包含 entries/、chunks/ 和 node_modules/，需完整复制。
+  await cp(join(pkgDir, "dist"), sidecarDir, { recursive: true });
 }
 
 /**

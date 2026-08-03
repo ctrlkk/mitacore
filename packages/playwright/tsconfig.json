@@ -10,5 +10,5 @@
     "strict": true,
     "types": ["node"]
   },
-  "include": ["*.ts", "scripts/*.ts"]
+  "include": ["vite.config.ts", "src/**/*.ts", "build/**/*.ts"]
 }

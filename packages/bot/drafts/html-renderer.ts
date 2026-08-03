@@ -29,8 +29,8 @@ async function setupHtmlRenderer() {
     throw new Error("找不到 node 可执行文件，请在 bin 目录下放置 node.exe，或安装 Node.js");
   }
 
-  const bundled = sidecarPath("render-html.cjs");
-  const source = projectPath("packages", "playwright", "render-html.ts");
+  const bundled = sidecarPath("entries", "html-renderer.js");
+  const source = projectPath("packages", "playwright", "src", "html-renderer.ts");
   const childPath = existsSync(bundled) ? bundled : source;
 
   const child = spawn(nodeBin, [childPath], {
