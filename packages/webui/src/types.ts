@@ -2,7 +2,7 @@ export type Scope = { mode: "whitelist" | "blacklist"; ids: string[] };
 
 export type Provider = {
   name: string;
-  type: "anthropic" | "deepseek" | "openai" | "openai-compatible";
+  type: "anthropic" | "deepseek" | "openai-responses" | "openai-compatible";
   options: { base_url: string; api_key: string };
   models: { id: string; alias: string }[];
 };

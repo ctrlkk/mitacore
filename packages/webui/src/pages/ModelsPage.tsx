@@ -91,7 +91,7 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
                       updateProvider(providerIndex, { type: event.target.value as Provider["type"] })
                     }
                   >
-                    {["anthropic", "deepseek", "openai", "openai-compatible"].map((type) => (
+                    {["anthropic", "deepseek", "openai-responses", "openai-compatible"].map((type) => (
                       <option key={type}>{type}</option>
                     ))}
                   </select>

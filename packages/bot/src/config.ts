@@ -11,7 +11,7 @@ const scopeConfig = z.object({
   ids: z.array(z.string()).default([]).describe("范围控制的 ID 列表"),
 });
 
-const providerType = z.enum(["anthropic", "openai", "openai-compatible", "deepseek"]);
+const providerType = z.enum(["anthropic", "openai-responses", "openai-compatible", "deepseek"]);
 
 const providerConfig = z.object({
   name: z.string().trim().min(1, "供应商名称不能为空").describe("供应商名称"),

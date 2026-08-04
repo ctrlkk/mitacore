@@ -15,7 +15,7 @@ function createProvider(cfg: Config["providers"][number]): ProviderFn {
   switch (type) {
     case "anthropic":
       return createAnthropic({ name, ...common });
-    case "openai":
+    case "openai-responses":
       return createOpenAI({ name, ...common });
     case "openai-compatible":
       return createOpenAICompatible({ name, ...common });

@@ -33,7 +33,7 @@ function getSafeImagePath(rawFilename: string) {
 }
 
 const modelRequestSchema = z.object({
-  type: z.enum(["anthropic", "openai", "openai-compatible", "deepseek"]),
+  type: z.enum(["anthropic", "openai-responses", "openai-compatible", "deepseek"]),
   base_url: z
     .url()
     .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "仅支持 HTTP 或 HTTPS 地址"),
