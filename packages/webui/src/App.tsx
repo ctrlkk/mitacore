@@ -1,4 +1,4 @@
-import { Check, Image, LoaderCircle, Save, Settings2 } from "lucide-react";
+import { Check, Image, LoaderCircle, RefreshCw, Save, Settings2 } from "lucide-react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { useConfig } from "./hooks/useConfig";
 import { ImagesPage } from "./pages/ImagesPage";
@@ -12,7 +12,18 @@ const pageMeta = {
 } as const;
 
 function Page({ page }: { page: keyof typeof pageMeta }) {
-  const { config, setConfig, loading, error, saveState, saveConfig, updateProvider, reloadConfig } = useConfig();
+  const {
+    config,
+    setConfig,
+    loading,
+    error,
+    saveState,
+    saveConfig,
+    restartState,
+    restart,
+    updateProvider,
+    reloadConfig,
+  } = useConfig();
   const [eyebrow, title] = pageMeta[page];
   if (loading)
     return (
@@ -62,19 +73,32 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
             <h1>{title}</h1>
           </div>
           {page !== "images" && (
-            <button className="button" disabled={saveState === "saving"} onClick={saveConfig}>
-              {saveState === "saving" ? (
-                <LoaderCircle className="spin" size={17} />
-              ) : saveState === "saved" ? (
-                <Check size={17} />
-              ) : (
-                <Save size={17} />
-              )}
-              {saveState === "saved" ? "已保存" : saveState === "saving" ? "正在保存" : "保存配置"}
-            </button>
+            <div className="header-actions">
+              <button className="button secondary" disabled={restartState === "restarting"} onClick={restart}>
+                {restartState === "restarting" ? <LoaderCircle className="spin" size={17} /> : <RefreshCw size={17} />}
+                {restartState === "restarting" ? "正在重启" : "重启服务（仅桌面版）"}
+              </button>
+              <button
+                className="button"
+                disabled={saveState === "saving" || restartState === "restarting"}
+                onClick={saveConfig}
+              >
+                {saveState === "saving" ? (
+                  <LoaderCircle className="spin" size={17} />
+                ) : saveState === "saved" ? (
+                  <Check size={17} />
+                ) : (
+                  <Save size={17} />
+                )}
+                {saveState === "saved" ? "已保存" : saveState === "saving" ? "正在保存" : "保存配置"}
+              </button>
+            </div>
           )}
         </header>
         {error && <p className="notice error">{error}</p>}
+        {page !== "images" && saveState === "saved" && (
+          <p className="notice">配置已保存，重启服务后生效。重启功能仅支持桌面版。</p>
+        )}
         {content}
       </main>
     </div>

@@ -8,6 +8,8 @@ const rootDir = fileURLToPath(new URL("../../../..", import.meta.url));
 const port = 14251;
 let bot: ChildProcess | undefined;
 let webui: ChildProcess | undefined;
+let quitting = false;
+let botRestartTimer: NodeJS.Timeout | undefined;
 
 function runtimePath(...segments: string[]) {
   return app.isPackaged ? join(process.resourcesPath, "runtime", ...segments) : join(rootDir, ...segments);
@@ -19,18 +21,25 @@ function startBot() {
     const entry = runtimePath(executable);
     if (!existsSync(entry)) throw new Error(`找不到 bot 运行文件：${entry}`);
     bot = spawn(entry, [], { cwd: runtimePath(), stdio: "inherit", windowsHide: true });
-    return;
+  } else {
+    bot = spawn("bun", ["run", "packages/bot/src/index.ts"], {
+      cwd: rootDir,
+      stdio: "inherit",
+      windowsHide: true,
+    });
+    webui = spawn("bun", ["run", "--cwd", "packages/webui", "dev", "--host", "127.0.0.1"], {
+      cwd: rootDir,
+      stdio: "inherit",
+      windowsHide: true,
+    });
   }
-
-  bot = spawn("bun", ["run", "packages/bot/src/index.ts"], {
-    cwd: rootDir,
-    stdio: "inherit",
-    windowsHide: true,
-  });
-  webui = spawn("bun", ["run", "--cwd", "packages/webui", "dev", "--host", "127.0.0.1"], {
-    cwd: rootDir,
-    stdio: "inherit",
-    windowsHide: true,
+  bot.once("exit", () => {
+    bot = undefined;
+    if (quitting) return;
+    botRestartTimer = setTimeout(() => {
+      botRestartTimer = undefined;
+      startBot();
+    }, 500);
   });
 }
 
@@ -85,6 +94,8 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+  quitting = true;
+  if (botRestartTimer) clearTimeout(botRestartTimer);
   bot?.kill();
   webui?.kill();
   bot = undefined;

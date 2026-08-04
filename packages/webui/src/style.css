@@ -109,6 +109,12 @@ main > header {
   border-bottom: 1px solid #e3e6eb;
   background: #fff;
 }
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
 h1,
 h2,
 h3,

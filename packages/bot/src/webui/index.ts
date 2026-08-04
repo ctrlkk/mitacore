@@ -137,6 +137,11 @@ export function createApp() {
     }
   });
 
+  app.post("/api/restart", (c) => {
+    setTimeout(() => process.exit(0), 100);
+    return c.json({ restarting: true });
+  });
+
   app.post("/api/models", async (c) => {
     try {
       const request = modelRequestSchema.parse(await c.req.json());
