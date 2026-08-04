@@ -1,7 +1,10 @@
 import { cp, mkdir, readFile, writeFile, rm, readdir, rename, stat } from "node:fs/promises";
 import { resolve, dirname, relative, isAbsolute, posix } from "node:path";
+import { Mutex } from "async-mutex";
 import { glob } from "glob";
 import { dataPath } from "@/utils/path";
+
+const editLocks = new Map<string, Mutex>();
 
 export interface IMemoryStorage {
   read(path: string, offset: number, limit: number): Promise<string>;
@@ -101,20 +104,28 @@ export async function createFsStorage(): Promise<IMemoryStorage> {
 
   async function edit(path: string, oldString: string, newString: string): Promise<string> {
     const fullPath = getSafePath(path);
-    try {
-      const content = await readFile(fullPath, "utf-8");
-      const occurrences = content.split(oldString).length - 1;
-      if (occurrences === 0) return `错误：在 "${path}" 中未找到 old_string。`;
-      if (occurrences > 1)
-        return `错误：old_string 在 "${path}" 中匹配到 ${occurrences} 处，必须唯一。请提供更多上下文。`;
-
-      const newContent = content.replace(oldString, newString);
-      await writeFile(fullPath, newContent, "utf-8");
-      return "编辑成功。";
-    } catch (e: any) {
-      if (e.code === "ENOENT") return `错误：文件 "${path}" 不存在。`;
-      throw e;
+    let lock = editLocks.get(fullPath);
+    if (!lock) {
+      lock = new Mutex();
+      editLocks.set(fullPath, lock);
     }
+
+    return lock.runExclusive(async () => {
+      try {
+        const content = await readFile(fullPath, "utf-8");
+        const occurrences = content.split(oldString).length - 1;
+        if (occurrences === 0) return `错误：在 "${path}" 中未找到 old_string。`;
+        if (occurrences > 1)
+          return `错误：old_string 在 "${path}" 中匹配到 ${occurrences} 处，必须唯一。请提供更多上下文。`;
+
+        const newContent = content.replace(oldString, newString);
+        await writeFile(fullPath, newContent, "utf-8");
+        return "编辑成功。";
+      } catch (e: any) {
+        if (e.code === "ENOENT") return `错误：文件 "${path}" 不存在。`;
+        throw e;
+      }
+    });
   }
 
   async function copy(source: string, target: string, recursive: boolean): Promise<string> {
