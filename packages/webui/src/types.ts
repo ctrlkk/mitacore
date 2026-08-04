@@ -23,7 +23,17 @@ export type Config = {
     token?: string;
     users: Scope;
   };
-  models: Record<"plan" | "reply" | "main" | "multimodal_image" | "multimodal_video" | "multimodal_audio", string>;
+  models: Record<
+    | "plan"
+    | "reply"
+    | "main"
+    | "task_explore"
+    | "task_general"
+    | "multimodal_image"
+    | "multimodal_video"
+    | "multimodal_audio",
+    string
+  >;
   providers: Provider[];
 };
 
@@ -51,6 +61,15 @@ export const defaultConfig: Config = {
     token: "",
     users: { mode: "blacklist", ids: [] },
   },
-  models: { plan: "", reply: "", main: "", multimodal_image: "", multimodal_video: "", multimodal_audio: "" },
+  models: {
+    plan: "",
+    reply: "",
+    main: "",
+    task_explore: "",
+    task_general: "",
+    multimodal_image: "",
+    multimodal_video: "",
+    multimodal_audio: "",
+  },
   providers: [],
 };

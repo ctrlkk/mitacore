@@ -1,5 +1,6 @@
 import { workspaceTools } from "@/workspace/tool";
 import { getModel } from "@/ai/model";
+import { config } from "@/config";
 import { generateText, isStepCount, tool } from "ai";
 import { logger, type PinoLogger } from "@/logger";
 import { logUsage } from "@/utils/format";
@@ -19,7 +20,7 @@ export function task(log: PinoLogger = logger) {
 
       if (subagent_type === "explore") {
         const { text, finishReason } = await generateText({
-          model: getModel("deepseek-v4-flash"),
+          model: getModel(config.models.task_explore),
           system:
             "<role>\n" +
             "你是一个知识库检索专家，擅长快速浏览和搜索结构化笔记。\n" +
@@ -61,7 +62,7 @@ export function task(log: PinoLogger = logger) {
 
       if (subagent_type === "general") {
         const { text, finishReason } = await generateText({
-          model: getModel("deepseek-v4-flash"),
+          model: getModel(config.models.task_general),
           system:
             "<role>\n" +
             "你是一个通用助手，可以执行复杂的多步任务。\n" +

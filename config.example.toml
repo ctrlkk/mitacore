@@ -53,6 +53,8 @@ ids = []
 # plan: 规划层使用的模型
 # reply: 回复层使用的模型
 # main: 单 agent 模式的主模型（启用后取代 plan + reply，由一个 agent 同时承担规划与回复，输出直接面向用户）
+# task_explore: task 工具中只读 explore 子代理使用的模型
+# task_general: task 工具中可读写 general 子代理使用的模型
 # multimodal_image: 图像理解使用的模型
 # multimodal_video: 视频理解使用的模型
 # multimodal_audio: 音频理解使用的模型
@@ -60,6 +62,8 @@ ids = []
 plan = "deepseek-v4-flash"
 reply = "deepseek-v4-pro"
 main = "deepseek-v4-flash"
+task_explore = "deepseek-v4-flash"
+task_general = "deepseek-v4-pro"
 multimodal_image = "mimo-v2.5"
 multimodal_video = "mimo-v2.5"
 multimodal_audio = "mimo-v2.5"

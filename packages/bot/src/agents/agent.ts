@@ -63,11 +63,7 @@ export async function runMain(
   onReply: (segments: MessagePart[]) => Promise<void>,
   log: PinoLogger = logger,
 ) {
-  const mainAlias = config.models.main;
-  if (!mainAlias) {
-    throw new Error("未配置 models.main，无法使用单 agent 模式");
-  }
-  const model = getModel(mainAlias);
+  const model = getModel(config.models.main);
 
   const historyMessages: ChatHistory = await loadHistory();
 

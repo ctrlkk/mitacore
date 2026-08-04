@@ -205,6 +205,8 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
               ["plan", "规划"],
               ["reply", "回复"],
               ["main", "主 Agent"],
+              ["task_explore", "Task 检索子 Agent"],
+              ["task_general", "Task 通用子 Agent"],
               ["multimodal_image", "图像理解"],
               ["multimodal_video", "视频理解"],
               ["multimodal_audio", "音频理解"],
