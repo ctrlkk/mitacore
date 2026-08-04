@@ -10,6 +10,8 @@ import { startBuiltinNapCat } from "@/napcat/loader";
 import { logger } from "@/logger";
 import { channelController } from "@/app/channel-controller";
 
+const ENABLE_VIDEO_PROCESSING = false;
+
 function isIdInScope(id: string, scope: Config["napcat"]["groups"]): boolean {
   const isInList = scope.ids.includes(id);
   if (scope.mode === "whitelist") return isInList;
@@ -36,6 +38,7 @@ async function parseOneBotMessage(
         logger.info({ url: seg.data.url }, "忽略图片，大小超过5MB");
       }
     } else if (seg.type === "video") {
+      if (!ENABLE_VIDEO_PROCESSING) continue;
       const url = seg.data.url;
       if (!url) {
         logger.warn("视频消息缺少 url，跳过处理");
@@ -141,7 +144,7 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
       const seg = segments[i]!;
       if (seg.type !== "file") continue;
       const fileType = guessFileType(seg.data.file);
-      if (fileType !== "image" && fileType !== "video") continue;
+      if (fileType !== "image" && !(ENABLE_VIDEO_PROCESSING && fileType === "video")) continue;
 
       const url = await (async () => {
         if (seg.data.url) return seg.data.url;

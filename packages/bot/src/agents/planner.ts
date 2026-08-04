@@ -127,8 +127,8 @@ export async function runPlanner(
         .filter((part) => part.type === "text")
         .map((part) => part.text)
         .join("");
-      logUsage(log, usage);
       log.info({ reasoningText, text }, "plan响应");
+      logUsage(log, usage);
       if (reasoningText) reasoning = reasoningText;
     },
     onToolExecutionStart({ toolCall }) {

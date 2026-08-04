@@ -101,8 +101,8 @@ export async function createReplySession(
         maxOutputTokens: 4096,
       });
 
+      log.info({ reasoningText: result.finalStep.reasoningText, text: result.text }, "助手响应");
       logUsage(log, result.usage);
-      log.info({ text: result.text }, "助手响应");
 
       const parsedReply = sliceReply(result.text);
       const replyContent = joinReply(parsedReply);

@@ -110,8 +110,8 @@ export async function runMain(
           .filter((part) => part.type === "text")
           .map((part) => part.text)
           .join("");
-        logUsage(log, usage);
         log.info({ reasoningText, text }, "助手响应");
+        logUsage(log, usage);
         for (const part of content) {
           if (part.type !== "text") continue;
           const segments = await resolveMessageParts(sliceReply(part.text));
