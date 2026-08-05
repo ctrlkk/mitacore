@@ -94,8 +94,6 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
   });
   void client
     .start(async (event) => {
-      if (!isIdInScope(event.senderId, config.weixin.users)) return;
-
       const alias = ensureUserAlias("weixin", event.senderId, event.nickname);
       const unifiedMessages = toUnifiedSegments(event.segments);
       const rawText = unifiedMessages
@@ -127,9 +125,4 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
       getBot(event.sessionId).enqueue(message, context);
     })
     .catch((error) => logger.error({ error }, "微信渠道异常退出"));
-}
-
-function isIdInScope(id: string, scope: { mode: "whitelist" | "blacklist"; ids: string[] }) {
-  const isInList = scope.ids.includes(id);
-  return scope.mode === "whitelist" ? isInList : !isInList;
 }

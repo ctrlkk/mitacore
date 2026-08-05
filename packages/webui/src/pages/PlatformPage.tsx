@@ -3,7 +3,6 @@ import { ScopeEditor } from "../components/ScopeEditor";
 import { QRCode } from "antd";
 import { useEffect, useState } from "react";
 import { useChannels } from "../hooks/useChannels";
-import { X } from "lucide-react";
 
 type Props = {
   config: Config;
@@ -16,18 +15,9 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
   const [verifyCode, setVerifyCode] = useState("");
   const [verifyError, setVerifyError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [napcatDialogOpen, setNapcatDialogOpen] = useState(false);
   useEffect(() => {
     if (channels.weixin.status === "ready") void reloadConfig();
   }, [channels.weixin.status, reloadConfig]);
-  useEffect(() => {
-    if (!napcatDialogOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setNapcatDialogOpen(false);
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [napcatDialogOpen]);
   const updateNapcat = (patch: Partial<Config["napcat"]>) =>
     setConfig((value) => ({ ...value, napcat: { ...value.napcat, ...patch } }));
   const updateWeixin = (patch: Partial<Config["weixin"]>) =>
@@ -78,12 +68,20 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
             </div>
             {config.napcat.enabled && (
               <>
-                {channels.napcat.status === "starting" && <p className="notice">NapCat 正在启动…</p>}
-                {channels.napcat.status === "ready" && channels.napcat.embed_url && (
+                {channels.napcat.status === "starting" && !channels.napcat.embed_url && (
+                  <p className="notice">NapCat 正在启动…</p>
+                )}
+                {channels.napcat.status === "starting" && channels.napcat.embed_url && (
+                  <p className="notice">NapCat WebUI 已启动，请在管理后台登录 QQ。</p>
+                )}
+                {channels.napcat.embed_url && (
                   <div className="napcat-panel">
                     <div className="panel-heading">
                       <strong>NapCat 管理面板</strong>
-                      <button className="text-button" onClick={() => setNapcatDialogOpen(true)}>
+                      <button
+                        className="text-button"
+                        onClick={() => window.open(channels.napcat.embed_url, "_blank", "noopener")}
+                      >
                         打开管理后台
                       </button>
                     </div>
@@ -190,6 +188,30 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
       <section className="card">
         <div className="card-heading">
           <div>
+            <p className="eyebrow">MODE</p>
+            <h2>运行模式</h2>
+          </div>
+        </div>
+        <section className="channel">
+          <div className="channel-title">
+            <div>
+              <h3>节约模式</h3>
+              <p>开启后使用兼容性和性能可能较低的节约 planner；默认使用连续 planner。</p>
+            </div>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={config.economy_mode}
+                onChange={(event) => setConfig((value) => ({ ...value, economy_mode: event.target.checked }))}
+              />
+              <span />
+            </label>
+          </div>
+        </section>
+      </section>
+      <section className="card">
+        <div className="card-heading">
+          <div>
             <p className="eyebrow">ACCESS</p>
             <h2>访问范围</h2>
           </div>
@@ -201,28 +223,8 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
             value={config.napcat.private_chats}
             onChange={(private_chats) => updateNapcat({ private_chats })}
           />
-          <ScopeEditor label="微信用户" value={config.weixin.users} onChange={(users) => updateWeixin({ users })} />
         </div>
       </section>
-      {napcatDialogOpen && channels.napcat.embed_url && (
-        <div className="dialog-overlay" role="presentation" onMouseDown={() => setNapcatDialogOpen(false)}>
-          <section
-            className="napcat-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="napcat-dialog-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="napcat-dialog-heading">
-              <h2 id="napcat-dialog-title">NapCat 绠＄悊闈㈡澘</h2>
-              <button className="icon-button" aria-label="关闭管理后台" onClick={() => setNapcatDialogOpen(false)}>
-                <X size={18} />
-              </button>
-            </div>
-            <iframe className="napcat-frame" src={channels.napcat.embed_url} title="NapCat 管理后台" />
-          </section>
-        </div>
-      )}
     </div>
   );
 }

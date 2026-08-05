@@ -71,6 +71,15 @@ async function waitForUrl(url: string) {
   throw new Error(`WebUI 在 30 秒内没有启动：${url}`);
 }
 
+function isNapCatWebUiUrl(rawUrl: string) {
+  try {
+    const url = new URL(rawUrl);
+    return url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname) && url.pathname === "/webui";
+  } catch {
+    return false;
+  }
+}
+
 async function createWindow() {
   await waitForBot();
   const url = app.isPackaged ? `http://127.0.0.1:${port}` : "http://127.0.0.1:5173";
@@ -84,6 +93,24 @@ async function createWindow() {
       nodeIntegration: false,
       preload: join(__dirname, "../preload/index.js"),
     },
+  });
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (!isNapCatWebUiUrl(url)) return { action: "deny" };
+    return {
+      action: "allow",
+      overrideBrowserWindowOptions: {
+        parent: window,
+        width: 1200,
+        height: 820,
+        minWidth: 900,
+        minHeight: 600,
+        autoHideMenuBar: true,
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
+      },
+    };
   });
   await window.loadURL(url);
 }

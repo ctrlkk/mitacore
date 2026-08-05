@@ -62,13 +62,12 @@ const schema = z
         enabled: z.boolean().default(false).describe("是否启用微信渠道"),
         account_id: z.string().trim().optional().describe("扫码后获得的微信 Bot 账号 ID"),
         token: z.string().trim().optional().describe("扫码后获得的微信 Bot token"),
-        users: scopeConfig.default({ mode: "blacklist", ids: [] }).describe("微信用户范围控制"),
       })
       .default({
         enabled: false,
-        users: { mode: "blacklist", ids: [] },
       })
       .describe("微信渠道配置"),
+    economy_mode: z.boolean().default(false).describe("是否启用节约模式"),
     providers: z.array(providerConfig).min(1, "至少需要配置一个供应商").describe("供应商配置"),
     models: z
       .object({
@@ -156,7 +155,7 @@ function getFieldDescription(path: PropertyKey[]): string | undefined {
     "weixin.enabled": "是否启用微信渠道",
     "weixin.account_id": "微信 Bot 账号 ID",
     "weixin.token": "微信 Bot token",
-    "weixin.users": "微信用户范围控制",
+    economy_mode: "是否启用节约模式",
     providers: "供应商配置",
     "providers.type": "供应商端点类型",
     "models.plan": "规划层模型别名",

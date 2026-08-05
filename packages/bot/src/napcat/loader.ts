@@ -527,7 +527,7 @@ function oneBotConfig(wsPort: number) {
  *  - wsUrl: WebSocket 连接 URL
  *  - accessToken: 访问令牌，用于身份验证
  */
-export async function startBuiltinNapCat(qqId: string) {
+export async function startBuiltinNapCat(qqId: string, onWebUiReady?: (url: string) => void) {
   const napcatConfig: NapCatConfig = {
     qqId,
     napcatDir: dataPath("runtime", "napcat"),
@@ -541,6 +541,7 @@ export async function startBuiltinNapCat(qqId: string) {
     const api = await napcat.waitForWebUI();
     const webuiUrl = `http://localhost:${napcat.webuiPort}/webui?token=${napcat.webuiToken}`;
     logger.info({ port: napcat.webuiPort, url: webuiUrl }, "NapCat WebUI 就绪");
+    onWebUiReady?.(webuiUrl);
 
     const version = await api.getNapCatVersion();
     logger.info({ version }, `NapCat 版本: ${version}`);

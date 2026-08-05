@@ -21,8 +21,8 @@ export type Config = {
     enabled: boolean;
     account_id?: string;
     token?: string;
-    users: Scope;
   };
+  economy_mode: boolean;
   models: Record<
     | "plan"
     | "reply"
@@ -59,8 +59,8 @@ export const defaultConfig: Config = {
     enabled: false,
     account_id: "",
     token: "",
-    users: { mode: "blacklist", ids: [] },
   },
+  economy_mode: false,
   models: {
     plan: "",
     reply: "",

@@ -89,13 +89,16 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
   if (config.napcat.qq_id) {
     channelController.updateNapcat({ status: "starting", error: undefined });
     try {
-      const result = await startBuiltinNapCat(config.napcat.qq_id);
+      const result = await startBuiltinNapCat(config.napcat.qq_id, (embed_url) =>
+        channelController.updateNapcat({ status: "starting", embed_url, error: undefined }),
+      );
       wsUrl = result.wsUrl;
       accessToken = result.accessToken;
       channelController.updateNapcat({ status: "ready", embed_url: result.webuiUrl });
     } catch (error) {
       channelController.updateNapcat({
         status: "failed",
+        embed_url: undefined,
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;

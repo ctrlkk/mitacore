@@ -8,6 +8,7 @@ import type { ImageMap, MediaKind, MediaMap, PendingMessage, UnifiedInboundMessa
 import { imageToText, videoToText } from "@/ai/multimedia";
 import { runPlanner } from "@/agents/planner";
 import { runPlanner as runContinuousPlanner } from "@/agents/planner-continuous";
+import { config } from "@/config";
 import { get_media_description, set_media_description } from "@/database/media-cache";
 import { listMentionableUserAliases } from "@/database/user-alias";
 import { logger } from "@/logger";
@@ -348,7 +349,7 @@ export function createBot(sessionId: string) {
         }
       };
       let replied: boolean;
-      if (1 < 2) {
+      if (config.economy_mode) {
         replied = await runPlanner(prompt, onReply, log);
       } else {
         replied = await runContinuousPlanner(prompt, onReply, log);
