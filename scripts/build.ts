@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { rm, mkdir, copyFile, readFile, access, stat, chmod, readdir, cp } from "node:fs/promises";
 
 const root = join(import.meta.dir, "..");
@@ -134,6 +134,16 @@ async function copyBin() {
       // 非 Windows 环境补充执行权限
       if (process.platform !== "win32") {
         await chmod(targetPath, 0o755);
+      }
+
+      // Windows 下 shared 版 ffmpeg/ffprobe 依赖同目录的 DLL（如 avcodec-63.dll），
+      // 只复制 exe 会导致打包后无法运行，故把同目录 DLL 一并复制保持自包含。
+      if (process.platform === "win32" && (name === "ffmpeg" || name === "ffprobe")) {
+        const srcDir = dirname(srcPath);
+        const dlls = (await readdir(srcDir)).filter((f) => f.toLowerCase().endsWith(".dll"));
+        for (const dll of dlls) {
+          await copyFile(join(srcDir, dll), join(outBinDir, dll));
+        }
       }
     } catch (error) {
       console.warn(`复制 ${name} 失败:`, error);
