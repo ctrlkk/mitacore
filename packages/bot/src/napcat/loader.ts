@@ -372,6 +372,8 @@ export async function launchNapCat(config: NapCatConfig) {
   logger.info({ qqId: config.qqId, napcatDir: config.napcatDir }, "准备启动 NapCat");
 
   const qqExe = resolveQQPath(config.qqPath);
+  await ensureNapcat(config.napcatDir);
+  mkdirSync(dirname(napcatLockPath(config.qqId)), { recursive: true });
   await platform.cleanOrphans(config.qqId);
   const handle = await platform.spawn({
     qqId: config.qqId,
@@ -382,7 +384,6 @@ export async function launchNapCat(config: NapCatConfig) {
   });
 
   try {
-    await ensureNapcat(config.napcatDir);
     if (handle.proc.exitCode !== null || handle.proc.signalCode !== null) {
       throw new Error(`NapCat supervisor 在初始化期间退出 (code=${handle.proc.exitCode})`);
     }
