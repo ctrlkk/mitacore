@@ -9,7 +9,10 @@ import { createBot } from "@/app/queue-loop";
 import { logger } from "@/logger";
 import { createWeixinSyncBufferStore } from "@/channel/weixin-sync-store";
 
-function toUnifiedSegments(segments: WeixinInboundSegment[]): UnifiedInboundMessage[] {
+const WEIXIN_USER_NICKNAME = "";
+const WEIXIN_USER_KEY = "direct";
+
+function toUnifiedSegments(segments: WeixinInboundSegment[], userId: string): UnifiedInboundMessage[] {
   return segments.flatMap((segment): UnifiedInboundMessage[] => {
     if (segment.type === "text") return [{ type: "text", text: segment.text }];
     if (segment.type === "image" || segment.type === "video") return [segment];
@@ -17,9 +20,9 @@ function toUnifiedSegments(segments: WeixinInboundSegment[]): UnifiedInboundMess
       {
         type: "reply",
         data: {
-          userId: "unknown",
+          userId,
           nickname: segment.data.title,
-          segments: toUnifiedSegments(segment.data.segments),
+          segments: toUnifiedSegments(segment.data.segments, userId),
         },
       },
     ];
@@ -88,14 +91,15 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
 
   channelController.updateWeixin({ status: "ready", qrcode_content: undefined, error: undefined });
   ensureUserAlias("weixin", credentials.accountId, "微信 Bot");
+  const userAlias = ensureUserAlias("weixin", WEIXIN_USER_KEY, WEIXIN_USER_NICKNAME);
+  const userId = shortIdFor(userAlias.id);
 
   const client = new WeixinClient(credentials, createWeixinSyncBufferStore(credentials.accountId), {
     logger: clientLogger,
   });
   void client
     .start(async (event) => {
-      const alias = ensureUserAlias("weixin", event.senderId, event.nickname);
-      const unifiedMessages = toUnifiedSegments(event.segments);
+      const unifiedMessages = toUnifiedSegments(event.segments, userId);
       const rawText = unifiedMessages
         .filter((segment): segment is Extract<UnifiedInboundMessage, { type: "text" }> => segment.type === "text")
         .map((segment) => segment.text)
@@ -109,9 +113,9 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
       }
 
       const message: PendingMessage = {
-        userId: shortIdFor(alias.id),
+        userId,
         unifiedMessages,
-        nickname: event.nickname,
+        nickname: WEIXIN_USER_NICKNAME,
         date: new Date(event.message.create_time_ms ?? Date.now()),
         isAt: true,
       };
@@ -122,7 +126,7 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
         reply: async (part) => await event.reply(toWeixinMessage(part)),
         setTyping: async () => await event.setTyping(),
       };
-      getBot(event.sessionId).enqueue(message, context);
+      getBot(`weixin:${WEIXIN_USER_KEY}`).enqueue(message, context);
     })
     .catch((error) => logger.error({ error }, "微信渠道异常退出"));
 }
