@@ -23,6 +23,7 @@ export type Config = {
     token?: string;
   };
   economy_mode: boolean;
+  max_queue: number;
   models: Record<
     | "plan"
     | "reply"
@@ -61,6 +62,7 @@ export const defaultConfig: Config = {
     token: "",
   },
   economy_mode: false,
+  max_queue: 10,
   models: {
     plan: "",
     reply: "",

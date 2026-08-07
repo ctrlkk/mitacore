@@ -8,6 +8,7 @@ export async function startBot() {
   const { db } = await import("@/database/db");
   const { apply } = await import("@/database/migration");
   await apply(db);
+  globalThis.AI_SDK_LOG_WARNINGS = false;
 
   const botMap = new Map<string, ReturnType<typeof createBot>>();
   const getBot = (sessionId: string) => {

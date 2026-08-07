@@ -103,11 +103,16 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
       });
       throw error;
     }
-  } else {
-    wsUrl = config.napcat.ws_url!;
-    accessToken = config.napcat.token ?? "";
+  } else if (config.napcat.ws_url && config.napcat.token) {
+    wsUrl = config.napcat.ws_url;
+    accessToken = config.napcat.token;
     channelController.updateNapcat({ status: "external", embed_url: undefined, error: undefined });
     logger.info({ wsUrl }, "使用外置 NapCat");
+  } else {
+    const message = "NapCat 必须配置 qq_id，或同时配置 ws_url 和 token；请完成配置后重启程序";
+    channelController.updateNapcat({ status: "failed", embed_url: undefined, error: message });
+    logger.warn(message);
+    return;
   }
 
   const bot = new OneBotClient({ url: wsUrl, accessToken, reconnect: true });

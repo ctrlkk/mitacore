@@ -48,14 +48,6 @@ const schema = z
         private_chats: scopeConfig.default({ mode: "whitelist", ids: [] }).describe("私聊范围控制"),
         group_members: scopeConfig.default({ mode: "blacklist", ids: [] }).describe("群内用户范围控制"),
       })
-      .refine(
-        (data) => {
-          return !data.enabled || Boolean((data.ws_url && data.token) || data.qq_id);
-        },
-        {
-          message: "必须提供 (ws_url + token) 或 qq_id 其中一种配置",
-        },
-      )
       .describe("NapCat 配置"),
     weixin: z
       .object({
@@ -68,6 +60,7 @@ const schema = z
       })
       .describe("微信渠道配置"),
     economy_mode: z.boolean().default(false).describe("是否启用节约模式"),
+    max_queue: z.number().int().min(1).default(10).describe("单个会话的消息队列最大长度"),
     providers: z.array(providerConfig).min(1, "至少需要配置一个供应商").describe("供应商配置"),
     models: z
       .object({
@@ -113,7 +106,7 @@ export type Config = z.infer<typeof schema>;
 export class ConfigValidationError extends Error {
   constructor(
     message: string,
-    readonly issues: z.ZodIssue[],
+    readonly issues: z.core.$ZodIssue[],
   ) {
     super(message);
     this.name = "ConfigValidationError";
@@ -156,6 +149,7 @@ function getFieldDescription(path: PropertyKey[]): string | undefined {
     "weixin.account_id": "微信 Bot 账号 ID",
     "weixin.token": "微信 Bot token",
     economy_mode: "是否启用节约模式",
+    max_queue: "单个会话的消息队列最大长度",
     providers: "供应商配置",
     "providers.type": "供应商端点类型",
     "models.plan": "规划层模型别名",

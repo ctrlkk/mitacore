@@ -192,22 +192,42 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
             <h2>运行模式</h2>
           </div>
         </div>
-        <section className="channel">
-          <div className="channel-title">
-            <div>
-              <h3>节约模式</h3>
-              <p>开启后使用兼容性和性能可能较低的节约 planner；默认使用连续 planner。</p>
+        <div className="mode-settings">
+          <section className="channel">
+            <div className="channel-title">
+              <div>
+                <h3>节约模式</h3>
+                <p>开启后使用兼容性和性能可能较低的节约 planner；默认使用连续 planner。</p>
+              </div>
+              <label className="switch">
+                <input
+                  type="checkbox"
+                  checked={config.economy_mode}
+                  onChange={(event) => setConfig((value) => ({ ...value, economy_mode: event.target.checked }))}
+                />
+                <span />
+              </label>
             </div>
-            <label className="switch">
+          </section>
+          <section className="channel">
+            <label className="field">
+              单个会话消息队列上限
               <input
-                type="checkbox"
-                checked={config.economy_mode}
-                onChange={(event) => setConfig((value) => ({ ...value, economy_mode: event.target.checked }))}
+                type="number"
+                min={1}
+                step={1}
+                value={config.max_queue}
+                onChange={(event) => {
+                  const maxQueue = Number(event.target.value);
+                  if (Number.isInteger(maxQueue) && maxQueue > 0) {
+                    setConfig((value) => ({ ...value, max_queue: maxQueue }));
+                  }
+                }}
               />
-              <span />
+              <span>超出上限时会丢弃最早的消息。</span>
             </label>
-          </div>
-        </section>
+          </section>
+        </div>
       </section>
       <section className="card">
         <div className="card-heading">
