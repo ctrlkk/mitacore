@@ -24,6 +24,7 @@ export type Config = {
   };
   economy_mode: boolean;
   max_queue: number;
+  debounce_ms: number;
   models: Record<
     | "plan"
     | "reply"
@@ -63,6 +64,7 @@ export const defaultConfig: Config = {
   },
   economy_mode: false,
   max_queue: 10,
+  debounce_ms: 1000,
   models: {
     plan: "",
     reply: "",

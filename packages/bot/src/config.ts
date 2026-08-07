@@ -60,7 +60,8 @@ const schema = z
       })
       .describe("微信渠道配置"),
     economy_mode: z.boolean().default(false).describe("是否启用节约模式"),
-    max_queue: z.number().int().min(1).default(10).describe("单个会话的消息队列最大长度"),
+    max_queue: z.number().int().min(1).default(10).describe("单个会话单次处理前的消息等待队列上限"),
+    debounce_ms: z.number().int().min(1000).max(10000).default(1000).describe("消息合并等待时间（毫秒）"),
     providers: z.array(providerConfig).min(1, "至少需要配置一个供应商").describe("供应商配置"),
     models: z
       .object({
@@ -149,7 +150,8 @@ function getFieldDescription(path: PropertyKey[]): string | undefined {
     "weixin.account_id": "微信 Bot 账号 ID",
     "weixin.token": "微信 Bot token",
     economy_mode: "是否启用节约模式",
-    max_queue: "单个会话的消息队列最大长度",
+    max_queue: "单个会话单次处理前的消息等待队列上限",
+    debounce_ms: "消息合并等待时间（毫秒）",
     providers: "供应商配置",
     "providers.type": "供应商端点类型",
     "models.plan": "规划层模型别名",

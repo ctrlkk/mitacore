@@ -365,7 +365,7 @@ export function createBot(sessionId: string) {
   const scheduler = createScheduler(processBatch, { maxQueue: config.max_queue });
   scheduler.run().catch((error) => log.error({ error }, "scheduler 运行失败"));
 
-  const debounceMs = 1000;
+  const debounceMs = config.debounce_ms;
   let lastMsgAt = Date.now();
   let dirty = false;
   let evaluating = false;

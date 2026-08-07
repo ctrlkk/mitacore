@@ -19,28 +19,43 @@
         --shadow: 0 20px 60px rgba(31, 79, 63, 0.1);
       }
 
-      * { box-sizing: border-box; }
+      * {
+        box-sizing: border-box;
+      }
 
-      html { scroll-behavior: smooth; }
+      html {
+        scroll-behavior: smooth;
+      }
 
       body {
         margin: 0;
         color: var(--ink);
         background:
           radial-gradient(circle at 8% 5%, rgba(169, 226, 201, 0.52), transparent 28rem),
-          radial-gradient(circle at 95% 16%, rgba(255, 214, 184, 0.42), transparent 25rem),
-          var(--paper);
+          radial-gradient(circle at 95% 16%, rgba(255, 214, 184, 0.42), transparent 25rem), var(--paper);
         font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
         line-height: 1.75;
       }
 
-      a { color: inherit; }
+      a {
+        color: inherit;
+      }
 
-      .shell { width: min(1160px, calc(100% - 40px)); margin: 0 auto; }
+      .shell {
+        width: min(1160px, calc(100% - 40px));
+        margin: 0 auto;
+      }
 
-      .hero { padding: 74px 0 52px; }
+      .hero {
+        padding: 74px 0 52px;
+      }
 
-      .hero-grid { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 40px; align-items: end; }
+      .hero-grid {
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 40px;
+        align-items: end;
+      }
 
       .eyebrow {
         display: inline-flex;
@@ -53,11 +68,28 @@
         text-transform: uppercase;
       }
 
-      .eyebrow::before { content: ""; width: 28px; height: 3px; border-radius: 99px; background: var(--orange); }
+      .eyebrow::before {
+        content: "";
+        width: 28px;
+        height: 3px;
+        border-radius: 99px;
+        background: var(--orange);
+      }
 
-      h1 { max-width: 700px; margin: 16px 0 14px; font-size: clamp(2.6rem, 7vw, 5.6rem); line-height: 1.08; letter-spacing: -0.07em; }
+      h1 {
+        max-width: 700px;
+        margin: 16px 0 14px;
+        font-size: clamp(2.6rem, 7vw, 5.6rem);
+        line-height: 1.08;
+        letter-spacing: -0.07em;
+      }
 
-      .hero p { max-width: 660px; margin: 0; color: var(--muted); font-size: 1.1rem; }
+      .hero p {
+        max-width: 660px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 1.1rem;
+      }
 
       .quick-nav {
         padding: 24px;
@@ -67,11 +99,22 @@
         box-shadow: var(--shadow);
       }
 
-      .quick-nav strong { display: block; margin-bottom: 10px; }
+      .quick-nav strong {
+        display: block;
+        margin-bottom: 10px;
+      }
 
-      .quick-nav a { display: inline-block; margin: 4px 12px 4px 0; color: var(--green); font-weight: 700; text-decoration: none; }
+      .quick-nav a {
+        display: inline-block;
+        margin: 4px 12px 4px 0;
+        color: var(--green);
+        font-weight: 700;
+        text-decoration: none;
+      }
 
-      .quick-nav a:hover { color: var(--orange); }
+      .quick-nav a:hover {
+        color: var(--orange);
+      }
 
       .notice {
         display: flex;
@@ -84,74 +127,231 @@
         color: #75412e;
       }
 
-      .notice b { color: var(--orange); }
+      .notice b {
+        color: var(--orange);
+      }
 
-      .section { margin: 66px 0; scroll-margin-top: 24px; }
+      .section {
+        margin: 66px 0;
+        scroll-margin-top: 24px;
+      }
 
-      .section-heading { display: flex; gap: 18px; align-items: baseline; margin-bottom: 24px; }
+      .section-heading {
+        display: flex;
+        gap: 18px;
+        align-items: baseline;
+        margin-bottom: 24px;
+      }
 
-      .section-number { color: var(--orange); font-size: 1.1rem; font-weight: 900; }
+      .section-number {
+        color: var(--orange);
+        font-size: 1.1rem;
+        font-weight: 900;
+      }
 
-      h2 { margin: 0; font-size: clamp(1.65rem, 3vw, 2.35rem); letter-spacing: -0.04em; }
+      h2 {
+        margin: 0;
+        font-size: clamp(1.65rem, 3vw, 2.35rem);
+        letter-spacing: -0.04em;
+      }
 
-      h3 { margin: 0 0 8px; font-size: 1.2rem; }
+      h3 {
+        margin: 0 0 8px;
+        font-size: 1.2rem;
+      }
 
-      .lead { margin: -12px 0 24px; color: var(--muted); }
+      .lead {
+        margin: -12px 0 24px;
+        color: var(--muted);
+      }
 
-      .flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 28px 0; }
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 10px;
+        margin: 28px 0;
+      }
 
-      .flow-item { position: relative; padding: 18px 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); text-align: center; font-weight: 800; }
+      .flow-item {
+        position: relative;
+        padding: 18px 14px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--card);
+        text-align: center;
+        font-weight: 800;
+      }
 
-      .flow-item:not(:last-child)::after { content: "→"; position: absolute; right: -18px; top: 50%; z-index: 1; color: var(--orange); font-size: 1.4rem; transform: translateY(-50%); }
+      .flow-item:not(:last-child)::after {
+        content: "→";
+        position: absolute;
+        right: -18px;
+        top: 50%;
+        z-index: 1;
+        color: var(--orange);
+        font-size: 1.4rem;
+        transform: translateY(-50%);
+      }
 
-      .step { display: grid; grid-template-columns: 88px 1fr; gap: 28px; align-items: start; margin: 28px 0; }
+      .step {
+        display: grid;
+        grid-template-columns: 88px 1fr;
+        gap: 28px;
+        align-items: start;
+        margin: 28px 0;
+      }
 
-      .step-index { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 20px; background: var(--green); color: white; font-size: 1.35rem; font-weight: 900; box-shadow: 8px 8px 0 var(--mint); }
+      .step-index {
+        display: grid;
+        place-items: center;
+        width: 64px;
+        height: 64px;
+        border-radius: 20px;
+        background: var(--green);
+        color: white;
+        font-size: 1.35rem;
+        font-weight: 900;
+        box-shadow: 8px 8px 0 var(--mint);
+      }
 
-      .step-body { padding: 28px; border: 1px solid var(--line); border-radius: 24px; background: var(--card); box-shadow: 0 12px 35px rgba(31, 79, 63, 0.05); }
+      .step-body {
+        padding: 28px;
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: var(--card);
+        box-shadow: 0 12px 35px rgba(31, 79, 63, 0.05);
+      }
 
-      .step-body p { margin: 0 0 14px; }
+      .step-body p {
+        margin: 0 0 14px;
+      }
 
-      .step-body p:last-child { margin-bottom: 0; }
+      .step-body p:last-child {
+        margin-bottom: 0;
+      }
 
-      figure { margin: 22px 0 0; }
+      figure {
+        margin: 22px 0 0;
+      }
 
-      figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 16px; background: #172019; box-shadow: 0 14px 30px rgba(31, 79, 63, 0.12); }
+      figure img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: #172019;
+        box-shadow: 0 14px 30px rgba(31, 79, 63, 0.12);
+      }
 
-      figcaption { margin-top: 8px; color: var(--muted); font-size: 0.9rem; text-align: center; }
+      figcaption {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 0.9rem;
+        text-align: center;
+      }
 
-      code { padding: 0.15em 0.42em; border-radius: 6px; background: #eaf3ee; color: var(--green-dark); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.92em; }
+      code {
+        padding: 0.15em 0.42em;
+        border-radius: 6px;
+        background: #eaf3ee;
+        color: var(--green-dark);
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        font-size: 0.92em;
+      }
 
-      .config-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 20px 0; }
+      .config-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+        margin: 20px 0;
+      }
 
-      .config-card { padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: white; }
+      .config-card {
+        padding: 22px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: white;
+      }
 
-      .config-card b { color: var(--green); }
+      .config-card b {
+        color: var(--green);
+      }
 
-      .config-card ol { margin: 12px 0 0; padding-left: 22px; }
+      .config-card ol {
+        margin: 12px 0 0;
+        padding-left: 22px;
+      }
 
-      .callout { margin-top: 18px; padding: 16px 18px; border-left: 4px solid var(--orange); border-radius: 0 14px 14px 0; background: #fff4ed; color: #75412e; }
+      .callout {
+        margin-top: 18px;
+        padding: 16px 18px;
+        border-left: 4px solid var(--orange);
+        border-radius: 0 14px 14px 0;
+        background: #fff4ed;
+        color: #75412e;
+      }
 
-      .faq details { padding: 18px 0; border-bottom: 1px solid var(--line); }
+      .faq details {
+        padding: 18px 0;
+        border-bottom: 1px solid var(--line);
+      }
 
-      .faq summary { cursor: pointer; font-weight: 800; }
+      .faq summary {
+        cursor: pointer;
+        font-weight: 800;
+      }
 
-      .faq details p { margin: 12px 0 0; color: var(--muted); }
+      .faq details p {
+        margin: 12px 0 0;
+        color: var(--muted);
+      }
 
-      footer { margin-top: 90px; padding: 32px 0 52px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.92rem; }
+      footer {
+        margin-top: 90px;
+        padding: 32px 0 52px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
 
       @media (max-width: 820px) {
-        .hero-grid, .config-grid { grid-template-columns: 1fr; }
-        .flow { grid-template-columns: 1fr; }
-        .flow-item:not(:last-child)::after { content: "↓"; right: auto; top: auto; bottom: -25px; left: 50%; transform: translateX(-50%); }
-        .step { grid-template-columns: 1fr; gap: 14px; }
-        .step-index { width: 52px; height: 52px; border-radius: 16px; }
+        .hero-grid,
+        .config-grid {
+          grid-template-columns: 1fr;
+        }
+        .flow {
+          grid-template-columns: 1fr;
+        }
+        .flow-item:not(:last-child)::after {
+          content: "↓";
+          right: auto;
+          top: auto;
+          bottom: -25px;
+          left: 50%;
+          transform: translateX(-50%);
+        }
+        .step {
+          grid-template-columns: 1fr;
+          gap: 14px;
+        }
+        .step-index {
+          width: 52px;
+          height: 52px;
+          border-radius: 16px;
+        }
       }
 
       @media (max-width: 560px) {
-        .shell { width: min(100% - 24px, 1160px); }
-        .hero { padding-top: 42px; }
-        .step-body { padding: 20px; }
+        .shell {
+          width: min(100% - 24px, 1160px);
+        }
+        .hero {
+          padding-top: 42px;
+        }
+        .step-body {
+          padding: 20px;
+        }
       }
     </style>
   </head>
@@ -172,12 +372,18 @@
           <a href="#faq">常见问题</a>
         </nav>
       </div>
-      <div class="notice"><span>✦</span><span><b>开始前请注意：</b> API Key 属于敏感凭据，请勿把真实 Key 截图、提交到 Git 或发送给他人。</span></div>
+      <div class="notice">
+        <span>✦</span
+        ><span><b>开始前请注意：</b> API Key 属于敏感凭据，请勿把真实 Key 截图、提交到 Git 或发送给他人。</span>
+      </div>
     </header>
 
     <main class="shell">
       <section class="section" id="overview">
-        <div class="section-heading"><span class="section-number">00</span><h2>完整流程</h2></div>
+        <div class="section-heading">
+          <span class="section-number">00</span>
+          <h2>完整流程</h2>
+        </div>
         <p class="lead">先启动本地服务，再进入浏览器配置。配置完成后通过重启程序使设置生效。</p>
         <div class="flow" aria-label="使用流程">
           <div class="flow-item">解压程序</div>
@@ -189,36 +395,67 @@
       </section>
 
       <section class="section" id="install">
-        <div class="section-heading"><span class="section-number">01</span><h2>安装与启动</h2></div>
+        <div class="section-heading">
+          <span class="section-number">01</span>
+          <h2>安装与启动</h2>
+        </div>
         <div class="step">
           <div class="step-index">01</div>
           <div class="step-body">
             <h3>下载并解压</h3>
             <p>双击 Mita Core 自解压程序，建议解压到一个独立目录，并记住该目录位置。</p>
-            <figure><img src="./1.png" alt="双击运行自解压程序" /><figcaption>双击运行自解压程序</figcaption></figure>
-            <figure><img src="./2.png" alt="选择解压目录" /><figcaption>选择具体目标目录后点击 Extract（解压）</figcaption></figure>
+            <figure>
+              <img src="./1.png" alt="双击运行自解压程序" />
+              <figcaption>双击运行自解压程序</figcaption>
+            </figure>
+            <figure>
+              <img src="./2.png" alt="选择解压目录" />
+              <figcaption>选择具体目标目录后点击 Extract（解压）</figcaption>
+            </figure>
           </div>
         </div>
         <div class="step">
           <div class="step-index">02</div>
           <div class="step-body">
             <h3>启动应用并获取 WebUI 地址</h3>
-            <p>进入解压目录，确认能看到 <code>bin</code>、<code>data</code>、<code>prompts</code>、<code>sidecar</code>、<code>webui</code> 和 <code>app.exe</code>。双击 <code>app.exe</code> 启动。</p>
-            <figure><img src="./3.png" alt="启动 app.exe" /><figcaption>双击 app.exe 启动程序</figcaption></figure>
-            <p style="margin-top: 20px">程序启动后，复制控制台中“WebUI 已启动”下方第一行的 <code>url</code>。示例地址为 <code>http://127.0.0.1:14251</code>，实际端口以当前窗口输出为准。</p>
-            <figure><img src="./4.png" alt="复制 WebUI 地址" /><figcaption>复制 WebUI 地址，不要复制 NapCat 地址</figcaption></figure>
+            <p>
+              进入解压目录，确认能看到
+              <code>bin</code>、<code>data</code>、<code>prompts</code>、<code>sidecar</code>、<code>webui</code> 和
+              <code>app.exe</code>。双击 <code>app.exe</code> 启动。
+            </p>
+            <figure>
+              <img src="./3.png" alt="启动 app.exe" />
+              <figcaption>双击 app.exe 启动程序</figcaption>
+            </figure>
+            <p style="margin-top: 20px">
+              程序启动后，复制控制台中“WebUI 已启动”下方第一行的 <code>url</code>。示例地址为
+              <code>http://127.0.0.1:14251</code>，实际端口以当前窗口输出为准。
+            </p>
+            <figure>
+              <img src="./4.png" alt="复制 WebUI 地址" />
+              <figcaption>复制 WebUI 地址，不要复制 NapCat 地址</figcaption>
+            </figure>
           </div>
         </div>
       </section>
 
       <section class="section" id="model">
-        <div class="section-heading"><span class="section-number">02</span><h2>配置模型服务</h2></div>
+        <div class="section-heading">
+          <span class="section-number">02</span>
+          <h2>配置模型服务</h2>
+        </div>
         <div class="step">
           <div class="step-index">03</div>
           <div class="step-body">
             <h3>打开 WebUI</h3>
-            <p>在浏览器地址栏粘贴刚才复制的地址并访问，进入默认的“用户配置平台”。WebUI 只服务于当前电脑，配置期间不要关闭 <code>app.exe</code> 控制台窗口。</p>
-            <figure><img src="./5.png" alt="打开用户配置平台" /><figcaption>在浏览器中打开用户配置平台</figcaption></figure>
+            <p>
+              在浏览器地址栏粘贴刚才复制的地址并访问，进入默认的“用户配置平台”。WebUI 只服务于当前电脑，配置期间不要关闭
+              <code>app.exe</code> 控制台窗口。
+            </p>
+            <figure>
+              <img src="./5.png" alt="打开用户配置平台" />
+              <figcaption>在浏览器中打开用户配置平台</figcaption>
+            </figure>
           </div>
         </div>
         <div class="step">
@@ -226,23 +463,52 @@
           <div class="step-body">
             <h3>添加模型供应商</h3>
             <div class="config-grid">
-              <div class="config-card"><b>基础信息</b><ol><li>名称：例如 <code>deepseek</code></li><li>类型：按服务商选择对应类型</li><li>API 地址：填写服务商端点</li></ol></div>
-              <div class="config-card"><b>凭据与模型</b><ol><li>API Key：粘贴服务商后台申请的 Key</li><li>点击“自动获取模型”，或手动填写模型名</li><li>完成后点击右上角“保存配置”</li></ol></div>
+              <div class="config-card">
+                <b>基础信息</b>
+                <ol>
+                  <li>名称：例如 <code>deepseek</code></li>
+                  <li>类型：按服务商选择对应类型</li>
+                  <li>API 地址：填写服务商端点</li>
+                </ol>
+              </div>
+              <div class="config-card">
+                <b>凭据与模型</b>
+                <ol>
+                  <li>API Key：粘贴服务商后台申请的 Key</li>
+                  <li>点击“自动获取模型”，或手动填写模型名</li>
+                  <li>完成后点击右上角“保存配置”</li>
+                </ol>
+              </div>
             </div>
-            <div class="callout"><strong>DeepSeek 配置：</strong>供应商类型选择 <code>anthropic</code>，API 地址填写 <code>https://api.deepseek.com</code>。不要选择旧版 <code>openai-compatible</code> 类型。</div>
-            <figure><img src="./6.png" alt="配置模型供应商" /><figcaption>模型供应商配置示例</figcaption></figure>
+            <div class="callout">
+              <strong>DeepSeek 配置：</strong>供应商类型选择 <code>anthropic</code>，API 地址填写
+              <code>https://api.deepseek.com</code>。不要选择旧版 <code>openai-compatible</code> 类型。
+            </div>
+            <figure>
+              <img src="./6.png" alt="配置模型供应商" />
+              <figcaption>模型供应商配置示例</figcaption>
+            </figure>
           </div>
         </div>
       </section>
 
       <section class="section" id="qq">
-        <div class="section-heading"><span class="section-number">03</span><h2>绑定 QQ / NapCat</h2></div>
+        <div class="section-heading">
+          <span class="section-number">03</span>
+          <h2>绑定 QQ / NapCat</h2>
+        </div>
         <div class="step">
           <div class="step-index">05</div>
           <div class="step-body">
             <h3>打开 NapCat 管理后台</h3>
-            <p>回到“用户配置平台”，确认“QQ / NapCat”开关已打开，并填写正确的机器人 QQ 号。点击“NapCat 管理面板”右侧的“打开管理后台”，浏览器会打开新的标签页。</p>
-            <figure><img src="./7.png" alt="打开 NapCat 管理后台" /><figcaption>打开 NapCat 管理后台</figcaption></figure>
+            <p>
+              回到“用户配置平台”，确认“QQ / NapCat”开关已打开，并填写正确的机器人 QQ 号。点击“NapCat
+              管理面板”右侧的“打开管理后台”，浏览器会打开新的标签页。
+            </p>
+            <figure>
+              <img src="./7.png" alt="打开 NapCat 管理后台" />
+              <figcaption>打开 NapCat 管理后台</figcaption>
+            </figure>
           </div>
         </div>
         <div class="step">
@@ -250,32 +516,77 @@
           <div class="step-body">
             <h3>扫码登录 QQ</h3>
             <p>在新页面选择“扫码登录”，使用 QQ 或 TIM 扫描二维码，登录准备作为机器人的 QQ 账号。</p>
-            <figure><img src="./8.png" alt="扫码登录 QQ" /><figcaption>使用 QQ 或 TIM 扫码登录</figcaption></figure>
-            <div class="callout">如果刚修改过配置，先保存并重启程序，再重新打开 NapCat 管理后台。不要重复启动多个 <code>app.exe</code> 实例。</div>
+            <figure>
+              <img src="./8.png" alt="扫码登录 QQ" />
+              <figcaption>使用 QQ 或 TIM 扫码登录</figcaption>
+            </figure>
+            <div class="callout">
+              如果刚修改过配置，先保存并重启程序，再重新打开 NapCat 管理后台。不要重复启动多个
+              <code>app.exe</code> 实例。
+            </div>
           </div>
         </div>
       </section>
 
       <section class="section" id="wechat">
-        <div class="section-heading"><span class="section-number">04</span><h2>绑定微信（可选）</h2></div>
+        <div class="section-heading">
+          <span class="section-number">04</span>
+          <h2>绑定微信（可选）</h2>
+        </div>
         <div class="step">
           <div class="step-index">07</div>
           <div class="step-body">
             <h3>保存配置并重启程序</h3>
-            <p>在“用户配置平台”打开“微信”开关，点击右上角“保存配置”。不要点击页面上的“重启服务（仅桌面版）”，直接关闭并重新启动 <code>app.exe</code>。</p>
-            <p>程序重新启动后，页面会显示微信授权二维码。使用微信扫码并在手机上确认授权，完成后填写或确认页面要求的 Bot 账号信息。</p>
-            <figure><img src="./9.png" alt="开启微信并扫码授权" /><figcaption>开启微信并完成扫码授权</figcaption></figure>
+            <p>
+              在“用户配置平台”打开“微信”开关，点击右上角“保存配置”。不要点击页面上的“重启服务（仅桌面版）”，直接关闭并重新启动
+              <code>app.exe</code>。
+            </p>
+            <p>
+              程序重新启动后，页面会显示微信授权二维码。使用微信扫码并在手机上确认授权，完成后填写或确认页面要求的 Bot
+              账号信息。
+            </p>
+            <figure>
+              <img src="./9.png" alt="开启微信并扫码授权" />
+              <figcaption>开启微信并完成扫码授权</figcaption>
+            </figure>
           </div>
         </div>
       </section>
 
       <section class="section faq" id="faq">
-        <div class="section-heading"><span class="section-number">05</span><h2>常见问题</h2></div>
-        <details open><summary>浏览器打不开 WebUI</summary><p>确认 <code>app.exe</code> 仍在运行，并使用控制台最新输出的 WebUI <code>url</code>。程序重启后，旧端口或旧页面可能已经失效。</p></details>
-        <details><summary>修改配置后没有生效</summary><p>先点击“保存配置”，再关闭并重新启动 <code>app.exe</code>。仅修改页面内容而不保存，重启后不会保留。</p></details>
-        <details><summary>QQ 管理后台打不开或登录失效</summary><p>确认 NapCat 相关组件已启动，机器人 QQ 号填写正确；保存并重启程序后，再重新打开管理后台。</p></details>
-        <details><summary>模型调用失败</summary><p>检查 API 地址、API Key、供应商类型和模型名称是否匹配。配置 DeepSeek 时，优先检查类型是否为 <code>anthropic</code>。</p></details>
-        <details><summary>如何停止程序</summary><p>直接关闭 <code>app.exe</code> 对应的控制台窗口即可停止本机服务。下次使用时，从解压目录重新双击 <code>app.exe</code>。</p></details>
+        <div class="section-heading">
+          <span class="section-number">05</span>
+          <h2>常见问题</h2>
+        </div>
+        <details open>
+          <summary>浏览器打不开 WebUI</summary>
+          <p>
+            确认 <code>app.exe</code> 仍在运行，并使用控制台最新输出的 WebUI
+            <code>url</code>。程序重启后，旧端口或旧页面可能已经失效。
+          </p>
+        </details>
+        <details>
+          <summary>修改配置后没有生效</summary>
+          <p>先点击“保存配置”，再关闭并重新启动 <code>app.exe</code>。仅修改页面内容而不保存，重启后不会保留。</p>
+        </details>
+        <details>
+          <summary>QQ 管理后台打不开或登录失效</summary>
+          <p>确认 NapCat 相关组件已启动，机器人 QQ 号填写正确；保存并重启程序后，再重新打开管理后台。</p>
+        </details>
+        <details>
+          <summary>模型调用失败</summary>
+          <p>
+            检查 API 地址、API Key、供应商类型和模型名称是否匹配。配置 DeepSeek 时，优先检查类型是否为
+            <code>anthropic</code>。
+          </p>
+        </details>
+        <details>
+          <summary>如何停止程序</summary>
+          <p>
+            直接关闭 <code>app.exe</code> 对应的控制台窗口即可停止本机服务。下次使用时，从解压目录重新双击
+            <code>app.exe</code>。
+          </p>
+        </details>
       </section>
     </main>
 

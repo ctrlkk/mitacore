@@ -185,13 +185,13 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
           </section>
         </div>
       </section>
-      <section className="card">
-        <div className="card-heading">
+      <details className="card mode-card">
+        <summary className="mode-summary">
           <div>
             <p className="eyebrow">MODE</p>
             <h2>运行模式</h2>
           </div>
-        </div>
+        </summary>
         <div className="mode-settings">
           <section className="channel">
             <div className="channel-title">
@@ -211,7 +211,7 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
           </section>
           <section className="channel">
             <label className="field">
-              单个会话消息队列上限
+              单个会话单次处理前的消息等待队列上限
               <input
                 type="number"
                 min={1}
@@ -224,11 +224,30 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
                   }
                 }}
               />
-              <span>超出上限时会丢弃最早的消息。</span>
+              <span>用于暂存并合并下一次处理的消息，不是模型上下文长度；超出上限时会丢弃最早的消息。</span>
+            </label>
+          </section>
+          <section className="channel">
+            <label className="field">
+              消息合并等待时间（秒）
+              <input
+                type="number"
+                min={1}
+                max={10}
+                step={1}
+                value={config.debounce_ms / 1000}
+                onChange={(event) => {
+                  const debounceSeconds = Number(event.target.value);
+                  if (Number.isInteger(debounceSeconds) && debounceSeconds >= 1 && debounceSeconds <= 10) {
+                    setConfig((value) => ({ ...value, debounce_ms: debounceSeconds * 1000 }));
+                  }
+                }}
+              />
+              <span>收到最后一条消息后等待指定时间再判断是否处理，以便合并连续消息；可设为 1 至 10 秒。</span>
             </label>
           </section>
         </div>
-      </section>
+      </details>
       <section className="card">
         <div className="card-heading">
           <div>
@@ -242,6 +261,11 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
             label="QQ 私聊"
             value={config.napcat.private_chats}
             onChange={(private_chats) => updateNapcat({ private_chats })}
+          />
+          <ScopeEditor
+            label="QQ群内成员"
+            value={config.napcat.group_members}
+            onChange={(group_members) => updateNapcat({ group_members })}
           />
         </div>
       </section>

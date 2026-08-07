@@ -257,6 +257,32 @@ h2,
   grid-template-columns: 1fr;
   gap: 16px;
 }
+.mode-card {
+  display: block;
+}
+.mode-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+  cursor: pointer;
+}
+.mode-summary::-webkit-details-marker {
+  display: none;
+}
+.mode-summary::after {
+  content: "+";
+  color: #486071;
+  font:
+    500 20px "DM Mono",
+    monospace;
+}
+.mode-card[open] .mode-summary {
+  margin-bottom: 22px;
+}
+.mode-card[open] .mode-summary::after {
+  content: "-";
+}
 .scope-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
