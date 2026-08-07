@@ -98,8 +98,8 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
     logger: clientLogger,
   });
   void client
-    .start(async (event) => {
-      const unifiedMessages = toUnifiedSegments(event.segments, userId);
+    .start(async (inbound) => {
+      const unifiedMessages = toUnifiedSegments(inbound.segments, userId);
       const rawText = unifiedMessages
         .filter((segment): segment is Extract<UnifiedInboundMessage, { type: "text" }> => segment.type === "text")
         .map((segment) => segment.text)
@@ -107,8 +107,8 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
         .trim();
 
       if (rawText === "/ping") {
-        const latency = event.message.create_time_ms ? Date.now() - event.message.create_time_ms : 0;
-        await event.reply(`pong (${latency}ms)`);
+        const latency = inbound.message.create_time_ms ? Date.now() - inbound.message.create_time_ms : 0;
+        await client.reply(inbound.message, `pong (${latency}ms)`);
         return;
       }
 
@@ -116,15 +116,15 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
         userId,
         unifiedMessages,
         nickname: WEIXIN_USER_NICKNAME,
-        date: new Date(event.message.create_time_ms ?? Date.now()),
+        date: new Date(inbound.message.create_time_ms ?? Date.now()),
         isAt: true,
       };
       const context: ChannelReplyContext = {
         platform: "weixin",
-        conversationType: event.conversationType,
+        conversationType: "private",
         selfId: credentials.accountId,
-        reply: async (part) => await event.reply(toWeixinMessage(part)),
-        setTyping: async () => await event.setTyping(),
+        reply: async (part) => await client.reply(inbound.message, toWeixinMessage(part)),
+        setTyping: async () => await client.setTyping(inbound.message),
       };
       getBot(`weixin:${WEIXIN_USER_KEY}`).enqueue(message, context);
     })

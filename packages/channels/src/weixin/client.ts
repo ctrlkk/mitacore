@@ -10,15 +10,10 @@ export type WeixinInboundSegment =
 
 export type WeixinOutgoingMessage = string | { type: "image"; url: string };
 
-export interface WeixinInboundEvent {
+/** iLink 原始消息及其解析出的可消费片段。 */
+export interface WeixinInboundMessage {
   message: WeixinMessage;
   segments: WeixinInboundSegment[];
-  senderId: string;
-  nickname: string;
-  conversationType: "private" | "group";
-  sessionId: string;
-  reply(message: WeixinOutgoingMessage): Promise<void>;
-  setTyping(): Promise<() => void | Promise<void>>;
 }
 
 export interface WeixinSyncBufferStore {
@@ -39,7 +34,6 @@ export interface WeixinClientOptions {
 
 export class WeixinClient {
   private abortController: AbortController | null = null;
-  private readonly contextTokens = new Map<string, string>();
   private readonly logger: WeixinLogger;
 
   constructor(
@@ -50,7 +44,7 @@ export class WeixinClient {
     this.logger = options.logger ?? {};
   }
 
-  async start(handler: (event: WeixinInboundEvent) => Promise<void>) {
+  async start(handler: (message: WeixinInboundMessage) => Promise<void>) {
     if (this.abortController) throw new Error("微信客户端已经启动");
     let syncBuffer = await this.syncBufferStore.load();
     const controller = new AbortController();
@@ -79,7 +73,7 @@ export class WeixinClient {
           await this.syncBufferStore.save(syncBuffer);
         }
         for (const message of response.msgs ?? []) {
-          const inbound = await this.normalizeMessage(message);
+          const inbound = await this.parseInboundMessage(message);
           if (inbound) await handler(inbound);
         }
       } catch (error) {
@@ -100,27 +94,47 @@ export class WeixinClient {
     });
   }
 
-  private async normalizeMessage(message: WeixinMessage): Promise<WeixinInboundEvent | null> {
+  async reply(message: WeixinMessage, part: WeixinOutgoingMessage) {
+    const senderId = message.from_user_id?.trim();
+    if (!senderId) throw new Error("微信消息缺少发送者 ID，无法回复");
+    if (typeof part === "string") return await sendText(this.credentials, senderId, message.context_token, part);
+    const response = await fetch(part.url);
+    if (!response.ok) throw new Error(`读取待发送图片失败：HTTP ${response.status}`);
+    return await sendImage(
+      this.credentials,
+      senderId,
+      message.context_token,
+      Buffer.from(await response.arrayBuffer()),
+    );
+  }
+
+  async setTyping(message: WeixinMessage) {
+    const senderId = message.from_user_id?.trim();
+    if (!senderId) return () => {};
+
+    try {
+      const config = await getTypingTicket(this.credentials, senderId, message.context_token);
+      if (!config.typing_ticket) return () => {};
+      await sendTyping(this.credentials, senderId, config.typing_ticket, 1);
+      return async () => {
+        await sendTyping(this.credentials, senderId, config.typing_ticket!, 2).catch((error) => {
+          this.logger.debug?.("取消微信输入状态失败", error);
+        });
+      };
+    } catch (error) {
+      this.logger.debug?.("设置微信输入状态失败", error);
+      return () => {};
+    }
+  }
+
+  private async parseInboundMessage(message: WeixinMessage): Promise<WeixinInboundMessage | null> {
     const senderId = message.from_user_id?.trim();
     if (!senderId || senderId === this.credentials.accountId || message.message_type === 2) return null;
-    if (message.context_token) this.contextTokens.set(senderId, message.context_token);
 
     const segments = await this.parseItems(message.item_list ?? []);
     if (segments.length === 0) return null;
-    const conversationType = message.group_id ? "group" : "private";
-    const peerId = message.group_id || senderId;
-    const sessionId = `weixin:${this.credentials.accountId}:${conversationType}:${peerId}`;
 
-    return {
-      message,
-      segments,
-      senderId,
-      nickname: "",
-      conversationType,
-      sessionId,
-      reply: async (part) => await this.reply(senderId, part),
-      setTyping: async () => await this.setTyping(senderId),
-    };
+    return { message, segments };
   }
 
   private async parseItems(items: MessageItem[]) {
@@ -156,31 +170,6 @@ export class WeixinClient {
       }
     }
     return segments;
-  }
-
-  private async reply(to: string, part: WeixinOutgoingMessage) {
-    const contextToken = this.contextTokens.get(to);
-    if (typeof part === "string") return await sendText(this.credentials, to, contextToken, part);
-    const response = await fetch(part.url);
-    if (!response.ok) throw new Error(`读取待发送图片失败：HTTP ${response.status}`);
-    return await sendImage(this.credentials, to, contextToken, Buffer.from(await response.arrayBuffer()));
-  }
-
-  private async setTyping(to: string) {
-    const contextToken = this.contextTokens.get(to);
-    try {
-      const config = await getTypingTicket(this.credentials, to, contextToken);
-      if (!config.typing_ticket) return () => {};
-      await sendTyping(this.credentials, to, config.typing_ticket, 1);
-      return async () => {
-        await sendTyping(this.credentials, to, config.typing_ticket!, 2).catch((error) => {
-          this.logger.debug?.("取消微信输入状态失败", error);
-        });
-      };
-    } catch (error) {
-      this.logger.debug?.("设置微信输入状态失败", error);
-      return () => {};
-    }
   }
 
   private guessImageMime(buffer: Buffer) {

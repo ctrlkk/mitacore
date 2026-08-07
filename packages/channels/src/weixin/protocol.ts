@@ -29,8 +29,6 @@ export interface WeixinMessage {
   from_user_id?: string;
   to_user_id?: string;
   create_time_ms?: number;
-  session_id?: string;
-  group_id?: string;
   message_type?: number;
   item_list?: MessageItem[];
   context_token?: string;
