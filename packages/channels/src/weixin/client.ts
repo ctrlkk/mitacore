@@ -1,4 +1,4 @@
-import { downloadMedia, getTypingTicket, getUpdates, notifyLifecycle, sendImage, sendText, sendTyping } from "./api";
+import { WeixinApiClient } from "./api";
 import { MessageItemType, type MessageItem, type WeixinCredentials, type WeixinMessage } from "./protocol";
 import { sleep } from "shared/time";
 
@@ -33,6 +33,7 @@ export interface WeixinClientOptions {
 }
 
 export class WeixinClient {
+  readonly api: WeixinApiClient;
   private abortController: AbortController | null = null;
   private readonly logger: WeixinLogger;
 
@@ -41,6 +42,7 @@ export class WeixinClient {
     private readonly syncBufferStore: WeixinSyncBufferStore,
     options: WeixinClientOptions = {},
   ) {
+    this.api = new WeixinApiClient(credentials);
     this.logger = options.logger ?? {};
   }
 
@@ -52,13 +54,13 @@ export class WeixinClient {
     let timeoutMs = 35_000;
     let failures = 0;
 
-    await notifyLifecycle(this.credentials, "start").catch((error) => {
+    await this.api.notifyLifecycle("start").catch((error) => {
       this.logger.warn?.("通知微信渠道启动失败，继续运行", error);
     });
     this.logger.info?.("微信渠道已连接", { accountId: this.credentials.accountId });
     while (!controller.signal.aborted) {
       try {
-        const response = await getUpdates(this.credentials, syncBuffer, timeoutMs, controller.signal);
+        const response = await this.api.getUpdates(syncBuffer, timeoutMs, controller.signal);
         if (controller.signal.aborted) break;
         if ((response.ret && response.ret !== 0) || (response.errcode && response.errcode !== 0)) {
           throw new Error(`getUpdates ret=${response.ret} errcode=${response.errcode}: ${response.errmsg ?? ""}`);
@@ -89,7 +91,7 @@ export class WeixinClient {
 
   async stop() {
     this.abortController?.abort();
-    await notifyLifecycle(this.credentials, "stop").catch((error) => {
+    await this.api.notifyLifecycle("stop").catch((error) => {
       this.logger.warn?.("通知微信渠道停止失败", error);
     });
   }
@@ -97,15 +99,10 @@ export class WeixinClient {
   async reply(message: WeixinMessage, part: WeixinOutgoingMessage) {
     const senderId = message.from_user_id?.trim();
     if (!senderId) throw new Error("微信消息缺少发送者 ID，无法回复");
-    if (typeof part === "string") return await sendText(this.credentials, senderId, message.context_token, part);
+    if (typeof part === "string") return await this.api.sendText(senderId, message.context_token, part);
     const response = await fetch(part.url);
     if (!response.ok) throw new Error(`读取待发送图片失败：HTTP ${response.status}`);
-    return await sendImage(
-      this.credentials,
-      senderId,
-      message.context_token,
-      Buffer.from(await response.arrayBuffer()),
-    );
+    return await this.api.sendImage(senderId, message.context_token, Buffer.from(await response.arrayBuffer()));
   }
 
   async setTyping(message: WeixinMessage) {
@@ -113,11 +110,11 @@ export class WeixinClient {
     if (!senderId) return () => {};
 
     try {
-      const config = await getTypingTicket(this.credentials, senderId, message.context_token);
+      const config = await this.api.getTypingTicket(senderId, message.context_token);
       if (!config.typing_ticket) return () => {};
-      await sendTyping(this.credentials, senderId, config.typing_ticket, 1);
+      await this.api.sendTyping(senderId, config.typing_ticket, 1);
       return async () => {
-        await sendTyping(this.credentials, senderId, config.typing_ticket!, 2).catch((error) => {
+        await this.api.sendTyping(senderId, config.typing_ticket!, 2).catch((error) => {
           this.logger.debug?.("取消微信输入状态失败", error);
         });
       };
@@ -155,7 +152,7 @@ export class WeixinClient {
         segments.push({ type: "text", text: `[语音转文字] ${item.voice_item.text}` });
       } else if (item.type === MessageItemType.IMAGE || item.type === MessageItemType.VIDEO) {
         try {
-          const buffer = await downloadMedia(item);
+          const buffer = await this.api.downloadMedia(item);
           if (!buffer) continue;
           const mime = item.type === MessageItemType.IMAGE ? this.guessImageMime(buffer) : "video/mp4";
           const url = `data:${mime};base64,${buffer.toString("base64")}`;
