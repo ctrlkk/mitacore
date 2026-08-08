@@ -1,7 +1,7 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "@tsconfig/bun/tsconfig.json",
   "compilerOptions": {
-    "baseUrl": "."
+    "types": ["bun"]
   },
   "include": ["src/**/*.ts"]
 }

@@ -52,7 +52,7 @@ describe("startQQBotQrLogin", () => {
 
   test("取消后结束轮询且不泄露任务密钥", async () => {
     const error = await new Promise<Error>((resolve) => {
-      let cancel = () => undefined;
+      let cancel: () => void = () => undefined;
       cancel = startQQBotQrLogin(
         {
           onQrUrl: () => cancel(),

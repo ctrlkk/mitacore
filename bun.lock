@@ -59,6 +59,7 @@
       "name": "desktop",
       "version": "0.1.0",
       "devDependencies": {
+        "@types/node": "^26.0.1",
         "electron": "^42.0.0",
         "electron-builder": "^26.0.0",
         "electron-vite": "^5.0.0",

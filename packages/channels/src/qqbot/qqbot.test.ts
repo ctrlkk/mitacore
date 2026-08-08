@@ -85,7 +85,9 @@ describe("QQBotClient", () => {
         },
       },
     );
-    client.onMessage((message) => messages.push(message));
+    client.onMessage((message) => {
+      messages.push(message);
+    });
 
     const connecting = client.connect();
     await waitFor(() => sockets.length === 1);

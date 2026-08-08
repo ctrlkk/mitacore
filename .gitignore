@@ -31,6 +31,7 @@ __pycache__
 
 # 缓存 & 运行时数据
 *.tsbuildinfo
+.tsbuild/
 /data
 .playwright-cli
 

@@ -1,5 +1,7 @@
 import { createDecipheriv, randomBytes } from "node:crypto";
 
+type Fetcher = (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => ReturnType<typeof fetch>;
+
 const QQ_BIND_API_BASE_URL = "https://q.qq.com/lite";
 const QQ_BIND_PAGE_BASE_URL = "https://q.qq.com/qqbot/openclaw/connect.html";
 
@@ -17,7 +19,7 @@ export interface QQBotQrLoginEvents {
 }
 
 export interface QQBotQrLoginOptions {
-  fetch?: typeof fetch;
+  fetch?: Fetcher;
   pollIntervalMs?: number;
   requestTimeoutMs?: number;
   signal?: AbortSignal;
@@ -91,7 +93,7 @@ async function runQrLogin(events: QQBotQrLoginEvents, options: QQBotQrLoginOptio
   throw new Error("QQ Bot 扫码授权已取消");
 }
 
-async function createBindTask(fetcher: typeof fetch, timeoutMs: number, signal?: AbortSignal): Promise<BindTask> {
+async function createBindTask(fetcher: Fetcher, timeoutMs: number, signal?: AbortSignal): Promise<BindTask> {
   const key = randomBytes(32).toString("base64");
   const response = await requestJson<{ retcode?: number; data?: { task_id?: unknown } }>(
     fetcher,
@@ -107,7 +109,7 @@ async function createBindTask(fetcher: typeof fetch, timeoutMs: number, signal?:
 }
 
 async function pollBindResult(
-  fetcher: typeof fetch,
+  fetcher: Fetcher,
   taskId: string,
   timeoutMs: number,
   signal?: AbortSignal,
@@ -126,7 +128,7 @@ async function pollBindResult(
 }
 
 async function requestJson<T>(
-  fetcher: typeof fetch,
+  fetcher: Fetcher,
   endpoint: string,
   body: unknown,
   timeoutMs: number,

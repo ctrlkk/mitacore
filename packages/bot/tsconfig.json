@@ -1,10 +1,10 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "@tsconfig/bun/tsconfig.json",
   "compilerOptions": {
-    "baseUrl": "../..",
+    "types": ["bun"],
     "paths": {
-      "@/*": ["packages/bot/src/*"],
-      "@prompts/*": ["prompts/*"]
+      "@/*": ["./src/*"],
+      "@prompts/*": ["../../prompts/*"]
     }
   },
   "include": ["src/**/*.ts"]

@@ -1,12 +1,14 @@
 import type { QQBotCredentials, QQBotMessageResponse, QQBotReplyTarget } from "./protocol";
 import { QQBotApiError } from "./protocol";
 
+type Fetcher = (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => ReturnType<typeof fetch>;
+
 const DEFAULT_API_BASE_URL = "https://api.sgroup.qq.com";
 const DEFAULT_TOKEN_BASE_URL = "https://bots.qq.com";
 
 export interface QQBotHttpClientOptions {
   apiBaseUrl?: string;
-  fetch?: typeof fetch;
+  fetch?: Fetcher;
   requestTimeoutMs?: number;
   tokenBaseUrl?: string;
   userAgent?: string;
@@ -19,7 +21,7 @@ interface AccessToken {
 
 export class QQBotHttpClient {
   private readonly apiBaseUrl: string;
-  private readonly fetcher: typeof fetch;
+  private readonly fetcher: Fetcher;
   private readonly requestTimeoutMs: number;
   private readonly tokenBaseUrl: string;
   private readonly userAgent: string;
