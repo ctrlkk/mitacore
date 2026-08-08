@@ -6,7 +6,7 @@ const CLIENT_VERSION = (2 << 16) | (4 << 8) | 6;
 const WEIXIN_API_BASE_URL = "https://ilinkai.weixin.qq.com";
 const WEIXIN_CDN_BASE_URL = "https://novac2c.cdn.weixin.qq.com/c2c";
 
-interface RequestOptions {
+interface ApiOptions {
   token?: string;
   signal?: AbortSignal;
   timeoutMs?: number;
@@ -32,7 +32,7 @@ function url(endpoint: string) {
   return new URL(endpoint, `${WEIXIN_API_BASE_URL}/`).toString();
 }
 
-async function requestJson<T>(endpoint: string, body: unknown, options: RequestOptions): Promise<T> {
+async function requestJson<T>(endpoint: string, body: unknown, options: ApiOptions): Promise<T> {
   const timeoutController = new AbortController();
   const timeout = setTimeout(() => timeoutController.abort(), options.timeoutMs ?? 15_000);
   const abort = () => timeoutController.abort();
@@ -54,6 +54,75 @@ async function requestJson<T>(endpoint: string, body: unknown, options: RequestO
   }
 }
 
+export async function getUpdates(
+  credentials: WeixinCredentials,
+  syncBuffer: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<GetUpdatesResponse> {
+  try {
+    return await requestJson<GetUpdatesResponse>(
+      "ilink/bot/getupdates",
+      { get_updates_buf: syncBuffer, base_info: baseInfo() },
+      { token: credentials.token, timeoutMs, signal },
+    );
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError" && !signal?.aborted) {
+      return { ret: 0, msgs: [], get_updates_buf: syncBuffer };
+    }
+    throw error;
+  }
+}
+
+export async function sendText(
+  credentials: WeixinCredentials,
+  to: string,
+  contextToken: string | undefined,
+  text: string,
+) {
+  const response = await requestJson<{ ret?: number; errmsg?: string }>(
+    "ilink/bot/sendmessage",
+    {
+      msg: {
+        from_user_id: "",
+        to_user_id: to,
+        client_id: `agents-bot:${Date.now()}-${randomBytes(4).toString("hex")}`,
+        message_type: 2,
+        message_state: 2,
+        item_list: [{ type: MessageItemType.TEXT, text_item: { text } }],
+        context_token: contextToken,
+      },
+      base_info: baseInfo(),
+    },
+    { token: credentials.token },
+  );
+  if (response.ret && response.ret !== 0) throw new Error(`微信发送失败：${response.errmsg ?? response.ret}`);
+}
+
+export async function getTypingTicket(credentials: WeixinCredentials, userId: string, contextToken?: string) {
+  return await requestJson<{ ret?: number; typing_ticket?: string }>(
+    "ilink/bot/getconfig",
+    { ilink_user_id: userId, context_token: contextToken, base_info: baseInfo() },
+    { token: credentials.token, timeoutMs: 10_000 },
+  );
+}
+
+export async function sendTyping(credentials: WeixinCredentials, userId: string, ticket: string, status: 1 | 2) {
+  await requestJson(
+    "ilink/bot/sendtyping",
+    { ilink_user_id: userId, typing_ticket: ticket, status, base_info: baseInfo() },
+    { token: credentials.token, timeoutMs: 10_000 },
+  );
+}
+
+export async function notifyLifecycle(credentials: WeixinCredentials, state: "start" | "stop") {
+  return await requestJson<{ ret?: number; errmsg?: string }>(
+    `ilink/bot/msg/notify${state}`,
+    { base_info: baseInfo() },
+    { token: credentials.token, timeoutMs: 10_000 },
+  );
+}
+
 function parseAesKey(encoded: string) {
   const decoded = Buffer.from(encoded, "base64");
   if (decoded.length === 16) return decoded;
@@ -63,7 +132,7 @@ function parseAesKey(encoded: string) {
   throw new Error(`无效的微信媒体 AES key 长度：${decoded.length}`);
 }
 
-async function downloadMedia(item: MessageItem): Promise<Buffer | null> {
+export async function downloadMedia(item: MessageItem): Promise<Buffer | null> {
   const media = item.image_item?.media ?? item.video_item?.media ?? item.file_item?.media ?? item.voice_item?.media;
   if (!media) return null;
   const aesKey = (() => {
@@ -98,7 +167,12 @@ async function uploadEncrypted(buffer: Buffer, targetUrl: string, aesKey: Buffer
   return { downloadParam, encryptedSize: encrypted.length };
 }
 
-async function sendImage(credentials: WeixinCredentials, to: string, contextToken: string | undefined, buffer: Buffer) {
+export async function sendImage(
+  credentials: WeixinCredentials,
+  to: string,
+  contextToken: string | undefined,
+  buffer: Buffer,
+) {
   const aesKey = randomBytes(16);
   const fileKey = randomBytes(16).toString("hex");
   const paddedSize = Math.ceil((buffer.length + 1) / 16) * 16;
@@ -154,76 +228,4 @@ async function sendImage(credentials: WeixinCredentials, to: string, contextToke
     { token: credentials.token },
   );
   if (response.ret && response.ret !== 0) throw new Error(`微信图片发送失败：${response.errmsg ?? response.ret}`);
-}
-
-/** 微信 iLink 传输层客户端，负责请求、媒体上传下载等协议细节。 */
-export class WeixinApiClient {
-  constructor(private readonly credentials: WeixinCredentials) {}
-
-  async getUpdates(syncBuffer: string, timeoutMs: number, signal?: AbortSignal): Promise<GetUpdatesResponse> {
-    try {
-      return await requestJson<GetUpdatesResponse>(
-        "ilink/bot/getupdates",
-        { get_updates_buf: syncBuffer, base_info: baseInfo() },
-        { token: this.credentials.token, timeoutMs, signal },
-      );
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError" && !signal?.aborted) {
-        return { ret: 0, msgs: [], get_updates_buf: syncBuffer };
-      }
-      throw error;
-    }
-  }
-
-  async sendText(to: string, contextToken: string | undefined, text: string) {
-    const response = await requestJson<{ ret?: number; errmsg?: string }>(
-      "ilink/bot/sendmessage",
-      {
-        msg: {
-          from_user_id: "",
-          to_user_id: to,
-          client_id: `agents-bot:${Date.now()}-${randomBytes(4).toString("hex")}`,
-          message_type: 2,
-          message_state: 2,
-          item_list: [{ type: MessageItemType.TEXT, text_item: { text } }],
-          context_token: contextToken,
-        },
-        base_info: baseInfo(),
-      },
-      { token: this.credentials.token },
-    );
-    if (response.ret && response.ret !== 0) throw new Error(`微信发送失败：${response.errmsg ?? response.ret}`);
-  }
-
-  getTypingTicket(userId: string, contextToken?: string) {
-    return requestJson<{ ret?: number; typing_ticket?: string }>(
-      "ilink/bot/getconfig",
-      { ilink_user_id: userId, context_token: contextToken, base_info: baseInfo() },
-      { token: this.credentials.token, timeoutMs: 10_000 },
-    );
-  }
-
-  sendTyping(userId: string, ticket: string, status: 1 | 2) {
-    return requestJson(
-      "ilink/bot/sendtyping",
-      { ilink_user_id: userId, typing_ticket: ticket, status, base_info: baseInfo() },
-      { token: this.credentials.token, timeoutMs: 10_000 },
-    );
-  }
-
-  notifyLifecycle(state: "start" | "stop") {
-    return requestJson<{ ret?: number; errmsg?: string }>(
-      `ilink/bot/msg/notify${state}`,
-      { base_info: baseInfo() },
-      { token: this.credentials.token, timeoutMs: 10_000 },
-    );
-  }
-
-  downloadMedia(item: MessageItem) {
-    return downloadMedia(item);
-  }
-
-  sendImage(to: string, contextToken: string | undefined, buffer: Buffer) {
-    return sendImage(this.credentials, to, contextToken, buffer);
-  }
 }
