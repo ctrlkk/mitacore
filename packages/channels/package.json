@@ -11,6 +11,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./onebot": "./src/onebot/index.ts",
+    "./qqbot": "./src/qqbot/index.ts",
     "./weixin": "./src/weixin/index.ts"
   }
 }
