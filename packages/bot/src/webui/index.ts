@@ -40,6 +40,30 @@ const modelRequestSchema = z.object({
   api_key: z.string().trim().min(1, "请先填写 API Key"),
 });
 
+function getModelHeaders(type: z.infer<typeof modelRequestSchema>["type"], apiKey: string): Headers {
+  if (type === "anthropic") {
+    return new Headers({ "x-api-key": apiKey, "anthropic-version": "2023-06-01" });
+  }
+  return new Headers({ Authorization: `Bearer ${apiKey}` });
+}
+
+function getModelIds(payload: unknown): string[] {
+  if (!payload || typeof payload !== "object") return [];
+
+  const response = payload as { data?: unknown; models?: unknown };
+  const models = [response.data, response.models].flatMap((items) => {
+    if (!Array.isArray(items)) return [];
+    return items.flatMap((model) => {
+      if (!model || typeof model !== "object") return [];
+      const { id, name } = model as { id?: unknown; name?: unknown };
+      if (typeof id === "string" && id) return [id];
+      if (typeof name === "string" && name) return [name];
+      return [];
+    });
+  });
+  return [...new Set(models)].sort((left, right) => left.localeCompare(right));
+}
+
 const verifyCodeSchema = z.object({
   code: z.string().trim().min(1, "请输入验证码").max(32, "验证码格式不正确"),
 });
@@ -145,25 +169,20 @@ export function createApp() {
   app.post("/api/models", async (c) => {
     try {
       const request = modelRequestSchema.parse(await c.req.json());
-      const response = await fetch(`${request.base_url.replace(/\/$/, "")}/models`, {
-        headers:
-          request.type === "anthropic"
-            ? { "x-api-key": request.api_key, "anthropic-version": "2023-06-01" }
-            : { Authorization: `Bearer ${request.api_key}` },
+      const response = await fetch(`${request.base_url.replace(/\/+$/, "")}/models`, {
+        headers: getModelHeaders(request.type, request.api_key),
         signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) throw new Error(`供应商返回 HTTP ${response.status}，请检查 API 地址和密钥`);
 
-      const payload = (await response.json()) as {
-        data?: Array<{ id?: unknown }>;
-        models?: Array<{ id?: unknown; name?: unknown }>;
-      };
-      const models = [
-        ...(payload.data ?? []).map((model) => model.id),
-        ...(payload.models ?? []).map((model) => model.id ?? model.name),
-      ].filter((id): id is string => typeof id === "string" && Boolean(id));
-      return c.json({ models: [...new Set(models)] });
+      return c.json({ models: getModelIds(await response.json()) });
     } catch (error) {
+      if (error instanceof DOMException && error.name === "TimeoutError") {
+        return c.json({ error: { message: "获取模型超时，请检查 API 地址和网络连接" } }, 504);
+      }
+      if (error instanceof TypeError && error.message === "fetch failed") {
+        return c.json({ error: { message: "无法连接供应商，请检查 API 地址和网络连接" } }, 502);
+      }
       const response = errorResponse(error);
       return c.json(response.body, response.status);
     }
