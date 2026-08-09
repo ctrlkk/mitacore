@@ -1,6 +1,6 @@
 import type { Config } from "../types";
 import { ScopeEditor } from "../components/ScopeEditor";
-import { QRCode } from "antd";
+import { Input, QRCode, Switch } from "antd";
 import { useEffect, useState } from "react";
 import { useChannels } from "../hooks/useChannels";
 
@@ -41,45 +41,42 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
     }
   };
   return (
-    <div className="content">
-      <section className="card">
-        <div className="card-heading">
+    <div className="mx-auto grid max-w-[1240px] gap-5 px-[clamp(20px,5vw,72px)] pb-16 pt-7.5 max-[480px]:px-3.5 max-[480px]:pb-10 max-[480px]:pt-4">
+      <section className="rounded-[14px] b-ui bg-white p-6 shadow-[0_1px_2px_#17212b08] max-[480px]:p-4">
+        <div className="mb-5.5">
           <div>
-            <p className="eyebrow">CHANNELS</p>
-            <h2>消息渠道</h2>
-            <p>每个渠道独立启用；至少保留一个渠道。</p>
+            <p className="mb-1.25 font-mono text-[10px] font-500 tracking-[0.12em] text-muted">CHANNELS</p>
+            <h2 className="text-lg tracking-[-0.02em]">消息渠道</h2>
+            <p className="mt-1.25 text-xs leading-[1.5] text-muted">每个渠道独立启用；至少保留一个渠道。</p>
           </div>
         </div>
-        <div className="channel-grid">
-          <section className="channel">
-            <div className="channel-title">
+        <div className="grid grid-cols-2 gap-4 max-[820px]:grid-cols-1">
+          <section className="grid content-start gap-3.75 rounded-[10px] b-ui p-4.5">
+            <div className="flex justify-between gap-3">
               <div>
-                <h3>QQ / NapCat</h3>
-                <p>通过 NapCat 接收 QQ 消息。</p>
+                <h3 className="text-sm">QQ / NapCat</h3>
+                <p className="mt-1.25 text-xs leading-[1.5] text-muted">通过 NapCat 接收 QQ 消息。</p>
               </div>
-              <label className="switch">
-                <input
-                  type="checkbox"
-                  checked={config.napcat.enabled}
-                  onChange={(event) => updateNapcat({ enabled: event.target.checked })}
-                />
-                <span />
-              </label>
+              <Switch checked={config.napcat.enabled} onChange={(enabled) => updateNapcat({ enabled })} />
             </div>
             {config.napcat.enabled && (
               <>
                 {channels.napcat.status === "starting" && !channels.napcat.embed_url && (
-                  <p className="notice">NapCat 正在启动…</p>
+                  <p className="rounded-lg bg-[#edf7f2] px-3 py-2.5 text-xs leading-[1.5] text-[#416050]">
+                    NapCat 正在启动…
+                  </p>
                 )}
                 {channels.napcat.status === "starting" && channels.napcat.embed_url && (
-                  <p className="notice">NapCat WebUI 已启动，请在管理后台登录 QQ。</p>
+                  <p className="rounded-lg bg-[#edf7f2] px-3 py-2.5 text-xs leading-[1.5] text-[#416050]">
+                    NapCat WebUI 已启动，请在管理后台登录 QQ。
+                  </p>
                 )}
                 {channels.napcat.embed_url && (
-                  <div className="napcat-panel">
-                    <div className="panel-heading">
+                  <div className="grid gap-3 rounded-lg b-success bg-[#f5fbf8] p-3.5">
+                    <div className="flex items-center justify-between gap-3 text-xs">
                       <strong>NapCat 管理面板</strong>
                       <button
-                        className="text-button"
+                        className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-brand"
                         onClick={() => window.open(channels.napcat.embed_url, "_blank", "noopener")}
                       >
                         打开管理后台
@@ -87,11 +84,19 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
                     </div>
                   </div>
                 )}
-                {channels.napcat.status === "external" && <p className="notice">外置 NapCat 不提供内嵌管理面板。</p>}
-                {channels.napcat.error && <p className="notice error">{channels.napcat.error}</p>}
-                <label className="field">
+                {channels.napcat.status === "external" && (
+                  <p className="rounded-lg bg-[#edf7f2] px-3 py-2.5 text-xs leading-[1.5] text-[#416050]">
+                    外置 NapCat 不提供内嵌管理面板。
+                  </p>
+                )}
+                {channels.napcat.error && (
+                  <p className="rounded-lg bg-[#fff0f0] px-3 py-2.5 text-xs leading-[1.5] text-[#922e2e]">
+                    {channels.napcat.error}
+                  </p>
+                )}
+                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
                   机器人 QQ 号
-                  <input
+                  <Input
                     value={config.napcat.qq_id ?? ""}
                     inputMode="numeric"
                     onChange={(event) => updateNapcat({ qq_id: event.target.value })}
@@ -99,19 +104,18 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
                   />
                 </label>
                 <details>
-                  <summary>外部 NapCat 连接设置</summary>
-                  <label className="field">
+                  <summary className="cursor-pointer text-xs text-[#486071]">外部 NapCat 连接设置</summary>
+                  <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
                     WebSocket 地址
-                    <input
+                    <Input
                       value={config.napcat.ws_url ?? ""}
                       onChange={(event) => updateNapcat({ ws_url: event.target.value })}
                       placeholder="ws://localhost:3001"
                     />
                   </label>
-                  <label className="field">
+                  <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
                     Token
-                    <input
-                      type="password"
+                    <Input.Password
                       value={config.napcat.token ?? ""}
                       onChange={(event) => updateNapcat({ token: event.target.value })}
                     />
@@ -120,62 +124,74 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
               </>
             )}
           </section>
-          <section className="channel">
-            <div className="channel-title">
+          <section className="grid content-start gap-3.75 rounded-[10px] b-ui p-4.5">
+            <div className="flex justify-between gap-3">
               <div>
-                <h3>微信</h3>
-                <p>iLink Bot 渠道，支持扫码授权。</p>
+                <h3 className="text-sm">微信</h3>
+                <p className="mt-1.25 text-xs leading-[1.5] text-muted">iLink Bot 渠道，支持扫码授权。</p>
               </div>
-              <label className="switch">
-                <input
-                  type="checkbox"
-                  checked={config.weixin.enabled}
-                  onChange={(event) => updateWeixin({ enabled: event.target.checked })}
-                />
-                <span />
-              </label>
+              <Switch checked={config.weixin.enabled} onChange={(enabled) => updateWeixin({ enabled })} />
             </div>
             {config.weixin.enabled && (
               <>
                 {channels.weixin.status === "waiting_qr" && channels.weixin.qrcode_content && (
-                  <div className="weixin-login">
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg b-success bg-[#f5fbf8] p-3.5">
                     <div>
                       <strong>请使用微信扫描二维码</strong>
-                      <p>扫描后请在手机上确认授权。</p>
+                      <p className="mt-1.25 text-xs text-muted">扫描后请在手机上确认授权。</p>
                     </div>
                     <QRCode value={channels.weixin.qrcode_content} size={176} />
                   </div>
                 )}
-                {channels.weixin.status === "scanned" && <p className="notice">二维码已扫描，正在等待手机确认。</p>}
+                {channels.weixin.status === "scanned" && (
+                  <p className="rounded-lg bg-[#edf7f2] px-3 py-2.5 text-xs leading-[1.5] text-[#416050]">
+                    二维码已扫描，正在等待手机确认。
+                  </p>
+                )}
                 {channels.weixin.status === "waiting_verify_code" && (
-                  <div className="verify-code">
-                    <label className="field">
+                  <div className="grid gap-3 rounded-lg b-success bg-[#f5fbf8] p-3.5">
+                    <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
                       请输入微信显示的数字验证码
-                      <input
+                      <Input
                         value={verifyCode}
                         inputMode="numeric"
                         onChange={(event) => setVerifyCode(event.target.value)}
                       />
                     </label>
-                    <button className="button" disabled={submitting || !verifyCode.trim()} onClick={submitVerifyCode}>
+                    <button
+                      className="w-fit inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-3.5 py-2.5 text-sm font-700 text-white hover:bg-brand-dark disabled:cursor-wait disabled:opacity-65"
+                      disabled={submitting || !verifyCode.trim()}
+                      onClick={submitVerifyCode}
+                    >
                       提交验证码
                     </button>
-                    {verifyError && <p className="notice error">{verifyError}</p>}
+                    {verifyError && (
+                      <p className="rounded-lg bg-[#fff0f0] px-3 py-2.5 text-xs leading-[1.5] text-[#922e2e]">
+                        {verifyError}
+                      </p>
+                    )}
                   </div>
                 )}
-                {channels.weixin.status === "ready" && <p className="notice success">微信渠道已连接。</p>}
-                {channels.weixin.error && <p className="notice error">{channels.weixin.error}</p>}
-                <label className="field">
+                {channels.weixin.status === "ready" && (
+                  <p className="rounded-lg bg-[#edf7f2] px-3 py-2.5 text-xs leading-[1.5] text-[#416050]">
+                    微信渠道已连接。
+                  </p>
+                )}
+                {channels.weixin.error && (
+                  <p className="rounded-lg bg-[#fff0f0] px-3 py-2.5 text-xs leading-[1.5] text-[#922e2e]">
+                    {channels.weixin.error}
+                  </p>
+                )}
+                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
                   Bot 账号 ID
-                  <input
+                  <Input
                     value={config.weixin.account_id ?? ""}
                     onChange={(event) => updateWeixin({ account_id: event.target.value })}
                   />
                 </label>
-                <label className="field">
+                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
                   Bot Token
-                  <input
-                    type="password"
+                  <Input.Password
                     value={config.weixin.token ?? ""}
                     onChange={(event) => updateWeixin({ token: event.target.value })}
                   />
@@ -185,77 +201,14 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
           </section>
         </div>
       </section>
-      <details className="card mode-card">
-        <summary className="mode-summary">
+      <section className="rounded-[14px] b-ui bg-white p-6 shadow-[0_1px_2px_#17212b08] max-[480px]:p-4">
+        <div className="mb-5.5">
           <div>
-            <p className="eyebrow">MODE</p>
-            <h2>运行模式</h2>
-          </div>
-        </summary>
-        <div className="mode-settings">
-          <section className="channel">
-            <div className="channel-title">
-              <div>
-                <h3>节约模式</h3>
-                <p>开启后使用兼容性和性能可能较低的节约 planner；默认使用连续 planner。</p>
-              </div>
-              <label className="switch">
-                <input
-                  type="checkbox"
-                  checked={config.economy_mode}
-                  onChange={(event) => setConfig((value) => ({ ...value, economy_mode: event.target.checked }))}
-                />
-                <span />
-              </label>
-            </div>
-          </section>
-          <section className="channel">
-            <label className="field">
-              单个会话单次处理前的消息等待队列上限
-              <input
-                type="number"
-                min={1}
-                step={1}
-                value={config.max_queue}
-                onChange={(event) => {
-                  const maxQueue = Number(event.target.value);
-                  if (Number.isInteger(maxQueue) && maxQueue > 0) {
-                    setConfig((value) => ({ ...value, max_queue: maxQueue }));
-                  }
-                }}
-              />
-              <span>用于暂存并合并下一次处理的消息，不是模型上下文长度；超出上限时会丢弃最早的消息。</span>
-            </label>
-          </section>
-          <section className="channel">
-            <label className="field">
-              消息合并等待时间（秒）
-              <input
-                type="number"
-                min={1}
-                max={10}
-                step={1}
-                value={config.debounce_ms / 1000}
-                onChange={(event) => {
-                  const debounceSeconds = Number(event.target.value);
-                  if (Number.isInteger(debounceSeconds) && debounceSeconds >= 1 && debounceSeconds <= 10) {
-                    setConfig((value) => ({ ...value, debounce_ms: debounceSeconds * 1000 }));
-                  }
-                }}
-              />
-              <span>收到最后一条消息后等待指定时间再判断是否处理，以便合并连续消息；可设为 1 至 10 秒。</span>
-            </label>
-          </section>
-        </div>
-      </details>
-      <section className="card">
-        <div className="card-heading">
-          <div>
-            <p className="eyebrow">ACCESS</p>
-            <h2>访问范围</h2>
+            <p className="mb-1.25 font-mono text-[10px] font-500 tracking-[0.12em] text-muted">ACCESS</p>
+            <h2 className="text-lg tracking-[-0.02em]">访问范围</h2>
           </div>
         </div>
-        <div className="scope-grid">
+        <div className="grid grid-cols-3 gap-4 max-[1120px]:grid-cols-2 max-[820px]:grid-cols-1">
           <ScopeEditor label="QQ 群聊" value={config.napcat.groups} onChange={(groups) => updateNapcat({ groups })} />
           <ScopeEditor
             label="QQ 私聊"

@@ -13,7 +13,7 @@ export function ModelPicker({ value, options, onChange, onSelect }: ModelPickerP
 
   return (
     <AutoComplete
-      className="model-autocomplete"
+      className="model-autocomplete w-full"
       value={value}
       open={open}
       options={options.map((option) => ({ value: option }))}

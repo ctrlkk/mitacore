@@ -18,10 +18,11 @@
     "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^5.0.2",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
     "typescript": "^5.9.3",
+    "unocss": "^66.7.5",
     "vite": "^8.1.5"
   }
 }

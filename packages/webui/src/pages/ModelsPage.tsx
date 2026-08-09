@@ -1,5 +1,6 @@
 import { LoaderCircle, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Alert, Input, Select } from "antd";
 import { ModelPicker } from "../components/ModelPicker";
 import type { Config, Provider } from "../types";
 
@@ -59,56 +60,62 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
     }
   };
   return (
-    <div className="content">
-      <section className="card">
-        <div className="card-heading provider-heading">
+    <div className="mx-auto grid max-w-[1240px] gap-5 px-[clamp(20px,5vw,72px)] pb-16 pt-7.5 max-[480px]:px-3.5 max-[480px]:pb-10 max-[480px]:pt-4">
+      <section className="rounded-[14px] b-ui bg-white p-6 shadow-[0_1px_2px_#17212b08] max-[480px]:p-4">
+        <div className="mb-5.5 flex items-start justify-between gap-4">
           <div>
-            <p className="eyebrow">PROVIDERS</p>
-            <h2>模型供应商</h2>
-            <p>填写 API 地址与密钥，并维护模型别名。</p>
+            <p className="mb-1.25 font-mono text-[10px] font-500 tracking-[0.12em] text-muted">PROVIDERS</p>
+            <h2 className="text-lg tracking-[-0.02em]">模型供应商</h2>
+            <p className="mt-1.25 text-xs leading-[1.5] text-muted">填写 API 地址与密钥，并维护模型别名。</p>
           </div>
-          <button className="button secondary" onClick={addProvider}>
+          <button
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#e9eff2] px-3.5 py-2.5 text-sm font-700 text-[#294051] hover:bg-[#dce5e9]"
+            onClick={addProvider}
+          >
             <Plus size={16} />
             添加供应商
           </button>
         </div>
-        <div className="provider-list">
+        <Alert
+          className="mb-5"
+          showIcon
+          type="info"
+          message="DeepSeek 官方 Anthropic 端点未实现模型列表接口，因此自动获取模型时显示 404 属于正常情况，请手动添加模型。"
+        />
+        <div className="grid gap-3.5">
           {config.providers.map((provider, providerIndex) => (
-            <section className="provider-card" key={`${provider.name}-${providerIndex}`}>
-              <div className="provider-fields">
-                <label className="field">
+            <section className="grid gap-3.5 rounded-[10px] b-ui p-4.5" key={`${provider.name}-${providerIndex}`}>
+              <div className="grid grid-cols-2 gap-3 max-[820px]:grid-cols-1">
+                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
                   名称
-                  <input
+                  <Input
                     value={provider.name}
                     onChange={(event) => updateProvider(providerIndex, { name: event.target.value })}
                   />
                 </label>
-                <label className="field">
+                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
                   类型
-                  <select
+                  <Select
                     value={provider.type}
-                    onChange={(event) =>
-                      updateProvider(providerIndex, { type: event.target.value as Provider["type"] })
-                    }
-                  >
-                    {["anthropic", "deepseek", "openai-responses", "openai-compatible"].map((type) => (
-                      <option key={type}>{type}</option>
-                    ))}
-                  </select>
+                    options={["anthropic", "deepseek", "openai-responses", "openai-compatible"].map((type) => ({
+                      label: type,
+                      value: type,
+                    }))}
+                    onChange={(type) => updateProvider(providerIndex, { type: type as Provider["type"] })}
+                  />
                 </label>
-                <label className="field">
+                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
                   API 地址
-                  <input
+                  <Input
                     value={provider.options.base_url}
                     onChange={(event) =>
                       updateProvider(providerIndex, { options: { ...provider.options, base_url: event.target.value } })
                     }
                   />
                 </label>
-                <label className="field">
+                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
                   API Key
-                  <input
-                    type="password"
+                  <Input.Password
                     value={provider.options.api_key}
                     onChange={(event) =>
                       updateProvider(providerIndex, { options: { ...provider.options, api_key: event.target.value } })
@@ -116,18 +123,22 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
                   />
                 </label>
               </div>
-              <div className="provider-models">
+              <div className="grid gap-3.5">
                 <button
-                  className="text-button"
+                  className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-brand disabled:cursor-wait disabled:opacity-60"
                   disabled={loading[providerIndex]}
                   onClick={() => fetchModels(providerIndex)}
                 >
-                  {loading[providerIndex] ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
+                  {loading[providerIndex] ? (
+                    <LoaderCircle className="animate-spin" size={15} />
+                  ) : (
+                    <RefreshCw size={15} />
+                  )}
                   {loading[providerIndex] ? "正在获取模型" : "自动获取模型"}
                 </button>
-                {errors[providerIndex] && <p className="provider-error">{errors[providerIndex]}</p>}
+                {errors[providerIndex] && <p className="text-xs text-[#ae3737]">{errors[providerIndex]}</p>}
                 {provider.models.map((model, modelIndex) => (
-                  <div className="model-row" key={modelIndex}>
+                  <div className="grid grid-cols-[1fr_1fr_30px] gap-1.75" key={modelIndex}>
                     <ModelPicker
                       value={model.id}
                       options={[...new Set([model.id, ...(options[providerIndex] ?? [])].filter(Boolean))]}
@@ -145,7 +156,8 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
                           });
                       }}
                     />
-                    <input
+                    <Input
+                      className="font-mono text-xs"
                       value={model.alias}
                       placeholder="模型别名"
                       onChange={(event) =>
@@ -157,7 +169,7 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
                       }
                     />
                     <button
-                      className="icon-button"
+                      className="grid h-8.5 w-7.5 place-items-center rounded-md bg-[#edf1f3] p-0 text-[#526574]"
                       onClick={() =>
                         updateProvider(providerIndex, {
                           models: provider.models.filter((_, index) => index !== modelIndex),
@@ -169,7 +181,7 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
                   </div>
                 ))}
                 <button
-                  className="text-button"
+                  className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-brand"
                   onClick={() => updateProvider(providerIndex, { models: [...provider.models, { id: "", alias: "" }] })}
                 >
                   <Plus size={15} />
@@ -177,7 +189,7 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
                 </button>
               </div>
               <button
-                className="text-button danger-text"
+                className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-[#ae3737]"
                 onClick={() =>
                   setConfig((value) => ({
                     ...value,
@@ -192,14 +204,14 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
           ))}
         </div>
       </section>
-      <section className="card">
-        <div className="card-heading">
+      <section className="rounded-[14px] b-ui bg-white p-6 shadow-[0_1px_2px_#17212b08] max-[480px]:p-4">
+        <div className="mb-5.5">
           <div>
-            <p className="eyebrow">MODELS</p>
-            <h2>模型分工</h2>
+            <p className="mb-1.25 font-mono text-[10px] font-500 tracking-[0.12em] text-muted">MODELS</p>
+            <h2 className="text-lg tracking-[-0.02em]">模型分工</h2>
           </div>
         </div>
-        <div className="model-grid">
+        <div className="grid grid-cols-3 gap-4 max-[820px]:grid-cols-1">
           {(
             [
               ["plan", "规划"],
@@ -212,19 +224,16 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
               ["multimodal_audio", "音频理解"],
             ] as const
           ).map(([key, label]) => (
-            <label className="field" key={key}>
+            <label className="grid gap-1.75 text-xs font-700 text-[#40515f]" key={key}>
               {label}
-              <select
+              <Select
                 value={config.models[key]}
-                onChange={(event) =>
-                  setConfig((value) => ({ ...value, models: { ...value.models, [key]: event.target.value } }))
-                }
-              >
-                <option value="">未配置</option>
-                {aliases.map((option) => (
-                  <option key={option}>{option}</option>
-                ))}
-              </select>
+                options={[
+                  { label: "未配置", value: "" },
+                  ...aliases.map((option) => ({ label: option, value: option })),
+                ]}
+                onChange={(model) => setConfig((value) => ({ ...value, models: { ...value.models, [key]: model } }))}
+              />
             </label>
           ))}
         </div>
