@@ -13,6 +13,7 @@ export type Config = {
     qq_id?: string;
     ws_url?: string;
     token?: string;
+    wake_keywords: string[];
     groups: Scope;
     private_chats: Scope;
     group_members: Scope;
@@ -53,6 +54,7 @@ export const defaultConfig: Config = {
     qq_id: "",
     ws_url: "",
     token: "",
+    wake_keywords: [],
     groups: { mode: "whitelist", ids: [] },
     private_chats: { mode: "whitelist", ids: [] },
     group_members: { mode: "blacklist", ids: [] },

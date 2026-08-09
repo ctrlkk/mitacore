@@ -1,6 +1,6 @@
 import type { Config } from "../types";
 import { ScopeEditor } from "../components/ScopeEditor";
-import { Input, QRCode, Switch } from "antd";
+import { Input, QRCode, Select, Switch } from "antd";
 import { useEffect, useState } from "react";
 import { useChannels } from "../hooks/useChannels";
 
@@ -102,6 +102,20 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
                     onChange={(event) => updateNapcat({ qq_id: event.target.value })}
                     placeholder="请输入 QQ 号"
                   />
+                </label>
+                <p className="rounded-lg bg-[#fff8e8] px-3 py-2.5 text-xs leading-[1.5] text-[#765a24]">
+                  NapCat 小技巧：给机器人 QQ 账号完成实名认证，可以大幅降低被强制下线的概率。
+                </p>
+                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
+                  群聊唤醒关键词
+                  <Select
+                    mode="tags"
+                    value={config.napcat.wake_keywords}
+                    onChange={(wake_keywords) => updateNapcat({ wake_keywords })}
+                    placeholder="输入关键词后按回车"
+                    tokenSeparators={[]}
+                  />
+                  <span className="font-400 leading-[1.5] text-muted">消息包含任一关键词时，无需 @ 机器人。</span>
                 </label>
                 <details>
                   <summary className="cursor-pointer text-xs text-[#486071]">外部 NapCat 连接设置</summary>

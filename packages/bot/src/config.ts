@@ -44,6 +44,10 @@ const schema = z
         ws_url: z.string().optional().describe("外部 NapCat WebSocket 地址"),
         token: z.string().optional().describe("外部 NapCat token"),
         qq_id: z.string().optional().describe("内置服务登录的 QQ ID"),
+        wake_keywords: z
+          .array(z.string().trim().min(1, "唤醒关键词不能为空"))
+          .default([])
+          .describe("群聊中用于唤醒机器人的关键词"),
         groups: scopeConfig.default({ mode: "whitelist", ids: [] }).describe("群聊范围控制"),
         private_chats: scopeConfig.default({ mode: "whitelist", ids: [] }).describe("私聊范围控制"),
         group_members: scopeConfig.default({ mode: "blacklist", ids: [] }).describe("群内用户范围控制"),

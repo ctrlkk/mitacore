@@ -125,11 +125,19 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
 
   bot.onMessage(async (event, ctx) => {
     const segments = event.message;
+    const rawText = segments
+      .filter((seg) => seg.type === "text")
+      .map((seg) => seg.data.text)
+      .join(" ")
+      .trim();
+
     let isAt = false;
     if (event.message_type === "group") {
       if (!isIdInScope(String(event.group_id), config.napcat.groups)) return;
       if (!isIdInScope(String(event.user_id), config.napcat.group_members)) return;
-      isAt = segments.some((seg) => seg.type === "at" && seg.data.qq === selfId);
+      isAt =
+        segments.some((seg) => seg.type === "at" && seg.data.qq === selfId) ||
+        config.napcat.wake_keywords.some((keyword) => rawText.includes(keyword));
     } else if (event.message_type === "private") {
       if (!isIdInScope(String(event.user_id), config.napcat.private_chats)) return;
       isAt = true;
@@ -139,11 +147,6 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
 
     const isAdmin = true;
     const alias = ensureUserAlias("onebot", String(event.user_id), event.sender.nickname);
-    const rawText = segments
-      .filter((seg) => seg.type === "text")
-      .map((seg) => seg.data.text)
-      .join(" ")
-      .trim();
     const sessionId = event.message_type === "group" ? `group:${event.group_id}` : `private:${event.user_id}`;
 
     if (isAt && (await handleCommand(rawText, ctx, isAdmin))) return;
