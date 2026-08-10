@@ -11,4 +11,7 @@ if (import.meta.main) {
   } catch (error) {
     logger.error({ err: error }, "机器人启动失败，WebUI 将继续运行");
   }
+
+  // 使用定时器避免机器人启动失败后进程退出。
+  setInterval(() => {}, 60_000);
 }

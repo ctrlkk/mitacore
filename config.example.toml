@@ -13,7 +13,7 @@ debounce_ms = 1000
 
 # napcat 平台配置
 [napcat]
-enabled = true
+enabled = false
 # ws_url: 自定义 napcat WebSocket 地址，为空时使用内置服务
 # token: napcat 服务 token，为空时使用内置服务
 # tip: 如果你不懂这些配置，那么建议直接无视它们

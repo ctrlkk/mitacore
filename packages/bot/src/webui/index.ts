@@ -296,6 +296,12 @@ export function createApp() {
   });
 
   app.use("*", serveStatic({ root: projectPath("webui") }));
+  app.get("*", async (c) => {
+    if (c.req.path.startsWith("/api/")) return c.notFound();
+
+    const index = await readFile(projectPath("webui", "index.html"));
+    return new Response(index, { headers: { "content-type": "text/html; charset=utf-8" } });
+  });
   return app;
 }
 
@@ -311,6 +317,5 @@ export function startWebUi() {
     hostname: "127.0.0.1",
     port: Bun.env.WEBUI_PORT ?? 0,
   });
-  server.unref();
   logger.info({ url: `http://127.0.0.1:${server.port}` }, "WebUI 已启动");
 }

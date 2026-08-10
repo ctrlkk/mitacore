@@ -1,319 +1,512 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Mita Core 使用指南</title>
-  <style>
-    :root {
-      color-scheme: light;
-      --ink: #1c2733;
-      --muted: #667585;
-      --line: #dbe4ec;
-      --paper: #ffffff;
-      --wash: #f3f7fa;
-      --blue: #2869a6;
-      --blue-dark: #174873;
-      --blue-soft: #e8f2fb;
-      --gold: #bd7814;
-      --gold-soft: #fff4df;
-      --shadow: 0 18px 45px rgba(32, 60, 84, .12);
-    }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mita Core 使用指南</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #1c2733;
+        --muted: #667585;
+        --line: #dbe4ec;
+        --paper: #ffffff;
+        --wash: #f3f7fa;
+        --blue: #2869a6;
+        --blue-dark: #174873;
+        --blue-soft: #e8f2fb;
+        --gold: #bd7814;
+        --gold-soft: #fff4df;
+        --shadow: 0 18px 45px rgba(32, 60, 84, 0.12);
+      }
 
-    * { box-sizing: border-box; }
+      * {
+        box-sizing: border-box;
+      }
 
-    html { scroll-behavior: smooth; }
+      html {
+        scroll-behavior: smooth;
+      }
 
-    body {
-      margin: 0;
-      color: var(--ink);
-      background:
-        radial-gradient(circle at 12% 0%, rgba(77, 145, 196, .13), transparent 30rem),
-        linear-gradient(135deg, #edf4f8 0%, #f8fafb 52%, #eef3f6 100%);
-      font-family: "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
-      line-height: 1.8;
-    }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 12% 0%, rgba(77, 145, 196, 0.13), transparent 30rem),
+          linear-gradient(135deg, #edf4f8 0%, #f8fafb 52%, #eef3f6 100%);
+        font-family: "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+        line-height: 1.8;
+      }
 
-    .page_shell {
-      display: grid;
-      grid-template-columns: 220px minmax(0, 900px);
-      gap: 34px;
-      width: min(1190px, calc(100% - 40px));
-      margin: 0 auto;
-      padding: 42px 0 70px;
-    }
+      .page_shell {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 900px);
+        gap: 34px;
+        width: min(1190px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 42px 0 70px;
+      }
 
-    .side_nav {
-      position: sticky;
-      top: 28px;
-      align-self: start;
-      padding: 20px 18px;
-      border: 1px solid rgba(255,255,255,.85);
-      border-radius: 18px;
-      background: rgba(255,255,255,.62);
-      box-shadow: 0 10px 30px rgba(37, 65, 86, .06);
-      backdrop-filter: blur(14px);
-    }
+      .side_nav {
+        position: sticky;
+        top: 28px;
+        align-self: start;
+        padding: 20px 18px;
+        border: 1px solid rgba(255, 255, 255, 0.85);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.62);
+        box-shadow: 0 10px 30px rgba(37, 65, 86, 0.06);
+        backdrop-filter: blur(14px);
+      }
 
-    .side_nav strong {
-      display: block;
-      margin-bottom: 12px;
-      color: var(--blue-dark);
-      font-size: 14px;
-      letter-spacing: .12em;
-    }
+      .side_nav strong {
+        display: block;
+        margin-bottom: 12px;
+        color: var(--blue-dark);
+        font-size: 14px;
+        letter-spacing: 0.12em;
+      }
 
-    .side_nav a {
-      display: block;
-      padding: 5px 0;
-      color: var(--muted);
-      font-size: 13px;
-      text-decoration: none;
-    }
+      .side_nav a {
+        display: block;
+        padding: 5px 0;
+        color: var(--muted);
+        font-size: 13px;
+        text-decoration: none;
+      }
 
-    .side_nav a:hover { color: var(--blue); }
+      .side_nav a:hover {
+        color: var(--blue);
+      }
 
-    .document {
-      overflow: hidden;
-      border: 1px solid rgba(255,255,255,.9);
-      border-radius: 24px;
-      background: var(--paper);
-      box-shadow: var(--shadow);
-    }
+      .document {
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.9);
+        border-radius: 24px;
+        background: var(--paper);
+        box-shadow: var(--shadow);
+      }
 
-    .hero {
-      position: relative;
-      overflow: hidden;
-      padding: 58px 64px 52px;
-      color: white;
-      background:
-        linear-gradient(120deg, rgba(18, 57, 91, .98), rgba(40, 105, 166, .9)),
-        repeating-linear-gradient(135deg, transparent 0 16px, rgba(255,255,255,.05) 16px 17px);
-    }
+      .hero {
+        position: relative;
+        overflow: hidden;
+        padding: 58px 64px 52px;
+        color: white;
+        background:
+          linear-gradient(120deg, rgba(18, 57, 91, 0.98), rgba(40, 105, 166, 0.9)),
+          repeating-linear-gradient(135deg, transparent 0 16px, rgba(255, 255, 255, 0.05) 16px 17px);
+      }
 
-    .hero::after {
-      position: absolute;
-      right: 52px;
-      bottom: -115px;
-      width: 280px;
-      height: 280px;
-      border: 1px solid rgba(255,255,255,.2);
-      border-radius: 50%;
-      box-shadow: 0 0 0 28px rgba(255,255,255,.04), 0 0 0 58px rgba(255,255,255,.04);
-      content: "";
-    }
+      .hero::after {
+        position: absolute;
+        right: 52px;
+        bottom: -115px;
+        width: 280px;
+        height: 280px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 50%;
+        box-shadow:
+          0 0 0 28px rgba(255, 255, 255, 0.04),
+          0 0 0 58px rgba(255, 255, 255, 0.04);
+        content: "";
+      }
 
-    .eyebrow {
-      position: relative;
-      z-index: 1;
-      margin: 0 0 8px;
-      color: #b9daf3;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: .22em;
-      text-transform: uppercase;
-    }
+      .eyebrow {
+        position: relative;
+        z-index: 1;
+        margin: 0 0 8px;
+        color: #b9daf3;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+      }
 
-    h1, h2, h3 { line-height: 1.25; }
-    h1 { position: relative; z-index: 1; margin: 0; font-size: clamp(32px, 5vw, 48px); letter-spacing: -.04em; }
-    .hero_intro { position: relative; z-index: 1; max-width: 570px; margin: 18px 0 0; color: #e0edf7; font-size: 16px; }
+      h1,
+      h2,
+      h3 {
+        line-height: 1.25;
+      }
+      h1 {
+        position: relative;
+        z-index: 1;
+        margin: 0;
+        font-size: clamp(32px, 5vw, 48px);
+        letter-spacing: -0.04em;
+      }
+      .hero_intro {
+        position: relative;
+        z-index: 1;
+        max-width: 570px;
+        margin: 18px 0 0;
+        color: #e0edf7;
+        font-size: 16px;
+      }
 
-    .content { padding: 38px 64px 62px; }
-    h2 { margin: 44px 0 18px; padding-top: 8px; color: var(--blue-dark); font-size: 26px; border-top: 1px solid var(--line); }
-    h2:first-of-type { margin-top: 0; border-top: 0; }
-    h3 { margin: 30px 0 10px; color: #31566f; font-size: 19px; }
-    p { margin: 10px 0; }
-    ul, ol { margin: 12px 0 20px; padding-left: 1.55em; }
-    li { margin: 5px 0; }
-    strong { color: #173f61; }
-    code { padding: .15em .42em; border-radius: 5px; color: #214e73; background: #edf4f8; font-family: Consolas, monospace; font-size: .92em; }
+      .content {
+        padding: 38px 64px 62px;
+      }
+      h2 {
+        margin: 44px 0 18px;
+        padding-top: 8px;
+        color: var(--blue-dark);
+        font-size: 26px;
+        border-top: 1px solid var(--line);
+      }
+      h2:first-of-type {
+        margin-top: 0;
+        border-top: 0;
+      }
+      h3 {
+        margin: 30px 0 10px;
+        color: #31566f;
+        font-size: 19px;
+      }
+      p {
+        margin: 10px 0;
+      }
+      ul,
+      ol {
+        margin: 12px 0 20px;
+        padding-left: 1.55em;
+      }
+      li {
+        margin: 5px 0;
+      }
+      strong {
+        color: #173f61;
+      }
+      code {
+        padding: 0.15em 0.42em;
+        border-radius: 5px;
+        color: #214e73;
+        background: #edf4f8;
+        font-family: Consolas, monospace;
+        font-size: 0.92em;
+      }
 
-    .notice {
-      margin: 22px 0 30px;
-      padding: 16px 20px;
-      border-left: 4px solid var(--gold);
-      border-radius: 0 12px 12px 0;
-      background: var(--gold-soft);
-    }
+      .notice {
+        margin: 22px 0 30px;
+        padding: 16px 20px;
+        border-left: 4px solid var(--gold);
+        border-radius: 0 12px 12px 0;
+        background: var(--gold-soft);
+      }
 
-    .flow {
-      margin: 22px 0 34px;
-      padding: 19px 22px;
-      overflow-x: auto;
-      border: 1px solid #cfe2f2;
-      border-radius: 12px;
-      color: var(--blue-dark);
-      background: var(--blue-soft);
-      font: 14px/1.7 Consolas, "Microsoft YaHei", monospace;
-      white-space: pre;
-    }
+      .flow {
+        margin: 22px 0 34px;
+        padding: 19px 22px;
+        overflow-x: auto;
+        border: 1px solid #cfe2f2;
+        border-radius: 12px;
+        color: var(--blue-dark);
+        background: var(--blue-soft);
+        font:
+          14px/1.7 Consolas,
+          "Microsoft YaHei",
+          monospace;
+        white-space: pre;
+      }
 
-    .step_card {
-      margin: 30px 0 40px;
-      padding: 0 0 8px;
-      border-bottom: 1px solid var(--line);
-      break-inside: avoid;
-    }
+      .step_card {
+        margin: 30px 0 40px;
+        padding: 0 0 8px;
+        border-bottom: 1px solid var(--line);
+        break-inside: avoid;
+      }
 
-    figure {
-      margin: 22px 0 8px;
-      padding: 12px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: var(--wash);
-      text-align: center;
-    }
+      figure {
+        margin: 22px 0 8px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--wash);
+        text-align: center;
+      }
 
-    figure img { display: block; width: auto; max-width: 100%; max-height: 620px; margin: 0 auto; border-radius: 7px; box-shadow: 0 5px 16px rgba(22, 46, 65, .13); }
-    figcaption { padding: 9px 4px 2px; color: var(--muted); font-size: 13px; }
-    .tip { color: var(--muted); font-size: 14px; }
+      figure img {
+        display: block;
+        width: auto;
+        max-width: 100%;
+        max-height: 620px;
+        margin: 0 auto;
+        border-radius: 7px;
+        box-shadow: 0 5px 16px rgba(22, 46, 65, 0.13);
+      }
+      figcaption {
+        padding: 9px 4px 2px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .tip {
+        color: var(--muted);
+        font-size: 14px;
+      }
 
-    @media (max-width: 850px) {
-      .page_shell { display: block; width: min(100% - 20px, 700px); padding-top: 10px; }
-      .side_nav { position: static; margin-bottom: 12px; padding: 12px 16px; }
-      .side_nav a { display: inline-block; margin-right: 14px; }
-      .hero, .content { padding-right: 25px; padding-left: 25px; }
-      .hero { padding-top: 38px; padding-bottom: 38px; }
-    }
+      @media (max-width: 850px) {
+        .page_shell {
+          display: block;
+          width: min(100% - 20px, 700px);
+          padding-top: 10px;
+        }
+        .side_nav {
+          position: static;
+          margin-bottom: 12px;
+          padding: 12px 16px;
+        }
+        .side_nav a {
+          display: inline-block;
+          margin-right: 14px;
+        }
+        .hero,
+        .content {
+          padding-right: 25px;
+          padding-left: 25px;
+        }
+        .hero {
+          padding-top: 38px;
+          padding-bottom: 38px;
+        }
+      }
 
-    @media print {
-      body { background: white; }
-      .page_shell { display: block; width: 100%; padding: 0; }
-      .side_nav { display: none; }
-      .document { border: 0; border-radius: 0; box-shadow: none; }
-      .hero { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-      .content { padding: 28px 42px; }
-      figure { break-inside: avoid; }
-      h2 { break-after: avoid; }
-    }
-  </style>
-</head>
-<body>
-  <div class="page_shell">
-    <nav class="side_nav" aria-label="文档目录">
-      <strong>目录</strong>
-      <a href="#prepare">使用前准备</a>
-      <a href="#download">1. 下载并解压</a>
-      <a href="#start">2. 启动 Mita Core</a>
-      <a href="#webui">3. 打开 WebUI</a>
-      <a href="#model">4. 配置模型服务</a>
-      <a href="#qq">5. 配置 QQ 渠道</a>
-      <a href="#wechat">6. 配置微信渠道</a>
-      <a href="#restart">7. 保存并重启</a>
-      <a href="#faq">常见问题</a>
-    </nav>
+      @media print {
+        body {
+          background: white;
+        }
+        .page_shell {
+          display: block;
+          width: 100%;
+          padding: 0;
+        }
+        .side_nav {
+          display: none;
+        }
+        .document {
+          border: 0;
+          border-radius: 0;
+          box-shadow: none;
+        }
+        .hero {
+          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact;
+        }
+        .content {
+          padding: 28px 42px;
+        }
+        figure {
+          break-inside: avoid;
+        }
+        h2 {
+          break-after: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page_shell">
+      <nav class="side_nav" aria-label="文档目录">
+        <strong>目录</strong>
+        <a href="#prepare">使用前准备</a>
+        <a href="#download">1. 下载并解压</a>
+        <a href="#start">2. 启动 Mita Core</a>
+        <a href="#webui">3. 打开 WebUI</a>
+        <a href="#model">4. 配置模型服务</a>
+        <a href="#qq">5. 配置 QQ 渠道</a>
+        <a href="#wechat">6. 配置微信渠道</a>
+        <a href="#restart">7. 保存并重启</a>
+        <a href="#faq">常见问题</a>
+      </nav>
 
-    <main class="document">
-      <header class="hero">
-        <p class="eyebrow">Mita Core · User Guide</p>
-        <h1>Mita Core 使用指南</h1>
-        <p class="hero_intro">从解压启动到模型与消息渠道配置，按步骤完成本机部署，快速开始使用 Mita Core。</p>
-      </header>
+      <main class="document">
+        <header class="hero">
+          <p class="eyebrow">Mita Core · User Guide</p>
+          <h1>Mita Core 使用指南</h1>
+          <p class="hero_intro">从解压启动到模型与消息渠道配置，按步骤完成本机部署，快速开始使用 Mita Core。</p>
+        </header>
 
-      <article class="content">
-        <section id="prepare">
-          <h2>使用前准备</h2>
-          <ul>
-            <li>一份 Mita Core 自解压程序（示例文件名：<code>MitaCore260805.exe</code>）。</li>
-            <li>一个可用的模型服务 API Key，例如 DeepSeek 或其他模型服务。</li>
-            <li>如果使用 QQ 渠道，需要准备 QQ 客户端；如果使用微信渠道，需要准备可扫码的微信客户端。</li>
-          </ul>
-          <div class="notice">API Key 属于敏感凭据，请勿把真实 Key 截图、提交到 Git 或发送给他人。</div>
-        </section>
+        <article class="content">
+          <section id="prepare">
+            <h2>使用前准备</h2>
+            <ul>
+              <li>一份 Mita Core 自解压程序（示例文件名：<code>MitaCore260805.exe</code>）。</li>
+              <li>一个可用的模型服务 API Key，例如 DeepSeek 或其他模型服务。</li>
+              <li>如果使用 QQ 渠道，需要准备 QQ 客户端；如果使用微信渠道，需要准备可扫码的微信客户端。</li>
+            </ul>
+            <div class="notice">API Key 属于敏感凭据，请勿把真实 Key 截图、提交到 Git 或发送给他人。</div>
+          </section>
 
-        <section>
-          <h2>快速流程</h2>
-          <div class="flow">下载并解压 → 启动 app.exe → 打开 WebUI → 配置消息渠道 → 配置模型 → 保存 → 重启程序
-                                      ├→ QQ：打开 NapCat 管理后台并扫码登录
-                                      └→ 微信：保存并重启程序后扫码授权</div>
-        </section>
+          <section>
+            <h2>快速流程</h2>
+            <div class="flow">
+              下载并解压 → 启动 app.exe → 打开 WebUI → 配置消息渠道 → 配置模型 → 保存 → 重启程序 ├→ QQ：打开 NapCat
+              管理后台并扫码登录 └→ 微信：保存并重启程序后扫码授权
+            </div>
+          </section>
 
-        <section id="download" class="step_card">
-          <h2>1. 下载并解压</h2>
-          <p>下载完成后，双击自解压程序。建议将程序解压到一个独立目录，并记住该目录位置。</p>
-          <figure><img src="./1.png" alt="双击运行自解压程序"><figcaption>双击运行自解压程序</figcaption></figure>
-          <p>在解压窗口中选择一个具体的目标目录，然后点击 <strong>Extract（解压）</strong>。</p>
-          <figure><img src="./2.png" alt="选择解压目录"><figcaption>选择解压目录</figcaption></figure>
-        </section>
+          <section id="download" class="step_card">
+            <h2>1. 下载并解压</h2>
+            <p>下载完成后，双击自解压程序。建议将程序解压到一个独立目录，并记住该目录位置。</p>
+            <figure>
+              <img src="./1.png" alt="双击运行自解压程序" />
+              <figcaption>双击运行自解压程序</figcaption>
+            </figure>
+            <p>在解压窗口中选择一个具体的目标目录，然后点击 <strong>Extract（解压）</strong>。</p>
+            <figure>
+              <img src="./2.png" alt="选择解压目录" />
+              <figcaption>选择解压目录</figcaption>
+            </figure>
+          </section>
 
-        <section id="start" class="step_card">
-          <h2>2. 启动 Mita Core</h2>
-          <p>进入解压后的目录，确认能看到 <code>bin</code>、<code>data</code>、<code>prompts</code>、<code>sidecar</code>、<code>webui</code> 等目录，以及 <code>app.exe</code>。双击 <code>app.exe</code> 启动程序。</p>
-          <figure><img src="./3.png" alt="启动 app.exe"><figcaption>启动 app.exe</figcaption></figure>
-          <p>程序启动后会在控制台输出 WebUI 地址。复制日志中 <strong>WebUI 已启动</strong> 下方第一行的 <code>url</code>，不要复制 NapCat 的地址。</p>
-          <figure><img src="./4.png" alt="复制 WebUI 地址"><figcaption>复制 WebUI 地址</figcaption></figure>
-          <p class="tip">示例地址为 <code>http://127.0.0.1:14251</code>，实际端口以当前窗口输出为准。</p>
-        </section>
+          <section id="start" class="step_card">
+            <h2>2. 启动 Mita Core</h2>
+            <p>
+              进入解压后的目录，确认能看到
+              <code>bin</code>、<code>data</code>、<code>prompts</code>、<code>sidecar</code>、<code>webui</code>
+              等目录，以及 <code>app.exe</code>。双击 <code>app.exe</code> 启动程序。
+            </p>
+            <figure>
+              <img src="./3.png" alt="启动 app.exe" />
+              <figcaption>启动 app.exe</figcaption>
+            </figure>
+            <p>
+              程序启动后会在控制台输出 WebUI 地址。复制日志中 <strong>WebUI 已启动</strong> 下方第一行的
+              <code>url</code>，不要复制 NapCat 的地址。
+            </p>
+            <figure>
+              <img src="./4.png" alt="复制 WebUI 地址" />
+              <figcaption>复制 WebUI 地址</figcaption>
+            </figure>
+            <p class="tip">示例地址为 <code>http://127.0.0.1:14251</code>，实际端口以当前窗口输出为准。</p>
+          </section>
 
-        <section id="webui" class="step_card">
-          <h2>3. 打开 WebUI</h2>
-          <p>在浏览器地址栏粘贴刚才复制的地址并访问。进入后默认打开 <strong>用户配置平台</strong> 页面。</p>
-          <figure><img src="./5.png" alt="打开用户配置平台"><figcaption>打开用户配置平台</figcaption></figure>
-          <p>WebUI 只服务于当前电脑。配置完成后不要关闭 <code>app.exe</code> 控制台窗口，否则 WebUI 和消息渠道也会停止。</p>
-        </section>
+          <section id="webui" class="step_card">
+            <h2>3. 打开 WebUI</h2>
+            <p>在浏览器地址栏粘贴刚才复制的地址并访问。进入后默认打开 <strong>用户配置平台</strong> 页面。</p>
+            <figure>
+              <img src="./5.png" alt="打开用户配置平台" />
+              <figcaption>打开用户配置平台</figcaption>
+            </figure>
+            <p>
+              WebUI 只服务于当前电脑。配置完成后不要关闭 <code>app.exe</code> 控制台窗口，否则 WebUI
+              和消息渠道也会停止。
+            </p>
+          </section>
 
-        <section id="model" class="step_card">
-          <h2>4. 配置模型服务</h2>
-          <p>点击左侧 <strong>模型</strong>，进入模型配置页面。添加或修改模型供应商时，填写以下内容：</p>
-          <ol>
-            <li><strong>名称</strong>：自定义的供应商名称，例如 <code>deepseek</code>。</li>
-            <li><strong>类型</strong>：按服务商选择对应类型。DeepSeek 请选择 <code>anthropic</code>；不要选择 <code>openai-compatible</code>。</li>
-            <li><strong>API 地址</strong>：填写服务商提供的接口地址。</li>
-            <li><strong>API Key</strong>：粘贴服务商后台申请的 Key。</li>
-            <li><strong>模型</strong>：点击 <strong>自动获取模型</strong>，或手动填写服务商支持的模型名称。</li>
-          </ol>
-          <p>配置完成后点击页面右上角的 <strong>保存配置</strong>。</p>
-          <figure><img src="./6.png" alt="配置模型供应商"><figcaption>配置模型供应商</figcaption></figure>
-          <h3>DeepSeek 配置示例</h3>
-          <p>DeepSeek 的供应商类型请选择 <strong><code>anthropic</code></strong>，API 地址填写 <code>https://api.deepseek.com</code>。该配置使用 Anthropic 端点，比旧版 OpenAI 端点更适合当前程序。请以服务商当前文档为准，不要照抄截图中的脱敏 Key；如果接口要求版本后缀，也要按服务商要求填写。</p>
-        </section>
+          <section id="model" class="step_card">
+            <h2>4. 配置模型服务</h2>
+            <p>点击左侧 <strong>模型</strong>，进入模型配置页面。添加或修改模型供应商时，填写以下内容：</p>
+            <ol>
+              <li><strong>名称</strong>：自定义的供应商名称，例如 <code>deepseek</code>。</li>
+              <li>
+                <strong>类型</strong>：按服务商选择对应类型。DeepSeek 请选择 <code>anthropic</code>；不要选择
+                <code>openai-compatible</code>。
+              </li>
+              <li><strong>API 地址</strong>：填写服务商提供的接口地址。</li>
+              <li><strong>API Key</strong>：粘贴服务商后台申请的 Key。</li>
+              <li><strong>模型</strong>：点击 <strong>自动获取模型</strong>，或手动填写服务商支持的模型名称。</li>
+            </ol>
+            <p>配置完成后点击页面右上角的 <strong>保存配置</strong>。</p>
+            <figure>
+              <img src="./6.png" alt="配置模型供应商" />
+              <figcaption>配置模型供应商</figcaption>
+            </figure>
+            <h3>DeepSeek 配置示例</h3>
+            <p>
+              DeepSeek 的供应商类型请选择 <strong><code>anthropic</code></strong
+              >，API 地址填写 <code>https://api.deepseek.com</code>。该配置使用 Anthropic 端点，比旧版 OpenAI
+              端点更适合当前程序。请以服务商当前文档为准，不要照抄截图中的脱敏
+              Key；如果接口要求版本后缀，也要按服务商要求填写。
+            </p>
+          </section>
 
-        <section id="qq" class="step_card">
-          <h2>5. 配置 QQ 渠道（NapCat）</h2>
-          <p>回到左侧 <strong>用户配置平台</strong>，确认 <strong>QQ / NapCat</strong> 开关已打开，并填写机器人 QQ 号。</p>
-          <p>点击 <strong>NapCat 管理面板</strong> 右侧的 <strong>打开管理后台</strong>。这会打开一个新的浏览器标签页。</p>
-          <figure><img src="./7.png" alt="打开 NapCat 管理后台"><figcaption>打开 NapCat 管理后台</figcaption></figure>
-          <p>在新页面中选择 <strong>扫码登录</strong>，使用 QQ 或 TIM 扫描二维码，登录准备作为机器人的 QQ 账号。</p>
-          <figure><img src="./8.png" alt="扫码登录 QQ"><figcaption>扫码登录 QQ</figcaption></figure>
-          <p>登录成功后返回 Mita Core 配置页面，确认机器人 QQ 号与实际登录账号一致。</p>
-          <div class="notice">如果 <code>app.exe</code> 已经运行，不能重复双击启动。修改 QQ 登录状态时，应先按后文的“重启程序”操作，再重新打开 NapCat 管理后台。</div>
-        </section>
+          <section id="qq" class="step_card">
+            <h2>5. 配置 QQ 渠道（NapCat）</h2>
+            <p>
+              回到左侧 <strong>用户配置平台</strong>，确认 <strong>QQ / NapCat</strong> 开关已打开，并填写机器人 QQ 号。
+            </p>
+            <p>
+              点击 <strong>NapCat 管理面板</strong> 右侧的 <strong>打开管理后台</strong>。这会打开一个新的浏览器标签页。
+            </p>
+            <figure>
+              <img src="./7.png" alt="打开 NapCat 管理后台" />
+              <figcaption>打开 NapCat 管理后台</figcaption>
+            </figure>
+            <p>在新页面中选择 <strong>扫码登录</strong>，使用 QQ 或 TIM 扫描二维码，登录准备作为机器人的 QQ 账号。</p>
+            <figure>
+              <img src="./8.png" alt="扫码登录 QQ" />
+              <figcaption>扫码登录 QQ</figcaption>
+            </figure>
+            <p>登录成功后返回 Mita Core 配置页面，确认机器人 QQ 号与实际登录账号一致。</p>
+            <div class="notice">
+              如果 <code>app.exe</code> 已经运行，不能重复双击启动。修改 QQ
+              登录状态时，应先按后文的“重启程序”操作，再重新打开 NapCat 管理后台。
+            </div>
+          </section>
 
-        <section id="wechat" class="step_card">
-          <h2>6. 配置微信渠道（可选）</h2>
-          <p>如果需要使用微信，在 <strong>用户配置平台</strong> 页面打开 <strong>微信</strong> 开关，然后点击右上角 <strong>保存配置</strong>。不要点击页面上的 <strong>“重启服务（仅桌面版）”</strong>，直接关闭并重新启动 <code>app.exe</code>。</p>
-          <p>程序重新启动后，页面会显示微信授权二维码。使用微信扫描二维码，并在手机上确认授权；授权成功后，填写或确认页面要求的 Bot 账号信息。</p>
-          <figure><img src="./9.png" alt="开启微信并扫码授权"><figcaption>开启微信并扫码授权</figcaption></figure>
-          <p>微信和 QQ 可以按需选择。未使用的渠道保持关闭即可。</p>
-        </section>
+          <section id="wechat" class="step_card">
+            <h2>6. 配置微信渠道（可选）</h2>
+            <p>
+              如果需要使用微信，在 <strong>用户配置平台</strong> 页面打开 <strong>微信</strong> 开关，然后点击右上角
+              <strong>保存配置</strong>。不要点击页面上的 <strong>“重启服务（仅桌面版）”</strong>，直接关闭并重新启动
+              <code>app.exe</code>。
+            </p>
+            <p>
+              程序重新启动后，页面会显示微信授权二维码。使用微信扫描二维码，并在手机上确认授权；授权成功后，填写或确认页面要求的
+              Bot 账号信息。
+            </p>
+            <figure>
+              <img src="./9.png" alt="开启微信并扫码授权" />
+              <figcaption>开启微信并扫码授权</figcaption>
+            </figure>
+            <p>微信和 QQ 可以按需选择。未使用的渠道保持关闭即可。</p>
+          </section>
 
-        <section id="restart" class="step_card">
-          <h2>7. 保存并重启程序</h2>
-          <p>完成模型、QQ 或微信配置后，按以下顺序操作：</p>
-          <ol>
-            <li>点击右上角 <strong>保存配置</strong>。</li>
-            <li>关闭 <code>app.exe</code>，再从解压目录重新启动它。</li>
-            <li>等待 <code>app.exe</code> 控制台重新输出启动日志。</li>
-            <li>如使用 QQ，重新打开 NapCat 管理后台确认登录状态；如使用微信，按页面提示完成扫码授权。</li>
-          </ol>
-          <figure><img src="./9.png" alt="保存配置并重启程序"><figcaption>保存配置并重启程序</figcaption></figure>
-        </section>
+          <section id="restart" class="step_card">
+            <h2>7. 保存并重启程序</h2>
+            <p>完成模型、QQ 或微信配置后，按以下顺序操作：</p>
+            <ol>
+              <li>点击右上角 <strong>保存配置</strong>。</li>
+              <li>关闭 <code>app.exe</code>，再从解压目录重新启动它。</li>
+              <li>等待 <code>app.exe</code> 控制台重新输出启动日志。</li>
+              <li>如使用 QQ，重新打开 NapCat 管理后台确认登录状态；如使用微信，按页面提示完成扫码授权。</li>
+            </ol>
+            <figure>
+              <img src="./9.png" alt="保存配置并重启程序" />
+              <figcaption>保存配置并重启程序</figcaption>
+            </figure>
+          </section>
 
-        <section id="faq">
-          <h2>常见问题</h2>
-          <h3>浏览器打不开 WebUI</h3>
-          <p>确认 <code>app.exe</code> 仍在运行，并使用控制台最新输出的 WebUI <code>url</code>。如果程序刚刚重启，旧端口或旧页面可能已经失效。</p>
-          <h3>修改配置后没有生效</h3>
-          <p>先点击 <strong>保存配置</strong>，再关闭并重新启动 <code>app.exe</code>。仅修改页面内容而不保存，重启后不会保留。</p>
-          <h3>QQ 管理后台打不开或登录失效</h3>
-          <p>确认 NapCat 相关组件已正常启动，机器人 QQ 号填写正确；如果刚修改过配置，先保存并重启程序，再重新打开管理后台。不要重复启动多个 <code>app.exe</code> 实例。</p>
-          <h3>模型调用失败</h3>
-          <p>检查 API 地址、API Key、供应商类型和模型名称是否匹配服务商；确认账户余额、模型权限及网络连接正常。配置 DeepSeek 时，优先检查类型是否为 <code>anthropic</code>，不要误选旧版 <code>openai-compatible</code>。</p>
-          <h3>如何停止程序</h3>
-          <p>直接关闭 <code>app.exe</code> 对应的控制台窗口即可停止本机服务。下次使用时，从解压目录重新双击 <code>app.exe</code>，再访问新的 WebUI 地址。</p>
-        </section>
-      </article>
-    </main>
-  </div>
-</body>
+          <section id="faq">
+            <h2>常见问题</h2>
+            <h3>浏览器打不开 WebUI</h3>
+            <p>
+              确认 <code>app.exe</code> 仍在运行，并使用控制台最新输出的 WebUI
+              <code>url</code>。如果程序刚刚重启，旧端口或旧页面可能已经失效。
+            </p>
+            <h3>修改配置后没有生效</h3>
+            <p>
+              先点击 <strong>保存配置</strong>，再关闭并重新启动
+              <code>app.exe</code>。仅修改页面内容而不保存，重启后不会保留。
+            </p>
+            <h3>QQ 管理后台打不开或登录失效</h3>
+            <p>
+              确认 NapCat 相关组件已正常启动，机器人 QQ
+              号填写正确；如果刚修改过配置，先保存并重启程序，再重新打开管理后台。不要重复启动多个
+              <code>app.exe</code> 实例。
+            </p>
+            <h3>模型调用失败</h3>
+            <p>
+              检查 API 地址、API Key、供应商类型和模型名称是否匹配服务商；确认账户余额、模型权限及网络连接正常。配置
+              DeepSeek 时，优先检查类型是否为 <code>anthropic</code>，不要误选旧版 <code>openai-compatible</code>。
+            </p>
+            <h3>如何停止程序</h3>
+            <p>
+              直接关闭 <code>app.exe</code> 对应的控制台窗口即可停止本机服务。下次使用时，从解压目录重新双击
+              <code>app.exe</code>，再访问新的 WebUI 地址。
+            </p>
+          </section>
+        </article>
+      </main>
+    </div>
+  </body>
 </html>

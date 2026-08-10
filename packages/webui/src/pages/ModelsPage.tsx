@@ -10,7 +10,6 @@ type Props = {
   updateProvider: (index: number, patch: Partial<Provider>) => void;
 };
 
-const DEEPSEEK_ANTHROPIC_API_URL = "https://api.deepseek.com/anthropic";
 const roles = [
   ["plan", "规划"],
   ["reply", "回复"],
@@ -21,10 +20,6 @@ const roles = [
   ["multimodal_video", "视频理解"],
   ["multimodal_audio", "音频理解"],
 ] as const;
-
-function normalizeUrl(url: string) {
-  return url.trim().replace(/\/+$/, "");
-}
 
 export function ModelsPage({ config, setConfig, updateProvider }: Props) {
   const [loading, setLoading] = useState<Record<number, boolean>>({});
@@ -135,135 +130,127 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
           }
         />
         <div className="grid gap-3.5">
-          {config.providers.map((provider, providerIndex) => {
-            const isDeepSeekAnthropic =
-              provider.type === "anthropic" && normalizeUrl(provider.options.base_url) === DEEPSEEK_ANTHROPIC_API_URL;
-            return (
-              <section className="grid gap-3.5 rounded-[10px] b-ui p-4.5" key={`${provider.name}-${providerIndex}`}>
-                <div className="grid grid-cols-2 gap-3 max-[820px]:grid-cols-1">
-                  <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
-                    名称
-                    <Input
-                      value={provider.name}
-                      onChange={(event) => updateProvider(providerIndex, { name: event.target.value })}
+          {config.providers.map((provider, providerIndex) => (
+            <section className="grid gap-3.5 rounded-[10px] b-ui p-4.5" key={`${provider.name}-${providerIndex}`}>
+              <div className="grid grid-cols-2 gap-3 max-[820px]:grid-cols-1">
+                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
+                  名称
+                  <Input
+                    value={provider.name}
+                    onChange={(event) => updateProvider(providerIndex, { name: event.target.value })}
+                  />
+                </label>
+                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
+                  类型
+                  <Select
+                    value={provider.type}
+                    options={["anthropic", "deepseek", "openai-responses", "openai-compatible"].map((type) => ({
+                      label: type,
+                      value: type,
+                    }))}
+                    onChange={(type) => updateProvider(providerIndex, { type: type as Provider["type"] })}
+                  />
+                </label>
+                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
+                  API 地址
+                  <Input
+                    value={provider.options.base_url}
+                    onChange={(event) =>
+                      updateProvider(providerIndex, {
+                        options: { ...provider.options, base_url: event.target.value },
+                      })
+                    }
+                  />
+                </label>
+                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
+                  API Key
+                  <Input.Password
+                    value={provider.options.api_key}
+                    onChange={(event) =>
+                      updateProvider(providerIndex, { options: { ...provider.options, api_key: event.target.value } })
+                    }
+                  />
+                </label>
+              </div>
+              <div className="grid gap-3.5">
+                <button
+                  className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-brand disabled:cursor-wait disabled:opacity-60"
+                  disabled={loading[providerIndex]}
+                  onClick={() => fetchModels(providerIndex)}
+                >
+                  {loading[providerIndex] ? (
+                    <LoaderCircle className="animate-spin" size={15} />
+                  ) : (
+                    <RefreshCw size={15} />
+                  )}
+                  {loading[providerIndex] ? "正在获取模型" : "自动获取模型"}
+                </button>
+                {errors[providerIndex] && <p className="text-xs text-[#ae3737]">{errors[providerIndex]}</p>}
+                {provider.models.map((model, modelIndex) => (
+                  <div className="grid grid-cols-[1fr_1fr_30px] gap-1.75" key={modelIndex}>
+                    <ModelPicker
+                      value={model.id}
+                      options={[...new Set([model.id, ...(options[providerIndex] ?? [])].filter(Boolean))]}
+                      onChange={(id) =>
+                        updateProvider(providerIndex, {
+                          models: provider.models.map((item, index) => (index === modelIndex ? { ...item, id } : item)),
+                        })
+                      }
+                      onSelect={(id) => {
+                        if (!model.alias.trim())
+                          updateProvider(providerIndex, {
+                            models: provider.models.map((item, index) =>
+                              index === modelIndex ? { ...item, id, alias: id } : item,
+                            ),
+                          });
+                      }}
                     />
-                  </label>
-                  <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
-                    类型
-                    <Select
-                      value={provider.type}
-                      options={["anthropic", "deepseek", "openai-compatible"].map((type) => ({
-                        label: type,
-                        value: type,
-                      }))}
-                      onChange={(type) => updateProvider(providerIndex, { type: type as Provider["type"] })}
-                    />
-                  </label>
-                  <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
-                    API 地址
                     <Input
-                      value={provider.options.base_url}
+                      className="font-mono text-xs"
+                      value={model.alias}
+                      placeholder="模型别名"
                       onChange={(event) =>
                         updateProvider(providerIndex, {
-                          options: { ...provider.options, base_url: event.target.value },
+                          models: provider.models.map((item, index) =>
+                            index === modelIndex ? { ...item, alias: event.target.value } : item,
+                          ),
                         })
                       }
                     />
-                  </label>
-                  <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
-                    API Key
-                    <Input.Password
-                      value={provider.options.api_key}
-                      onChange={(event) =>
-                        updateProvider(providerIndex, { options: { ...provider.options, api_key: event.target.value } })
+                    <button
+                      className="grid h-8.5 w-7.5 place-items-center rounded-md bg-[#edf1f3] p-0 text-[#526574]"
+                      onClick={() =>
+                        updateProvider(providerIndex, {
+                          models: provider.models.filter((_, index) => index !== modelIndex),
+                        })
                       }
-                    />
-                  </label>
-                </div>
-                <div className="grid gap-3.5">
-                  <button
-                    className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-brand disabled:cursor-wait disabled:opacity-60"
-                    disabled={loading[providerIndex] || isDeepSeekAnthropic}
-                    onClick={() => fetchModels(providerIndex)}
-                  >
-                    {loading[providerIndex] ? (
-                      <LoaderCircle className="animate-spin" size={15} />
-                    ) : (
-                      <RefreshCw size={15} />
-                    )}
-                    {loading[providerIndex] ? "正在获取模型" : isDeepSeekAnthropic ? "请手动添加模型" : "自动获取模型"}
-                  </button>
-                  {errors[providerIndex] && <p className="text-xs text-[#ae3737]">{errors[providerIndex]}</p>}
-                  {provider.models.map((model, modelIndex) => (
-                    <div className="grid grid-cols-[1fr_1fr_30px] gap-1.75" key={modelIndex}>
-                      <ModelPicker
-                        value={model.id}
-                        options={[...new Set([model.id, ...(options[providerIndex] ?? [])].filter(Boolean))]}
-                        onChange={(id) =>
-                          updateProvider(providerIndex, {
-                            models: provider.models.map((item, index) =>
-                              index === modelIndex ? { ...item, id } : item,
-                            ),
-                          })
-                        }
-                        onSelect={(id) => {
-                          if (!model.alias.trim())
-                            updateProvider(providerIndex, {
-                              models: provider.models.map((item, index) =>
-                                index === modelIndex ? { ...item, id, alias: id } : item,
-                              ),
-                            });
-                        }}
-                      />
-                      <Input
-                        className="font-mono text-xs"
-                        value={model.alias}
-                        placeholder="模型别名"
-                        onChange={(event) =>
-                          updateProvider(providerIndex, {
-                            models: provider.models.map((item, index) =>
-                              index === modelIndex ? { ...item, alias: event.target.value } : item,
-                            ),
-                          })
-                        }
-                      />
-                      <button
-                        className="grid h-8.5 w-7.5 place-items-center rounded-md bg-[#edf1f3] p-0 text-[#526574]"
-                        onClick={() =>
-                          updateProvider(providerIndex, {
-                            models: provider.models.filter((_, index) => index !== modelIndex),
-                          })
-                        }
-                      >
-                        <X size={15} />
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-brand"
-                    onClick={() =>
-                      updateProvider(providerIndex, { models: [...provider.models, { id: "", alias: "" }] })
-                    }
-                  >
-                    <Plus size={15} />
-                    添加模型
-                  </button>
-                </div>
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                ))}
                 <button
-                  className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-[#ae3737]"
-                  onClick={() =>
-                    setConfig((value) => ({
-                      ...value,
-                      providers: value.providers.filter((_, index) => index !== providerIndex),
-                    }))
-                  }
+                  className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-brand"
+                  onClick={() => updateProvider(providerIndex, { models: [...provider.models, { id: "", alias: "" }] })}
                 >
-                  <Trash2 size={15} />
-                  删除供应商
+                  <Plus size={15} />
+                  添加模型
                 </button>
-              </section>
-            );
-          })}
+              </div>
+              <button
+                className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-[#ae3737]"
+                onClick={() =>
+                  setConfig((value) => ({
+                    ...value,
+                    providers: value.providers.filter((_, index) => index !== providerIndex),
+                  }))
+                }
+              >
+                <Trash2 size={15} />
+                删除供应商
+              </button>
+            </section>
+          ))}
         </div>
       </section>
     </div>
