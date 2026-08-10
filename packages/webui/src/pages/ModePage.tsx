@@ -10,7 +10,6 @@ export function ModePage({ config, setConfig }: Props) {
   return (
     <div className="mx-auto grid max-w-[1240px] gap-5 px-[clamp(20px,5vw,72px)] pb-16 pt-7.5 max-[480px]:px-3.5 max-[480px]:pb-10 max-[480px]:pt-4">
       <Alert
-        showIcon
         type="warning"
         message="非专业用户请保持默认配置"
         description="修改运行模式可能影响消息处理性能、兼容性和响应方式。"

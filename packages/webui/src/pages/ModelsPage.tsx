@@ -9,6 +9,23 @@ type Props = {
   setConfig: React.Dispatch<React.SetStateAction<Config>>;
   updateProvider: (index: number, patch: Partial<Provider>) => void;
 };
+
+const DEEPSEEK_ANTHROPIC_API_URL = "https://api.deepseek.com/anthropic";
+const roles = [
+  ["plan", "规划"],
+  ["reply", "回复"],
+  ["main", "主 Agent"],
+  ["task_explore", "Task 检索子 Agent"],
+  ["task_general", "Task 通用子 Agent"],
+  ["multimodal_image", "图像理解"],
+  ["multimodal_video", "视频理解"],
+  ["multimodal_audio", "音频理解"],
+] as const;
+
+function normalizeUrl(url: string) {
+  return url.trim().replace(/\/+$/, "");
+}
+
 export function ModelsPage({ config, setConfig, updateProvider }: Props) {
   const [loading, setLoading] = useState<Record<number, boolean>>({});
   const [errors, setErrors] = useState<Record<number, string>>({});
@@ -62,6 +79,27 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
   return (
     <div className="mx-auto grid max-w-[1240px] gap-5 px-[clamp(20px,5vw,72px)] pb-16 pt-7.5 max-[480px]:px-3.5 max-[480px]:pb-10 max-[480px]:pt-4">
       <section className="rounded-[14px] b-ui bg-white p-6 shadow-[0_1px_2px_#17212b08] max-[480px]:p-4">
+        <div className="mb-5.5">
+          <p className="mb-1.25 font-mono text-[10px] font-500 tracking-[0.12em] text-muted">MODELS</p>
+          <h2 className="text-lg tracking-[-0.02em]">模型分工</h2>
+        </div>
+        <div className="grid grid-cols-3 gap-4 max-[820px]:grid-cols-1">
+          {roles.map(([key, label]) => (
+            <label className="grid gap-1.75 text-xs font-700 text-[#40515f]" key={key}>
+              {label}
+              <Select
+                value={config.models[key]}
+                options={[
+                  { label: "未配置", value: "" },
+                  ...aliases.map((option) => ({ label: option, value: option })),
+                ]}
+                onChange={(model) => setConfig((value) => ({ ...value, models: { ...value.models, [key]: model } }))}
+              />
+            </label>
+          ))}
+        </div>
+      </section>
+      <section className="rounded-[14px] b-ui bg-white p-6 shadow-[0_1px_2px_#17212b08] max-[480px]:p-4">
         <div className="mb-5.5 flex items-start justify-between gap-4">
           <div>
             <p className="mb-1.25 font-mono text-[10px] font-500 tracking-[0.12em] text-muted">PROVIDERS</p>
@@ -78,164 +116,154 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
         </div>
         <Alert
           className="mb-5"
-          showIcon
           type="info"
-          message="DeepSeek 官方 Anthropic 端点未实现模型列表接口，因此自动获取模型时显示 404 属于正常情况，请手动添加模型。"
+          message="模型配置指南"
+          description={
+            <details>
+              <summary className="cursor-pointer text-xs font-700 text-brand">展开配置说明</summary>
+              <div className="mt-2 grid gap-1">
+                <p>
+                  DeepSeek 官方原生端点：类型 <code>deepseek</code>，API 地址 <code>https://api.deepseek.com</code>。
+                </p>
+                <p>
+                  DeepSeek Anthropic 端点：类型 <code>anthropic</code>，API 地址{" "}
+                  <code>https://api.deepseek.com/anthropic</code>。
+                </p>
+                <p className="text-[#ad6800]">提示：DeepSeek 的 Anthropic 端点无法读取模型列表，请手动添加模型。</p>
+              </div>
+            </details>
+          }
         />
         <div className="grid gap-3.5">
-          {config.providers.map((provider, providerIndex) => (
-            <section className="grid gap-3.5 rounded-[10px] b-ui p-4.5" key={`${provider.name}-${providerIndex}`}>
-              <div className="grid grid-cols-2 gap-3 max-[820px]:grid-cols-1">
-                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
-                  名称
-                  <Input
-                    value={provider.name}
-                    onChange={(event) => updateProvider(providerIndex, { name: event.target.value })}
-                  />
-                </label>
-                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
-                  类型
-                  <Select
-                    value={provider.type}
-                    options={["anthropic", "deepseek", "openai-responses", "openai-compatible"].map((type) => ({
-                      label: type,
-                      value: type,
-                    }))}
-                    onChange={(type) => updateProvider(providerIndex, { type: type as Provider["type"] })}
-                  />
-                </label>
-                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
-                  API 地址
-                  <Input
-                    value={provider.options.base_url}
-                    onChange={(event) =>
-                      updateProvider(providerIndex, { options: { ...provider.options, base_url: event.target.value } })
-                    }
-                  />
-                </label>
-                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
-                  API Key
-                  <Input.Password
-                    value={provider.options.api_key}
-                    onChange={(event) =>
-                      updateProvider(providerIndex, { options: { ...provider.options, api_key: event.target.value } })
-                    }
-                  />
-                </label>
-              </div>
-              <div className="grid gap-3.5">
-                <button
-                  className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-brand disabled:cursor-wait disabled:opacity-60"
-                  disabled={loading[providerIndex]}
-                  onClick={() => fetchModels(providerIndex)}
-                >
-                  {loading[providerIndex] ? (
-                    <LoaderCircle className="animate-spin" size={15} />
-                  ) : (
-                    <RefreshCw size={15} />
-                  )}
-                  {loading[providerIndex] ? "正在获取模型" : "自动获取模型"}
-                </button>
-                {errors[providerIndex] && <p className="text-xs text-[#ae3737]">{errors[providerIndex]}</p>}
-                {provider.models.map((model, modelIndex) => (
-                  <div className="grid grid-cols-[1fr_1fr_30px] gap-1.75" key={modelIndex}>
-                    <ModelPicker
-                      value={model.id}
-                      options={[...new Set([model.id, ...(options[providerIndex] ?? [])].filter(Boolean))]}
-                      onChange={(id) =>
-                        updateProvider(providerIndex, {
-                          models: provider.models.map((item, index) => (index === modelIndex ? { ...item, id } : item)),
-                        })
-                      }
-                      onSelect={(id) => {
-                        if (!model.alias.trim())
-                          updateProvider(providerIndex, {
-                            models: provider.models.map((item, index) =>
-                              index === modelIndex ? { ...item, id, alias: id } : item,
-                            ),
-                          });
-                      }}
-                    />
+          {config.providers.map((provider, providerIndex) => {
+            const isDeepSeekAnthropic =
+              provider.type === "anthropic" && normalizeUrl(provider.options.base_url) === DEEPSEEK_ANTHROPIC_API_URL;
+            return (
+              <section className="grid gap-3.5 rounded-[10px] b-ui p-4.5" key={`${provider.name}-${providerIndex}`}>
+                <div className="grid grid-cols-2 gap-3 max-[820px]:grid-cols-1">
+                  <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
+                    名称
                     <Input
-                      className="font-mono text-xs"
-                      value={model.alias}
-                      placeholder="模型别名"
+                      value={provider.name}
+                      onChange={(event) => updateProvider(providerIndex, { name: event.target.value })}
+                    />
+                  </label>
+                  <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
+                    类型
+                    <Select
+                      value={provider.type}
+                      options={["anthropic", "deepseek", "openai-compatible"].map((type) => ({
+                        label: type,
+                        value: type,
+                      }))}
+                      onChange={(type) => updateProvider(providerIndex, { type: type as Provider["type"] })}
+                    />
+                  </label>
+                  <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
+                    API 地址
+                    <Input
+                      value={provider.options.base_url}
                       onChange={(event) =>
                         updateProvider(providerIndex, {
-                          models: provider.models.map((item, index) =>
-                            index === modelIndex ? { ...item, alias: event.target.value } : item,
-                          ),
+                          options: { ...provider.options, base_url: event.target.value },
                         })
                       }
                     />
-                    <button
-                      className="grid h-8.5 w-7.5 place-items-center rounded-md bg-[#edf1f3] p-0 text-[#526574]"
-                      onClick={() =>
-                        updateProvider(providerIndex, {
-                          models: provider.models.filter((_, index) => index !== modelIndex),
-                        })
+                  </label>
+                  <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
+                    API Key
+                    <Input.Password
+                      value={provider.options.api_key}
+                      onChange={(event) =>
+                        updateProvider(providerIndex, { options: { ...provider.options, api_key: event.target.value } })
                       }
-                    >
-                      <X size={15} />
-                    </button>
-                  </div>
-                ))}
+                    />
+                  </label>
+                </div>
+                <div className="grid gap-3.5">
+                  <button
+                    className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-brand disabled:cursor-wait disabled:opacity-60"
+                    disabled={loading[providerIndex] || isDeepSeekAnthropic}
+                    onClick={() => fetchModels(providerIndex)}
+                  >
+                    {loading[providerIndex] ? (
+                      <LoaderCircle className="animate-spin" size={15} />
+                    ) : (
+                      <RefreshCw size={15} />
+                    )}
+                    {loading[providerIndex] ? "正在获取模型" : isDeepSeekAnthropic ? "请手动添加模型" : "自动获取模型"}
+                  </button>
+                  {errors[providerIndex] && <p className="text-xs text-[#ae3737]">{errors[providerIndex]}</p>}
+                  {provider.models.map((model, modelIndex) => (
+                    <div className="grid grid-cols-[1fr_1fr_30px] gap-1.75" key={modelIndex}>
+                      <ModelPicker
+                        value={model.id}
+                        options={[...new Set([model.id, ...(options[providerIndex] ?? [])].filter(Boolean))]}
+                        onChange={(id) =>
+                          updateProvider(providerIndex, {
+                            models: provider.models.map((item, index) =>
+                              index === modelIndex ? { ...item, id } : item,
+                            ),
+                          })
+                        }
+                        onSelect={(id) => {
+                          if (!model.alias.trim())
+                            updateProvider(providerIndex, {
+                              models: provider.models.map((item, index) =>
+                                index === modelIndex ? { ...item, id, alias: id } : item,
+                              ),
+                            });
+                        }}
+                      />
+                      <Input
+                        className="font-mono text-xs"
+                        value={model.alias}
+                        placeholder="模型别名"
+                        onChange={(event) =>
+                          updateProvider(providerIndex, {
+                            models: provider.models.map((item, index) =>
+                              index === modelIndex ? { ...item, alias: event.target.value } : item,
+                            ),
+                          })
+                        }
+                      />
+                      <button
+                        className="grid h-8.5 w-7.5 place-items-center rounded-md bg-[#edf1f3] p-0 text-[#526574]"
+                        onClick={() =>
+                          updateProvider(providerIndex, {
+                            models: provider.models.filter((_, index) => index !== modelIndex),
+                          })
+                        }
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-brand"
+                    onClick={() =>
+                      updateProvider(providerIndex, { models: [...provider.models, { id: "", alias: "" }] })
+                    }
+                  >
+                    <Plus size={15} />
+                    添加模型
+                  </button>
+                </div>
                 <button
-                  className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-brand"
-                  onClick={() => updateProvider(providerIndex, { models: [...provider.models, { id: "", alias: "" }] })}
+                  className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-[#ae3737]"
+                  onClick={() =>
+                    setConfig((value) => ({
+                      ...value,
+                      providers: value.providers.filter((_, index) => index !== providerIndex),
+                    }))
+                  }
                 >
-                  <Plus size={15} />
-                  添加模型
+                  <Trash2 size={15} />
+                  删除供应商
                 </button>
-              </div>
-              <button
-                className="inline-flex w-fit items-center gap-1.25 bg-transparent py-0.75 text-xs font-700 text-[#ae3737]"
-                onClick={() =>
-                  setConfig((value) => ({
-                    ...value,
-                    providers: value.providers.filter((_, index) => index !== providerIndex),
-                  }))
-                }
-              >
-                <Trash2 size={15} />
-                删除供应商
-              </button>
-            </section>
-          ))}
-        </div>
-      </section>
-      <section className="rounded-[14px] b-ui bg-white p-6 shadow-[0_1px_2px_#17212b08] max-[480px]:p-4">
-        <div className="mb-5.5">
-          <div>
-            <p className="mb-1.25 font-mono text-[10px] font-500 tracking-[0.12em] text-muted">MODELS</p>
-            <h2 className="text-lg tracking-[-0.02em]">模型分工</h2>
-          </div>
-        </div>
-        <div className="grid grid-cols-3 gap-4 max-[820px]:grid-cols-1">
-          {(
-            [
-              ["plan", "规划"],
-              ["reply", "回复"],
-              ["main", "主 Agent"],
-              ["task_explore", "Task 检索子 Agent"],
-              ["task_general", "Task 通用子 Agent"],
-              ["multimodal_image", "图像理解"],
-              ["multimodal_video", "视频理解"],
-              ["multimodal_audio", "音频理解"],
-            ] as const
-          ).map(([key, label]) => (
-            <label className="grid gap-1.75 text-xs font-700 text-[#40515f]" key={key}>
-              {label}
-              <Select
-                value={config.models[key]}
-                options={[
-                  { label: "未配置", value: "" },
-                  ...aliases.map((option) => ({ label: option, value: option })),
-                ]}
-                onChange={(model) => setConfig((value) => ({ ...value, models: { ...value.models, [key]: model } }))}
-              />
-            </label>
-          ))}
+              </section>
+            );
+          })}
         </div>
       </section>
     </div>

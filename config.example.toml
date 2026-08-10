@@ -93,7 +93,7 @@ name = "deepseek"
 type = "anthropic"
 
 [providers.options]
-base_url = "https://api.deepseek.com"
+base_url = "https://api.deepseek.com/anthropic"
 api_key = "sk-xxxx"
 
 # 模型配置
