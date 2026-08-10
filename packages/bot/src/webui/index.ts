@@ -309,7 +309,7 @@ export function startWebUi() {
       return app.fetch(request);
     },
     hostname: "127.0.0.1",
-    port: 14251,
+    port: Bun.env.WEBUI_PORT ?? 0,
   });
   server.unref();
   logger.info({ url: `http://127.0.0.1:${server.port}` }, "WebUI 已启动");
