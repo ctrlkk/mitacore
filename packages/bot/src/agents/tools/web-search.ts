@@ -79,7 +79,9 @@ function formatSearchOutput(output: string): string {
 function formatResults(results: SearchResult[]): string {
   return results
     .map((result, index) => {
-      const excerpts = result.excerpts.map((excerpt) => (excerpt.length > 2000 ? `${excerpt.slice(0, 2000)}...` : excerpt));
+      const excerpts = result.excerpts.map((excerpt) =>
+        excerpt.length > 2000 ? `${excerpt.slice(0, 2000)}...` : excerpt,
+      );
       return [
         `### ${index + 1}. ${result.title}`,
         `URL: ${result.url}`,
@@ -167,7 +169,10 @@ async function readBody(response: Response, name: string): Promise<string> {
 }
 
 function readMcpContent(body: string): string | undefined {
-  const payloads = [body.trim(), ...body.split("\n").flatMap((line) => (line.startsWith("data: ") ? [line.slice(6)] : []))];
+  const payloads = [
+    body.trim(),
+    ...body.split("\n").flatMap((line) => (line.startsWith("data: ") ? [line.slice(6)] : [])),
+  ];
   for (const payload of payloads) {
     try {
       const data = JSON.parse(payload) as { result?: { content?: { text?: string }[] } };
