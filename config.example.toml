@@ -54,6 +54,13 @@ enabled = false
 # account_id = ""
 # token = ""
 
+# QQ Bot 渠道。启用且未填写 app_id/app_secret 时，启动后会在终端输出扫码链接；
+# 扫码成功后凭据会自动写回 config.toml。
+[qqbot]
+enabled = false
+# app_id = ""
+# app_secret = ""
+
 
 # 模型配置
 # 在这里配置bot处理不同任务时使用的模型，如果你不太清楚这些配置，建议跟随默认配置继续使用 deepseek 模型。

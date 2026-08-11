@@ -1,6 +1,7 @@
 import { createBot } from "@/app/queue-loop";
 import { config } from "@/config";
 import { startOneBotChannel } from "@/channel/adapters/onebot";
+import { startQQBotChannel } from "@/channel/adapters/qqbot";
 import { startWeixinChannel } from "@/channel/adapters/weixin";
 
 export async function startBot() {
@@ -26,6 +27,9 @@ export async function startBot() {
     })(),
     (async () => {
       if (config.weixin.enabled) await startWeixinChannel(getBot);
+    })(),
+    (async () => {
+      if (config.qqbot.enabled) await startQQBotChannel(getBot);
     })(),
   ]);
 }

@@ -62,6 +62,16 @@ const schema = z.object({
       enabled: false,
     })
     .describe("微信渠道配置"),
+  qqbot: z
+    .object({
+      enabled: z.boolean().default(false).describe("是否启用 QQ Bot 渠道"),
+      app_id: z.string().trim().optional().describe("QQ Bot AppID"),
+      app_secret: z.string().trim().optional().describe("QQ Bot AppSecret"),
+    })
+    .default({
+      enabled: false,
+    })
+    .describe("QQ Bot 配置"),
   economy_mode: z.boolean().default(false).describe("是否启用节约模式"),
   max_queue: z.number().int().min(1).default(10).describe("单个会话单次处理前的消息等待队列上限"),
   debounce_ms: z.number().int().min(1000).max(10000).default(1000).describe("消息合并等待时间（毫秒）"),
@@ -127,6 +137,9 @@ function getFieldDescription(path: PropertyKey[]): string | undefined {
     "weixin.enabled": "是否启用微信渠道",
     "weixin.account_id": "微信 Bot 账号 ID",
     "weixin.token": "微信 Bot token",
+    "qqbot.enabled": "是否启用 QQ Bot 渠道",
+    "qqbot.app_id": "QQ Bot AppID",
+    "qqbot.app_secret": "QQ Bot AppSecret",
     economy_mode: "是否启用节约模式",
     max_queue: "单个会话单次处理前的消息等待队列上限",
     debounce_ms: "消息合并等待时间（毫秒）",
