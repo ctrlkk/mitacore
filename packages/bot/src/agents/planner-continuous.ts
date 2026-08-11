@@ -7,6 +7,7 @@ import { dataPath, projectPath } from "@/utils/path";
 import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { task } from "./tools/task";
+import { webfetch } from "./tools/web-fetch";
 import { websearch } from "./tools/web-search";
 import { compactHistory, isOverflow } from "./compaction";
 import { injectSystemContext } from "./system-context";
@@ -109,6 +110,7 @@ export async function runPlanner(
   tools.task = task(log);
   // tools.image_gen = imageGen(tools, system, model);
   tools.web_search = websearch();
+  tools.web_fetch = webfetch();
   const startMemoryReview = memoryReview(tools, system, model, log);
 
   const result = await generateText({

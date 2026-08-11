@@ -10,6 +10,7 @@ import { logger, type PinoLogger } from "@/logger";
 import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-history";
 import { imageGen } from "./tools/image-gen";
 import { task } from "./tools/task";
+import { webfetch } from "./tools/web-fetch";
 import { websearch } from "./tools/web-search";
 import { compactHistory, isOverflow } from "./compaction";
 import { injectSystemContext } from "./system-context";
@@ -93,6 +94,7 @@ export async function runMain(
   tools.task = task(log);
   tools.image_gen = imageGen(tools, system, model);
   tools.web_search = websearch();
+  tools.web_fetch = webfetch();
 
   for (let step = 0; step < 20; step++) {
     const result = await generateText({
