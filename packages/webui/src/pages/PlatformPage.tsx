@@ -1,8 +1,8 @@
 import { Input, QRCode, Select, Switch } from "antd";
 import { useEffect, useState } from "react";
-import { ScopeEditor } from "../components/ScopeEditor";
-import { useChannels, type ChannelSnapshot } from "../hooks/useChannels";
-import type { Config } from "../types";
+import { ScopeEditor } from "@/components/ScopeEditor";
+import { useChannels, type ChannelSnapshot } from "@/hooks/useChannels";
+import type { Config } from "@/types";
 
 type Props = {
   config: Config;

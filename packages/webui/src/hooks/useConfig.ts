@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { defaultConfig, type Config, type Provider } from "../types";
+import { defaultConfig, type Config, type Provider } from "@/types";
 
 export function useConfig() {
   const [config, setConfig] = useState<Config>(defaultConfig);

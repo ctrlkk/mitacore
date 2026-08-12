@@ -12,16 +12,16 @@ import {
 } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
-import { useConfig } from "./hooks/useConfig";
-import { BatchStickersPage } from "./pages/BatchStickersPage";
-import { ImagesPage } from "./pages/ImagesPage";
-import { ModePage } from "./pages/ModePage";
-import { ModelsPage } from "./pages/ModelsPage";
-import { PlatformPage } from "./pages/PlatformPage";
-import { StickersPage } from "./pages/StickersPage";
+import { useConfig } from "@/hooks/useConfig";
+import { BatchStickersPage } from "@/pages/BatchStickersPage";
+import { ImagesPage } from "@/pages/ImagesPage";
+import { ModePage } from "@/pages/ModePage";
+import { ModelsPage } from "@/pages/ModelsPage";
+import { PlatformPage } from "@/pages/PlatformPage";
+import { StickersPage } from "@/pages/StickersPage";
 
-const PersonaPage = lazy(() => import("./pages/PersonaPage").then((module) => ({ default: module.PersonaPage })));
-const KnowledgePage = lazy(() => import("./pages/KnowledgePage").then((module) => ({ default: module.KnowledgePage })));
+const PersonaPage = lazy(() => import("@/pages/PersonaPage").then((module) => ({ default: module.PersonaPage })));
+const KnowledgePage = lazy(() => import("@/pages/KnowledgePage").then((module) => ({ default: module.KnowledgePage })));
 
 const pageMeta = {
   platform: ["PLATFORM", "用户配置平台"],

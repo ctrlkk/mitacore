@@ -1,6 +1,6 @@
 import { Check, FileText, LoaderCircle, RotateCcw, Save } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { MarkdownEditor } from "../components/MarkdownEditor";
+import { MarkdownEditor } from "@/components/MarkdownEditor";
 
 type SaveState = "idle" | "saving" | "saved";
 

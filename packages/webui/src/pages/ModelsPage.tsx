@@ -1,8 +1,8 @@
 import { LoaderCircle, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Alert, Input, Select } from "antd";
-import { ModelPicker } from "../components/ModelPicker";
-import type { Config, Provider } from "../types";
+import { ModelPicker } from "@/components/ModelPicker";
+import type { Config, Provider } from "@/types";
 
 type Props = {
   config: Config;

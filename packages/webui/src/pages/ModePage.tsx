@@ -1,5 +1,5 @@
 import { Alert, InputNumber, Switch } from "antd";
-import type { Config } from "../types";
+import type { Config } from "@/types";
 
 type Props = {
   config: Config;

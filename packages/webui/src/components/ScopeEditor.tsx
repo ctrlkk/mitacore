@@ -1,7 +1,7 @@
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { Input } from "antd";
-import type { Scope } from "../types";
+import type { Scope } from "@/types";
 
 type Props = { label: string; value: Scope; onChange: (value: Scope) => void; idLabel?: string };
 

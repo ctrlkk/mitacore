@@ -2,7 +2,7 @@ import { ImagePlus, LoaderCircle, Plus, RefreshCw, Search, Sparkles, Trash2, Upl
 import { Input, Modal, Popconfirm, Select, Upload } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Config, Sticker } from "../types";
+import type { Config, Sticker } from "@/types";
 
 const { TextArea } = Input;
 

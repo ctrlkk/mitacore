@@ -1,7 +1,7 @@
 import { LoaderCircle, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Input, Modal, Popconfirm } from "antd";
-import type { CachedImage } from "../types";
+import type { CachedImage } from "@/types";
 
 export function ImagesPage() {
   const [images, setImages] = useState<CachedImage[]>([]);

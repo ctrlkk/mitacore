@@ -12,8 +12,8 @@ import {
 } from "lucide-react";
 import { Input, Modal, Tree, type TreeDataNode } from "antd";
 import { useEffect, useMemo, useState } from "react";
-import { KnowledgeGraph } from "../components/KnowledgeGraph";
-import { MarkdownEditor } from "../components/MarkdownEditor";
+import { KnowledgeGraph } from "@/components/KnowledgeGraph";
+import { MarkdownEditor } from "@/components/MarkdownEditor";
 
 type KnowledgeNote = {
   path: string;

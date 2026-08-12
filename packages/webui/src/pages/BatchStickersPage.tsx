@@ -2,7 +2,7 @@ import { CheckCircle2, Eye, ImagePlus, LoaderCircle, UploadCloud, X } from "luci
 import { Modal, Select, Upload } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Config } from "../types";
+import type { Config } from "@/types";
 
 type StickerSuggestion = { suitable: boolean; name: string; description: string; reason: string };
 
