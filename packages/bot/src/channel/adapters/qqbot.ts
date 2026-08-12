@@ -50,8 +50,8 @@ async function loginWithQr(): Promise<QQBotQrCredentials> {
 }
 
 export async function startQQBotChannel(getBot: (sessionId: string) => ReturnType<typeof createBot>) {
-  const appId = process.env.QQBOT_APP_ID || config.qqbot.app_id;
-  const appSecret = process.env.QQBOT_APP_SECRET || config.qqbot.app_secret;
+  const appId = config.qqbot.app_id;
+  const appSecret = config.qqbot.app_secret;
   const configuredCredentials = appId && appSecret ? { appId, appSecret } : null;
   if (configuredCredentials) channelController.updateQQBot({ status: "connecting", error: undefined });
   const credentials: QQBotCredentials = configuredCredentials ?? (await loginWithQr());
@@ -97,7 +97,14 @@ export async function startQQBotChannel(getBot: (sessionId: string) => ReturnTyp
         conversationType: inbound.kind === "group" ? "group" : "private",
         selfId: credentials.appId,
         reply: async (part) => await client.reply(inbound, toText(part)),
-        setTyping: async () => () => undefined,
+        setTyping: async () => {
+          try {
+            return await client.setTyping(inbound);
+          } catch (error) {
+            logger.debug({ err: error, messageId: inbound.messageId }, "设置 QQ Bot 输入状态失败");
+            return () => {};
+          }
+        },
       };
       getBot(sessionId).enqueue(message, context);
     } catch (error) {

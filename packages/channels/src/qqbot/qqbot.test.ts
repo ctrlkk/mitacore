@@ -63,6 +63,31 @@ describe("QQBotHttpClient", () => {
     expect(tokenRequests).toBe(2);
     expect(messageRequests).toBe(2);
   });
+
+  test("发送单聊输入状态通知", async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const client = new QQBotHttpClient(
+      { appId: "app-id", appSecret: "app-secret" },
+      {
+        fetch: async (input, init) => {
+          const url = String(input);
+          requests.push({ url, init });
+          if (url.endsWith("/app/getAppAccessToken")) return json({ access_token: "token", expires_in: 7200 });
+          return json({ id: "typing-id" });
+        },
+      },
+    );
+
+    await expect(
+      client.sendTyping({ scope: "c2c", targetId: "user-openid", msgId: "message-id" }),
+    ).resolves.toMatchObject({ id: "typing-id" });
+    expect(requests[1]?.url).toBe("https://api.sgroup.qq.com/v2/users/user-openid/messages");
+    expect(JSON.parse(String(requests[1]?.init?.body))).toMatchObject({
+      msg_type: 6,
+      input_notify: { input_type: 1, input_second: 60 },
+      msg_id: "message-id",
+    });
+  });
 });
 
 describe("QQBotClient", () => {

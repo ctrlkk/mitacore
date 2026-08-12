@@ -107,6 +107,12 @@ export class QQBotClient {
     return await this.sendText(message.replyTarget, text);
   }
 
+  async setTyping(message: QQBotInboundMessage): Promise<() => void> {
+    if (message.kind !== "c2c") return () => {};
+    await this.http.sendTyping(message.replyTarget);
+    return () => {};
+  }
+
   private async openConnection(): Promise<void> {
     const gatewayUrl = await this.http.getGatewayUrl();
     await new Promise<void>((resolve, reject) => {

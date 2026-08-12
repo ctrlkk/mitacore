@@ -72,6 +72,20 @@ export class QQBotHttpClient {
     return await this.request<QQBotMessageResponse>(path, "POST", body);
   }
 
+  async sendTyping(target: QQBotReplyTarget): Promise<QQBotMessageResponse> {
+    if (target.scope !== "c2c") throw new Error("QQ Bot 仅支持在单聊中设置输入状态");
+    const path = `/v2/users/${encodeURIComponent(target.targetId)}/messages`;
+    const body: Record<string, unknown> = {
+      msg_type: 6,
+      input_notify: { input_type: 1, input_second: 60 },
+    };
+    if (target.msgId) {
+      body.msg_id = target.msgId;
+      body.msg_seq = nextMessageSequence();
+    }
+    return await this.request<QQBotMessageResponse>(path, "POST", body);
+  }
+
   private async fetchAccessToken(): Promise<string> {
     const response = await this.fetchWithTimeout(new URL("/app/getAppAccessToken", this.tokenBaseUrl).toString(), {
       method: "POST",

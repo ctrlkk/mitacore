@@ -115,9 +115,28 @@ export class WeixinClient {
     try {
       const config = await getTypingTicket(this.credentials, senderId, message.context_token);
       if (!config.typing_ticket) return () => {};
-      await sendTyping(this.credentials, senderId, config.typing_ticket, 1);
+      const ticket = config.typing_ticket;
+      let cancelled = false;
+      let updating: Promise<void> | null = null;
+
+      await sendTyping(this.credentials, senderId, ticket, 1);
+      const timer = setInterval(() => {
+        if (cancelled || updating) return;
+        updating = sendTyping(this.credentials, senderId, ticket, 1)
+          .catch((error) => {
+            this.logger.debug?.("刷新微信输入状态失败", error);
+          })
+          .finally(() => {
+            updating = null;
+          });
+      }, 5_000).unref();
+
       return async () => {
-        await sendTyping(this.credentials, senderId, config.typing_ticket!, 2).catch((error) => {
+        if (cancelled) return;
+        cancelled = true;
+        clearInterval(timer);
+        await updating;
+        await sendTyping(this.credentials, senderId, ticket, 2).catch((error) => {
           this.logger.debug?.("取消微信输入状态失败", error);
         });
       };
