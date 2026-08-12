@@ -1,4 +1,16 @@
-import { Check, Image, LoaderCircle, RefreshCw, Save, Settings2, SlidersHorizontal, Sticker } from "lucide-react";
+import {
+  BookOpen,
+  Check,
+  FilePenLine,
+  Image,
+  LoaderCircle,
+  RefreshCw,
+  Save,
+  Settings2,
+  SlidersHorizontal,
+  Sticker,
+} from "lucide-react";
+import { lazy, Suspense } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { useConfig } from "./hooks/useConfig";
 import { BatchStickersPage } from "./pages/BatchStickersPage";
@@ -8,10 +20,15 @@ import { ModelsPage } from "./pages/ModelsPage";
 import { PlatformPage } from "./pages/PlatformPage";
 import { StickersPage } from "./pages/StickersPage";
 
+const PersonaPage = lazy(() => import("./pages/PersonaPage").then((module) => ({ default: module.PersonaPage })));
+const KnowledgePage = lazy(() => import("./pages/KnowledgePage").then((module) => ({ default: module.KnowledgePage })));
+
 const pageMeta = {
   platform: ["PLATFORM", "用户配置平台"],
   mode: ["MODE", "运行模式"],
   models: ["MODELS", "模型配置"],
+  persona: ["PERSONA", "人设编辑器"],
+  knowledge: ["KNOWLEDGE BASE", "知识库工作台"],
   images: ["MEDIA LIBRARY", "图片缓存"],
   stickers: ["STICKER LIBRARY", "贴纸管理"],
   stickers_batch: ["STICKER BATCH", "批量创建贴纸"],
@@ -31,8 +48,9 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
     reloadConfig,
   } = useConfig();
   const [eyebrow, title] = pageMeta[page];
-  const isConfigPage = page !== "images" && page !== "stickers";
-  if (loading)
+  const usesConfig = !["images", "persona", "knowledge"].includes(page);
+  const isConfigPage = !["images", "stickers", "persona", "knowledge"].includes(page);
+  if (loading && usesConfig)
     return (
       <main className="flex min-h-screen items-center justify-center gap-2 text-sm text-muted">
         <LoaderCircle className="animate-spin" />
@@ -48,6 +66,10 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
       <ModelsPage config={config} setConfig={setConfig} updateProvider={updateProvider} />
     ) : page === "images" ? (
       <ImagesPage />
+    ) : page === "persona" ? (
+      <PersonaPage />
+    ) : page === "knowledge" ? (
+      <KnowledgePage />
     ) : page === "stickers_batch" ? (
       <BatchStickersPage config={config} />
     ) : (
@@ -92,6 +114,24 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
           >
             <Settings2 size={16} />
             模型
+          </NavLink>
+          <NavLink
+            to="/persona"
+            className={({ isActive }) =>
+              `flex w-full items-center gap-2.25 rounded-lg px-3 py-2.75 text-left text-sm text-inherit hover:bg-[#263544] hover:text-white ${isActive ? "bg-[#263544] text-white" : ""}`
+            }
+          >
+            <FilePenLine size={16} />
+            人设编辑器
+          </NavLink>
+          <NavLink
+            to="/knowledge"
+            className={({ isActive }) =>
+              `flex w-full items-center gap-2.25 rounded-lg px-3 py-2.75 text-left text-sm text-inherit hover:bg-[#263544] hover:text-white ${isActive ? "bg-[#263544] text-white" : ""}`
+            }
+          >
+            <BookOpen size={16} />
+            知识库
           </NavLink>
           <NavLink
             to="/images"
@@ -153,7 +193,7 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
             </div>
           )}
         </header>
-        {error && (
+        {usesConfig && error && (
           <p className="mx-[clamp(20px,5vw,72px)] mt-5 rounded-lg bg-[#fff0f0] px-3 py-2.5 text-xs leading-[1.5] text-[#922e2e]">
             {error}
           </p>
@@ -163,7 +203,16 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
             配置已保存，重启服务后生效。重启功能仅支持桌面版。
           </p>
         )}
-        {content}
+        <Suspense
+          fallback={
+            <p className="flex min-h-70 items-center justify-center gap-2 text-sm text-muted">
+              <LoaderCircle className="animate-spin" size={18} />
+              正在加载工作台…
+            </p>
+          }
+        >
+          {content}
+        </Suspense>
       </main>
     </div>
   );
@@ -174,6 +223,8 @@ export default function App() {
       <Route path="/platform" element={<Page page="platform" />} />
       <Route path="/mode" element={<Page page="mode" />} />
       <Route path="/models" element={<Page page="models" />} />
+      <Route path="/persona" element={<Page page="persona" />} />
+      <Route path="/knowledge" element={<Page page="knowledge" />} />
       <Route path="/images" element={<Page page="images" />} />
       <Route path="/stickers" element={<Page page="stickers" />} />
       <Route path="/stickers/batch" element={<Page page="stickers_batch" />} />

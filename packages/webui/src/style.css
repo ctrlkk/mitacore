@@ -27,6 +27,56 @@ button {
   border: 0;
 }
 
+.knowledge-tree .ant-tree {
+  background: transparent;
+  color: #40515f;
+  font-size: 12px;
+}
+
+.knowledge-tree .ant-tree-treenode {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+}
+
+.knowledge-tree .ant-tree-node-content-wrapper {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 5px;
+  padding-inline: 4px;
+  line-height: 25px;
+}
+
+.knowledge-tree .ant-tree-node-content-wrapper:hover {
+  background: #f1f6f4;
+}
+
+.knowledge-tree .ant-tree-title {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  user-select: none;
+}
+
+.knowledge-tree .ant-tree-switcher {
+  width: 19px;
+  min-width: 19px;
+  line-height: 25px;
+}
+
+.knowledge-tree .ant-tree-indent-unit {
+  width: 12px;
+}
+
+.knowledge-tree .ant-tree-iconEle {
+  width: 17px;
+  line-height: 25px;
+  color: #687983;
+}
+
 nav a {
   text-decoration: none;
 }

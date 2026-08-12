@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
-import { access, readFile, readdir, stat, unlink } from "node:fs/promises";
-import { basename, extname } from "node:path";
+import { access, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { basename, dirname, extname, isAbsolute, posix, relative, resolve } from "node:path";
 import { logger } from "@/logger";
-import { projectPath } from "@/utils/path";
+import { dataPath, projectPath } from "@/utils/path";
 import { config, ConfigValidationError, loadConfig, saveConfig } from "@/config";
 import { delete_image_description, list_image_descriptions, set_media_description } from "@/database/media-cache";
 import { IMAGE_CACHE_DIR, sanitizeImagePath, virtualToRealPath } from "@/utils/image-cache";
@@ -20,6 +20,108 @@ import { z } from "zod";
 import { channelController } from "@/app/channel-controller";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"]);
+const PERSONA_PATH = projectPath("prompts", "role.txt");
+const KNOWLEDGE_BASE_DIR = dataPath("workspace", "notepad");
+const MAX_TEXT_FILE_SIZE = 2 * 1024 * 1024;
+
+class WebUiValidationError extends Error {}
+
+const textFileSchema = z.object({
+  content: z.string().max(MAX_TEXT_FILE_SIZE, "文件内容不能超过 2 MB"),
+});
+
+const knowledgeFileSchema = textFileSchema.extend({
+  path: z.string().trim().min(1, "请输入笔记路径").max(500, "笔记路径过长"),
+  create_only: z.boolean().optional().default(false),
+});
+
+function getSafeKnowledgePath(rawPath: string) {
+  const input = rawPath.replaceAll("\\", "/");
+  if (input.includes("\0") || input.startsWith("/") || isAbsolute(input)) {
+    throw new WebUiValidationError("笔记路径不正确");
+  }
+
+  const normalizedPath = posix.normalize(input);
+  if (
+    normalizedPath === "." ||
+    normalizedPath.startsWith("../") ||
+    normalizedPath.includes("/../") ||
+    posix.extname(normalizedPath).toLocaleLowerCase() !== ".md"
+  ) {
+    throw new WebUiValidationError("笔记必须是知识库内的 Markdown 文件");
+  }
+
+  const fullPath = resolve(KNOWLEDGE_BASE_DIR, normalizedPath);
+  const relativePath = relative(KNOWLEDGE_BASE_DIR, fullPath);
+  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    throw new WebUiValidationError("笔记路径不正确");
+  }
+  return { path: normalizedPath, fullPath };
+}
+
+function parseWikiLinks(content: string) {
+  return [...content.matchAll(/!?\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g)]
+    .map((match) => match[1]?.trim().replaceAll("\\", "/"))
+    .filter((link): link is string => Boolean(link));
+}
+
+async function listKnowledgeNotes() {
+  const paths: string[] = [];
+  async function visit(directory: string) {
+    const entries = await readdir(directory, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
+    for (const entry of entries) {
+      const fullPath = resolve(directory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(fullPath);
+      } else if (entry.isFile() && extname(entry.name).toLocaleLowerCase() === ".md") {
+        paths.push(relative(KNOWLEDGE_BASE_DIR, fullPath).replaceAll("\\", "/"));
+      }
+    }
+  }
+
+  await visit(KNOWLEDGE_BASE_DIR);
+  paths.sort((left, right) => left.localeCompare(right, "zh-CN"));
+  const noteData = await Promise.all(
+    paths.map(async (path) => {
+      const fullPath = resolve(KNOWLEDGE_BASE_DIR, path);
+      const [content, fileStat] = await Promise.all([readFile(fullPath, "utf8"), stat(fullPath)]);
+      return {
+        path,
+        title: basename(path, extname(path)),
+        folder: posix.dirname(path) === "." ? "" : posix.dirname(path),
+        size: fileStat.size,
+        updated_at: fileStat.mtimeMs,
+        rawLinks: parseWikiLinks(content),
+      };
+    }),
+  );
+
+  const byPath = new Map(noteData.map((note) => [note.path.slice(0, -3).toLocaleLowerCase(), note.path]));
+  const byTitle = new Map<string, string[]>();
+  for (const note of noteData) {
+    const key = note.title.toLocaleLowerCase();
+    byTitle.set(key, [...(byTitle.get(key) ?? []), note.path]);
+  }
+
+  return noteData.map(({ rawLinks, ...note }) => {
+    const links = rawLinks.flatMap((rawLink) => {
+      const link = rawLink.replace(/\.md$/i, "");
+      const direct = byPath.get(link.toLocaleLowerCase());
+      if (direct) return [direct];
+
+      const relativeLink = posix.normalize(posix.join(note.folder, link));
+      const relativeTarget = byPath.get(relativeLink.toLocaleLowerCase());
+      if (relativeTarget) return [relativeTarget];
+
+      const titleMatches = byTitle.get(posix.basename(link).toLocaleLowerCase());
+      return titleMatches?.length === 1 ? titleMatches : [];
+    });
+    return { ...note, links: [...new Set(links)] };
+  });
+}
 
 const imageUpdateSchema = z.object({
   description: z.string().trim().max(10_000, "图片描述不能超过 10000 个字符"),
@@ -91,6 +193,9 @@ const verifyCodeSchema = z.object({
 });
 
 function errorResponse(error: unknown) {
+  if (error instanceof WebUiValidationError) {
+    return { status: 400 as const, body: { error: { message: error.message } } };
+  }
   if (error instanceof ConfigValidationError) {
     return {
       status: 400 as const,
@@ -177,6 +282,77 @@ export function createApp() {
     try {
       await saveConfig(await c.req.json());
       return c.json({ saved: true, restart_required: true });
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
+
+  app.get("/api/persona", async (c) => {
+    try {
+      const content = await readFile(PERSONA_PATH, "utf8");
+      return c.json({ path: "prompts/role.txt", content });
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
+
+  app.put("/api/persona", async (c) => {
+    try {
+      const { content } = textFileSchema.parse(await c.req.json());
+      await mkdir(dirname(PERSONA_PATH), { recursive: true });
+      await writeFile(PERSONA_PATH, content, "utf8");
+      return c.json({ saved: true, path: "prompts/role.txt" });
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
+
+  app.get("/api/knowledge", async (c) => {
+    try {
+      const notes = await listKnowledgeNotes();
+      return c.json({
+        notes,
+        summary: { total: notes.length, links: notes.reduce((sum, note) => sum + note.links.length, 0) },
+      });
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
+
+  app.get("/api/knowledge/note", async (c) => {
+    try {
+      const { path, fullPath } = getSafeKnowledgePath(z.string().parse(c.req.query("path")));
+      const content = await readFile(fullPath, "utf8");
+      return c.json({ path, content });
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        return c.json({ error: { message: "笔记不存在" } }, 404);
+      }
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
+
+  app.put("/api/knowledge/note", async (c) => {
+    try {
+      const request = knowledgeFileSchema.parse(await c.req.json());
+      const { path, fullPath } = getSafeKnowledgePath(request.path);
+      const created = await stat(fullPath)
+        .then(() => false)
+        .catch((error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return true;
+          throw error;
+        });
+      if (!created && request.create_only) {
+        return c.json({ error: { message: "同名笔记已存在，请换一个名称" } }, 409);
+      }
+      await mkdir(dirname(fullPath), { recursive: true });
+      await writeFile(fullPath, request.content, "utf8");
+      return c.json({ saved: true, created, path }, created ? 201 : 200);
     } catch (error) {
       const response = errorResponse(error);
       return c.json(response.body, response.status);
