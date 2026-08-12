@@ -62,7 +62,10 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
     (await channelController.loginWithQr(
       async (waitForVerifyCode) =>
         await loginWithQr({
-          onQrCode: (qrcode_content) => channelController.updateWeixin({ status: "waiting_qr", qrcode_content }),
+          onQrCode: (qrcode_content) => {
+            logger.info({ url: qrcode_content }, "请使用微信扫描此二维码链接");
+            channelController.updateWeixin({ status: "waiting_qr", qrcode_content });
+          },
           onScanned: () => channelController.updateWeixin({ status: "scanned" }),
           onVerifyCodeRequired: () => channelController.updateWeixin({ status: "waiting_verify_code" }),
           waitForVerifyCode,
