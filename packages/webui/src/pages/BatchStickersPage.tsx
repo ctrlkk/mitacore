@@ -1,13 +1,15 @@
-import { CheckCircle2, ImagePlus, LoaderCircle, UploadCloud, X } from "lucide-react";
-import { Select, Upload } from "antd";
+import { CheckCircle2, Eye, ImagePlus, LoaderCircle, UploadCloud, X } from "lucide-react";
+import { Modal, Select, Upload } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Config } from "../types";
 
+type StickerSuggestion = { suitable: boolean; name: string; description: string; reason: string };
+
 type SuggestionEvent =
   | { type: "status"; message: string }
   | { type: "reasoning"; delta: string }
-  | { type: "result"; suggestion: { suitable: boolean; name: string; description: string; reason: string } }
+  | { type: "result"; suggestion: StickerSuggestion }
   | { type: "error"; message: string };
 
 type BatchSticker = {
@@ -19,12 +21,32 @@ type BatchSticker = {
   message: string;
   progress: number;
   reasoning: string;
+  suggestion?: StickerSuggestion;
+};
+
+const statusLabels: Record<BatchSticker["status"], string> = {
+  pending: "等待中",
+  creating: "进行中",
+  created: "创建成功",
+  error: "创建失败",
+};
+
+const statusClasses: Record<BatchSticker["status"], string> = {
+  pending: "bg-[#e9eff2] text-[#526574]",
+  creating: "bg-[#e2f4ed] text-[#176c58]",
+  created: "bg-[#edf7f2] text-[#416050]",
+  error: "bg-[#fff0f0] text-[#ae3737]",
 };
 
 function getErrorMessage(payload: unknown, fallback: string) {
   if (!payload || typeof payload !== "object") return fallback;
   const error = (payload as { error?: { message?: unknown } }).error;
   return typeof error?.message === "string" ? error.message : fallback;
+}
+
+function formatFileSize(size: number) {
+  if (size < 1024 * 1024) return `${Math.ceil(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function BatchStickersPage({ config }: { config: Config }) {
@@ -35,6 +57,8 @@ export function BatchStickersPage({ config }: { config: Config }) {
   const [batchModel, setBatchModel] = useState("");
   const [batchConcurrency, setBatchConcurrency] = useState(3);
   const [batchCreating, setBatchCreating] = useState(false);
+  const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
+  const selectedSticker = batchStickers.find((item) => item.id === selectedStickerId);
   const aliases = useMemo(
     () => [
       ...new Set(config.providers.flatMap((provider) => provider.models.map((model) => model.alias)).filter(Boolean)),
@@ -70,7 +94,7 @@ export function BatchStickersPage({ config }: { config: Config }) {
     const reader = suggestionResponse.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let suggestion: Extract<SuggestionEvent, { type: "result" }>["suggestion"] | undefined;
+    let suggestion: StickerSuggestion | undefined;
     const consume = (line: string) => {
       if (!line.trim()) return;
       const event = JSON.parse(line) as SuggestionEvent;
@@ -92,6 +116,7 @@ export function BatchStickersPage({ config }: { config: Config }) {
         );
       } else if (event.type === "result") {
         suggestion = event.suggestion;
+        update(item.id, { suggestion: event.suggestion });
       } else {
         throw new Error(event.message);
       }
@@ -144,6 +169,7 @@ export function BatchStickersPage({ config }: { config: Config }) {
 
   const remove = (item: BatchSticker) => {
     URL.revokeObjectURL(item.previewUrl);
+    if (selectedStickerId === item.id) setSelectedStickerId(null);
     setBatchStickers((items) => items.filter((sticker) => sticker.id !== item.id));
   };
 
@@ -165,7 +191,7 @@ export function BatchStickersPage({ config }: { config: Config }) {
           返回贴纸库
         </button>
       </div>
-      <section className="grid gap-4 rounded-[14px] b-ui bg-white p-6 shadow-[0_1px_2px_#17212b08] max-[480px]:p-4">
+      <section className="grid min-w-0 gap-4 rounded-[14px] b-ui bg-white p-6 shadow-[0_1px_2px_#17212b08] max-[480px]:p-4">
         <div className="grid grid-cols-2 gap-3 max-[480px]:grid-cols-1">
           <label className="grid gap-1.5 text-sm font-600">
             AI 模型
@@ -216,11 +242,14 @@ export function BatchStickersPage({ config }: { config: Config }) {
           <p className="mb-0 mt-1 text-xs text-muted">支持 WebP、PNG、JPG、JPEG、GIF，单张最大 10 MB</p>
         </Upload.Dragger>
         {batchStickers.length > 0 && <p className="m-0 text-xs text-muted">已添加 {batchStickers.length} 张图片</p>}
-        <div className="grid grid-cols-3 gap-3 max-[960px]:grid-cols-2 max-[600px]:grid-cols-1">
+        <div className="grid min-w-0 grid-cols-3 gap-3 max-[960px]:grid-cols-2 max-[600px]:grid-cols-1">
           {batchStickers.map((item) => (
-            <article className="grid gap-2 rounded-lg border border-[#b2d4c8] bg-[#fbfcfd] p-2.5 text-xs" key={item.id}>
+            <article
+              className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden rounded-lg border border-[#b2d4c8] bg-[#fbfcfd] p-2.5 text-xs"
+              key={item.id}
+            >
               <img
-                className="aspect-[4/3] w-full rounded-md bg-[#edf1f3] object-contain"
+                className="aspect-[4/3] w-full max-w-full rounded-md bg-[#edf1f3] object-contain"
                 src={item.previewUrl}
                 alt={item.image.name}
               />
@@ -254,18 +283,18 @@ export function BatchStickersPage({ config }: { config: Config }) {
                   style={{ width: `${item.progress}%` }}
                 />
               </div>
-              <div className="flex justify-between gap-3 text-muted">
+              <div className="flex min-w-0 justify-between gap-3 text-muted">
                 <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{item.message}</span>
-                <span className="font-mono">{item.progress}%</span>
+                <span className="shrink-0 font-mono">{item.progress}%</span>
               </div>
-              {item.reasoning && (
-                <div className="rounded bg-[#f1f4f6] px-2 py-1.5">
-                  <strong className="text-[10px] tracking-[0.08em] text-[#40515f]">AI 思考输出</strong>
-                  <p className="mb-0 mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] leading-[1.5] text-muted">
-                    {item.reasoning}
-                  </p>
-                </div>
-              )}
+              <button
+                className="inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-1.5 font-700 text-brand hover:bg-[#e2f4ed]"
+                type="button"
+                onClick={() => setSelectedStickerId(item.id)}
+              >
+                <Eye size={14} />
+                查看完整信息
+              </button>
             </article>
           ))}
         </div>
@@ -291,6 +320,101 @@ export function BatchStickersPage({ config }: { config: Config }) {
           </button>
         </div>
       </section>
+      <Modal
+        open={Boolean(selectedSticker)}
+        title="任务详情"
+        width={880}
+        footer={null}
+        onCancel={() => setSelectedStickerId(null)}
+      >
+        {selectedSticker && (
+          <div className="grid min-w-0 gap-5 pt-2">
+            <div className="grid min-w-0 grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-5 max-[720px]:grid-cols-1">
+              <img
+                className="block max-h-[44vh] w-full max-w-full rounded-lg bg-[#edf1f3] object-contain"
+                src={selectedSticker.previewUrl}
+                alt={selectedSticker.image.name}
+              />
+              <div className="grid min-w-0 content-start gap-4">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="m-0 break-all text-base font-700 text-[#253744]">{selectedSticker.image.name}</p>
+                    <p className="mb-0 mt-1 text-xs text-muted">
+                      {formatFileSize(selectedSticker.image.size)}
+                      {selectedSticker.image.type ? ` · ${selectedSticker.image.type}` : ""}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-700 ${statusClasses[selectedSticker.status]}`}
+                  >
+                    {statusLabels[selectedSticker.status]}
+                  </span>
+                </div>
+                <div>
+                  <div className="mb-1.5 flex justify-between gap-3 text-xs">
+                    <strong className="text-[#40515f]">{selectedSticker.phase}</strong>
+                    <span className="font-mono text-muted">{selectedSticker.progress}%</span>
+                  </div>
+                  <div className="h-1.75 overflow-hidden rounded-full bg-[#e9eff2]">
+                    <div
+                      className={selectedSticker.status === "error" ? "h-full bg-[#d45c5c]" : "h-full bg-brand"}
+                      style={{ width: `${selectedSticker.progress}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="min-w-0 rounded-lg bg-[#f4f6f8] p-3">
+                  <strong className="text-xs text-[#40515f]">任务信息</strong>
+                  <p className="mb-0 mt-1.5 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm leading-[1.6] text-[#526574]">
+                    {selectedSticker.message}
+                  </p>
+                </div>
+                {selectedSticker.suggestion && (
+                  <div className="grid min-w-0 gap-3 border-t border-[#e3e6eb] pt-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <strong className="text-sm text-[#253744]">AI 建议</strong>
+                      <span
+                        className={
+                          selectedSticker.suggestion.suitable
+                            ? "rounded-full bg-[#edf7f2] px-2.5 py-1 text-xs font-700 text-[#416050]"
+                            : "rounded-full bg-[#fff8e8] px-2.5 py-1 text-xs font-700 text-[#765a24]"
+                        }
+                      >
+                        {selectedSticker.suggestion.suitable ? "适合作为贴纸" : "不适合作为贴纸"}
+                      </span>
+                    </div>
+                    <div>
+                      <strong className="text-xs text-[#40515f]">贴纸名称</strong>
+                      <p className="mb-0 mt-1 break-all text-sm">{selectedSticker.suggestion.name}</p>
+                    </div>
+                    <div>
+                      <strong className="text-xs text-[#40515f]">使用描述</strong>
+                      <p className="mb-0 mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm leading-[1.6] text-[#526574]">
+                        {selectedSticker.suggestion.description}
+                      </p>
+                    </div>
+                    {selectedSticker.suggestion.reason && (
+                      <div>
+                        <strong className="text-xs text-[#40515f]">判断依据</strong>
+                        <p className="mb-0 mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm leading-[1.6] text-[#526574]">
+                          {selectedSticker.suggestion.reason}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            {selectedSticker.reasoning && (
+              <div className="min-w-0 border-t border-[#e3e6eb] pt-4">
+                <strong className="text-xs text-[#40515f]">AI 思考输出</strong>
+                <p className="mb-0 mt-2 max-h-60 overflow-y-auto whitespace-pre-wrap rounded-lg bg-[#f1f4f6] p-3 [overflow-wrap:anywhere] font-mono text-[11px] leading-[1.6] text-muted">
+                  {selectedSticker.reasoning}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
