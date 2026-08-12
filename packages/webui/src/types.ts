@@ -23,6 +23,11 @@ export type Config = {
     account_id?: string;
     token?: string;
   };
+  qqbot: {
+    enabled: boolean;
+    app_id?: string;
+    app_secret?: string;
+  };
   economy_mode: boolean;
   max_queue: number;
   debounce_ms: number;
@@ -63,6 +68,11 @@ export const defaultConfig: Config = {
     enabled: false,
     account_id: "",
     token: "",
+  },
+  qqbot: {
+    enabled: false,
+    app_id: "",
+    app_secret: "",
   },
   economy_mode: false,
   max_queue: 10,

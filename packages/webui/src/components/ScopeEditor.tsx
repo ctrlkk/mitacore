@@ -3,9 +3,9 @@ import { useState } from "react";
 import { Input } from "antd";
 import type { Scope } from "../types";
 
-type Props = { label: string; value: Scope; onChange: (value: Scope) => void };
+type Props = { label: string; value: Scope; onChange: (value: Scope) => void; idLabel?: string };
 
-export function ScopeEditor({ label, value, onChange }: Props) {
+export function ScopeEditor({ label, value, onChange, idLabel = "ID" }: Props) {
   const [draft, setDraft] = useState("");
   const addId = () => {
     const id = draft.trim();
@@ -52,18 +52,18 @@ export function ScopeEditor({ label, value, onChange }: Props) {
               </button>
             </span>
           ))}
-          {!value.ids.length && <em className="text-[11px] text-[#91a0ac] not-italic">尚未添加 ID</em>}
+          {!value.ids.length && <em className="text-[11px] text-[#91a0ac] not-italic">尚未添加 {idLabel}</em>}
         </div>
         <div className="grid grid-cols-[1fr_auto] gap-1.5">
           <Input
             value={draft}
-            placeholder="输入 ID，按回车添加"
+            placeholder={`输入 ${idLabel}，按回车添加`}
             onChange={(event) => setDraft(event.target.value)}
             onPressEnter={addId}
           />
           <button
             className="inline-flex place-items-center items-center justify-center gap-1.25 rounded-[7px] bg-brand px-2.75 text-white hover:bg-brand-dark"
-            aria-label="添加 ID"
+            aria-label={`添加 ${idLabel}`}
             onClick={addId}
           >
             <Plus size={17} />

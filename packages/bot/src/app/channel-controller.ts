@@ -2,10 +2,12 @@ import type { WeixinCredentials } from "channels/weixin";
 
 export type WeixinStatus = "idle" | "waiting_qr" | "scanned" | "waiting_verify_code" | "ready" | "failed";
 export type NapCatStatus = "idle" | "starting" | "ready" | "external" | "failed";
+export type QQBotStatus = "idle" | "waiting_qr" | "connecting" | "ready" | "failed";
 
 export type ChannelSnapshot = {
   weixin: { status: WeixinStatus; qrcode_content?: string; error?: string };
   napcat: { status: NapCatStatus; embed_url?: string; error?: string };
+  qqbot: { status: QQBotStatus; qrcode_content?: string; error?: string };
 };
 
 type Listener = (snapshot: ChannelSnapshot) => void;
@@ -13,7 +15,11 @@ type Listener = (snapshot: ChannelSnapshot) => void;
 export class ChannelController {
   private readonly listeners = new Set<Listener>();
   private verifyCodeResolver?: (code: string) => void;
-  private snapshot: ChannelSnapshot = { weixin: { status: "idle" }, napcat: { status: "idle" } };
+  private snapshot: ChannelSnapshot = {
+    weixin: { status: "idle" },
+    napcat: { status: "idle" },
+    qqbot: { status: "idle" },
+  };
 
   getSnapshot(): ChannelSnapshot {
     return this.snapshot;
@@ -31,6 +37,11 @@ export class ChannelController {
 
   updateNapcat(patch: Partial<ChannelSnapshot["napcat"]>) {
     this.snapshot = { ...this.snapshot, napcat: { ...this.snapshot.napcat, ...patch } };
+    this.emit();
+  }
+
+  updateQQBot(patch: Partial<ChannelSnapshot["qqbot"]>) {
+    this.snapshot = { ...this.snapshot, qqbot: { ...this.snapshot.qqbot, ...patch } };
     this.emit();
   }
 
