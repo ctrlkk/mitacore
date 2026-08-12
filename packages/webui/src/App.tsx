@@ -1,16 +1,20 @@
-import { Check, Image, LoaderCircle, RefreshCw, Save, Settings2, SlidersHorizontal } from "lucide-react";
+import { Check, Image, LoaderCircle, RefreshCw, Save, Settings2, SlidersHorizontal, Sticker } from "lucide-react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { useConfig } from "./hooks/useConfig";
+import { BatchStickersPage } from "./pages/BatchStickersPage";
 import { ImagesPage } from "./pages/ImagesPage";
 import { ModePage } from "./pages/ModePage";
 import { ModelsPage } from "./pages/ModelsPage";
 import { PlatformPage } from "./pages/PlatformPage";
+import { StickersPage } from "./pages/StickersPage";
 
 const pageMeta = {
   platform: ["PLATFORM", "用户配置平台"],
   mode: ["MODE", "运行模式"],
   models: ["MODELS", "模型配置"],
   images: ["MEDIA LIBRARY", "图片缓存"],
+  stickers: ["STICKER LIBRARY", "贴纸管理"],
+  stickers_batch: ["STICKER BATCH", "批量创建贴纸"],
 } as const;
 
 function Page({ page }: { page: keyof typeof pageMeta }) {
@@ -27,6 +31,7 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
     reloadConfig,
   } = useConfig();
   const [eyebrow, title] = pageMeta[page];
+  const isConfigPage = page !== "images" && page !== "stickers";
   if (loading)
     return (
       <main className="flex min-h-screen items-center justify-center gap-2 text-sm text-muted">
@@ -41,8 +46,12 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
       <ModePage config={config} setConfig={setConfig} />
     ) : page === "models" ? (
       <ModelsPage config={config} setConfig={setConfig} updateProvider={updateProvider} />
-    ) : (
+    ) : page === "images" ? (
       <ImagesPage />
+    ) : page === "stickers_batch" ? (
+      <BatchStickersPage config={config} />
+    ) : (
+      <StickersPage config={config} />
     );
   return (
     <div className="grid min-h-screen grid-cols-[236px_minmax(0,1fr)] max-[820px]:block">
@@ -93,6 +102,15 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
             <Image size={16} />
             图片缓存
           </NavLink>
+          <NavLink
+            to="/stickers"
+            className={({ isActive }) =>
+              `flex w-full items-center gap-2.25 rounded-lg px-3 py-2.75 text-left text-sm text-inherit hover:bg-[#263544] hover:text-white ${isActive ? "bg-[#263544] text-white" : ""}`
+            }
+          >
+            <Sticker size={16} />
+            贴纸管理
+          </NavLink>
         </nav>
         <p className="mt-auto mx-2.5 text-[11px] leading-[1.6] text-[#8e9daa] max-[820px]:hidden">
           本地控制台，仅服务于当前机器。
@@ -104,7 +122,7 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
             <p className="mb-1.25 font-mono text-[10px] font-500 tracking-[0.12em] text-muted">{eyebrow}</p>
             <h1 className="font-mono text-[22px] tracking-[-0.03em] max-[480px]:text-[19px]">{title}</h1>
           </div>
-          {page !== "images" && (
+          {isConfigPage && (
             <div className="flex flex-wrap justify-end gap-2">
               <button
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#e9eff2] px-3.5 py-2.5 text-sm font-700 text-[#294051] hover:bg-[#dce5e9] disabled:cursor-wait disabled:opacity-65 max-[480px]:px-2.75 max-[480px]:py-2.25"
@@ -140,7 +158,7 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
             {error}
           </p>
         )}
-        {page !== "images" && saveState === "saved" && (
+        {isConfigPage && saveState === "saved" && (
           <p className="mx-[clamp(20px,5vw,72px)] mt-5 rounded-lg bg-[#edf7f2] px-3 py-2.5 text-xs leading-[1.5] text-[#416050]">
             配置已保存，重启服务后生效。重启功能仅支持桌面版。
           </p>
@@ -157,6 +175,8 @@ export default function App() {
       <Route path="/mode" element={<Page page="mode" />} />
       <Route path="/models" element={<Page page="models" />} />
       <Route path="/images" element={<Page page="images" />} />
+      <Route path="/stickers" element={<Page page="stickers" />} />
+      <Route path="/stickers/batch" element={<Page page="stickers_batch" />} />
       <Route path="*" element={<Navigate to="/platform" replace />} />
     </Routes>
   );

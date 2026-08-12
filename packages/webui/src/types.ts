@@ -53,6 +53,15 @@ export type CachedImage = {
   url: string;
 };
 
+export type Sticker = {
+  name: string;
+  filename: string;
+  description: string;
+  size: number;
+  updated_at: number;
+  url: string;
+};
+
 export const defaultConfig: Config = {
   napcat: {
     enabled: true,

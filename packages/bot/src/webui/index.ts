@@ -4,9 +4,18 @@ import { access, readFile, readdir, stat, unlink } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { logger } from "@/logger";
 import { projectPath } from "@/utils/path";
-import { ConfigValidationError, loadConfig, saveConfig } from "@/config";
+import { config, ConfigValidationError, loadConfig, saveConfig } from "@/config";
 import { delete_image_description, list_image_descriptions, set_media_description } from "@/database/media-cache";
 import { IMAGE_CACHE_DIR, sanitizeImagePath, virtualToRealPath } from "@/utils/image-cache";
+import {
+  MAX_STICKER_SIZE,
+  MAX_STICKERS,
+  addSticker,
+  getStickerPath,
+  listStickers,
+  removeSticker,
+} from "@/message/stickers";
+import { streamStickerSuggestion } from "@/agents/stickers";
 import { z } from "zod";
 import { channelController } from "@/app/channel-controller";
 
@@ -22,6 +31,19 @@ const imageListQuerySchema = z.object({
   search: z.string().trim().max(200).default(""),
   sort: z.enum(["newest", "oldest", "largest", "smallest"]).default("newest"),
 });
+
+const stickerNameSchema = z
+  .string()
+  .trim()
+  .min(2, "贴纸名至少需要 2 个字符")
+  .max(32, "贴纸名不能超过 32 个字符")
+  .regex(/^[\p{L}][\p{L}\p{N}_-]+$/u, "贴纸名需以字母开头，且只能包含字母、数字、下划线或连字符");
+
+const stickerDescriptionSchema = z
+  .string()
+  .trim()
+  .min(1, "贴纸描述不能为空")
+  .max(10_000, "贴纸描述不能超过 10000 个字符");
 
 function getSafeImagePath(rawFilename: string) {
   const filename = basename(rawFilename);
@@ -188,6 +210,111 @@ export function createApp() {
     }
   });
 
+  app.get("/api/stickers", async (c) => {
+    try {
+      const stickers = await listStickers();
+      return c.json({
+        stickers: stickers.map((sticker) => ({
+          ...sticker,
+          url: `/api/stickers/${encodeURIComponent(sticker.name)}/content`,
+        })),
+        summary: { total: stickers.length, limit: MAX_STICKERS },
+      });
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
+
+  app.post("/api/stickers/suggestion", async (c) => {
+    try {
+      const form = await c.req.formData();
+      const image = form.get("image");
+      const model = z
+        .string()
+        .trim()
+        .optional()
+        .parse(form.get("model") || undefined);
+      if (!(image instanceof File) || image.size === 0) {
+        return c.json({ error: { message: "请选择贴纸图片" } }, 400);
+      }
+      if (image.size > MAX_STICKER_SIZE) {
+        return c.json({ error: { message: "贴纸图片不能超过 10 MB" } }, 400);
+      }
+      if (model && !config.providers.some((provider) => provider.models.some(({ alias }) => alias === model))) {
+        return c.json({ error: { message: "所选模型不存在，请检查模型配置" } }, 400);
+      }
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          try {
+            for await (const event of streamStickerSuggestion(image, model, c.req.raw.signal)) {
+              controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "生成贴纸建议失败";
+            controller.enqueue(encoder.encode(`${JSON.stringify({ type: "error", message })}\n`));
+          } finally {
+            controller.close();
+          }
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          "cache-control": "no-cache",
+          "content-type": "application/x-ndjson; charset=utf-8",
+          "x-content-type-options": "nosniff",
+        },
+      });
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
+
+  app.get("/api/stickers/:name/content", async (c) => {
+    try {
+      const name = stickerNameSchema.parse(c.req.param("name"));
+      const path = await getStickerPath(name);
+      if (!path) return c.json({ error: { message: `贴纸 [${name}] 不存在` } }, 404);
+      return new Response(Bun.file(path), { headers: { "cache-control": "private, max-age=300" } });
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
+
+  app.post("/api/stickers", async (c) => {
+    try {
+      const form = await c.req.formData();
+      const name = stickerNameSchema.parse(form.get("name"));
+      const description = stickerDescriptionSchema.parse(form.get("description"));
+      const image = form.get("image");
+      if (!(image instanceof File) || image.size === 0) {
+        return c.json({ error: { message: "请选择贴纸图片" } }, 400);
+      }
+      await addSticker(name, description, image);
+      return c.json({ created: true, name }, 201);
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status === 500 ? 400 : response.status);
+    }
+  });
+
+  app.delete("/api/stickers/:name", async (c) => {
+    try {
+      const name = stickerNameSchema.parse(c.req.param("name"));
+      const path = await getStickerPath(name);
+      if (!path) return c.json({ error: { message: `贴纸 [${name}] 不存在` } }, 404);
+      await removeSticker(name);
+      return c.json({ deleted: true });
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
+
   app.get("/api/images", async (c) => {
     try {
       const query = imageListQuerySchema.parse(c.req.query());
@@ -309,7 +436,8 @@ export function startWebUi() {
   const app = createApp();
   const server = Bun.serve({
     fetch(request, server) {
-      if (new URL(request.url).pathname === "/api/runtime/events") {
+      const pathname = new URL(request.url).pathname;
+      if (pathname === "/api/runtime/events" || pathname === "/api/stickers/suggestion") {
         server.timeout(request, 0);
       }
       return app.fetch(request);
