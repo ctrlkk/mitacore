@@ -11,7 +11,7 @@
  * - createdAt: 落盘时间戳（毫秒）
  */
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
-import { dataPath } from "@/utils/path";
+import { resolve } from "node:path";
 
 export interface PidRecord {
   launcher: number;
@@ -20,16 +20,16 @@ export interface PidRecord {
   createdAt: number;
 }
 
-function pidFilePath(qqId: string): string {
-  return dataPath("runtime", "napcat", `${qqId}.pid`);
+function pidFilePath(runtimeDir: string, qqId: string): string {
+  return resolve(runtimeDir, `${qqId}.pid`);
 }
 
-export function napcatLockPath(qqId: string): string {
-  return dataPath("runtime", "napcat", `${qqId}.lock`);
+export function napcatLockPath(runtimeDir: string, qqId: string): string {
+  return resolve(runtimeDir, `${qqId}.lock`);
 }
 
-export function readPidFile(qqId: string): PidRecord | null {
-  const path = pidFilePath(qqId);
+export function readPidFile(runtimeDir: string, qqId: string): PidRecord | null {
+  const path = pidFilePath(runtimeDir, qqId);
   if (!existsSync(path)) return null;
   try {
     const raw = readFileSync(path, "utf-8");
@@ -53,13 +53,13 @@ export function readPidFile(qqId: string): PidRecord | null {
   }
 }
 
-export function writePidFile(qqId: string, rec: PidRecord): void {
-  const path = pidFilePath(qqId);
+export function writePidFile(runtimeDir: string, qqId: string, rec: PidRecord): void {
+  const path = pidFilePath(runtimeDir, qqId);
   writeFileSync(path, JSON.stringify({ ...rec, createdAt: rec.createdAt || Date.now() }));
 }
 
-export function deletePidFile(qqId: string): void {
-  const path = pidFilePath(qqId);
+export function deletePidFile(runtimeDir: string, qqId: string): void {
+  const path = pidFilePath(runtimeDir, qqId);
   if (existsSync(path)) {
     try {
       unlinkSync(path);

@@ -1,7 +1,7 @@
 import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Unzip, UnzipInflate } from "fflate";
-import { logger } from "@/logger";
+import { noopLogger, type NapCatLogger } from "./logger.ts";
 
 /**
  * 从 GitHub Releases 下载 NapCat.Shell.zip，镜像回退避免 GFW 干扰。
@@ -11,6 +11,7 @@ export async function downloadNapcat(
   targetDir: string,
   onProgress?: (received: number, total: number) => void,
   onDownloadComplete?: () => void,
+  logger: NapCatLogger = noopLogger,
 ): Promise<void> {
   // 使用固定的文件名以便支持断点续传
   const zipPath = join(targetDir, "NapCat.Shell.zip.part");

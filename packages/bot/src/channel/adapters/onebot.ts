@@ -6,9 +6,10 @@ import { config, type Config } from "@/config";
 import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
 import { OneBotClient, type OneBotEventContext } from "channels/onebot";
 import { resolveMentions } from "@/message/mention";
-import { startBuiltinNapCat } from "@/napcat/loader";
+import { startBuiltinNapCat } from "napcat";
 import { logger } from "@/logger";
 import { channelController } from "@/app/channel-controller";
+import { binPath, dataPath, projectPath } from "@/utils/path";
 
 const ENABLE_VIDEO_PROCESSING = false;
 
@@ -89,9 +90,20 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
   if (config.napcat.qq_id) {
     channelController.updateNapcat({ status: "starting", error: undefined });
     try {
-      const result = await startBuiltinNapCat(config.napcat.qq_id, (embed_url) =>
-        channelController.updateNapcat({ status: "starting", embed_url, error: undefined }),
-      );
+      const supervisorName = `napcat-supervisor${process.platform === "win32" ? ".exe" : ""}`;
+      const result = await startBuiltinNapCat({
+        qqId: config.napcat.qq_id,
+        napcatDir: dataPath("runtime", "napcat"),
+        runtimeDir: dataPath("runtime", "napcat"),
+        qqPath: "",
+        supervisorPaths: [
+          binPath(supervisorName),
+          projectPath("packages", "napcat-supervisor", "target", "release", supervisorName),
+        ],
+        logger,
+        onWebUiReady: (embed_url) =>
+          channelController.updateNapcat({ status: "starting", embed_url, error: undefined }),
+      });
       wsUrl = result.wsUrl;
       accessToken = result.accessToken;
       channelController.updateNapcat({ status: "ready", embed_url: result.webuiUrl });

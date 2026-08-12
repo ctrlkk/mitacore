@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { logger } from "@/logger";
+import { noopLogger, type NapCatLogger } from "./logger.ts";
 import { z } from "zod";
 
 /** WebUI 连接信息 */
@@ -69,7 +69,7 @@ async function webuiFetch<T>(
   return envelope.data as T;
 }
 
-async function loginWebUI(port: number, token: string): Promise<WebUIConnection> {
+async function loginWebUI(port: number, token: string, logger: NapCatLogger): Promise<WebUIConnection> {
   const hash = createHash("sha256")
     .update(token + ".napcat")
     .digest("hex");
@@ -106,8 +106,8 @@ async function loginWebUI(port: number, token: string): Promise<WebUIConnection>
  * @param token - WebUI 令牌
  * @returns 包含 getNapCatVersion、checkLoginStatus、setOB11Config 方法的 client 对象
  */
-export async function createNapCatApi(port: number, token: string) {
-  const conn = await loginWebUI(port, token);
+export async function createNapCatApi(port: number, token: string, logger: NapCatLogger = noopLogger) {
+  const conn = await loginWebUI(port, token, logger);
 
   return {
     conn,
