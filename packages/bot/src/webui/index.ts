@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { access, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
-import { basename, dirname, extname, isAbsolute, posix, relative, resolve } from "node:path";
+import { basename, dirname, extname, posix, relative, resolve } from "node:path";
 import { logger } from "@/logger";
 import { dataPath, projectPath } from "@/utils/path";
 import { config, ConfigValidationError, loadConfig, saveConfig } from "@/config";
@@ -29,35 +29,6 @@ class WebUiValidationError extends Error {}
 const textFileSchema = z.object({
   content: z.string().max(MAX_TEXT_FILE_SIZE, "文件内容不能超过 2 MB"),
 });
-
-const knowledgeFileSchema = textFileSchema.extend({
-  path: z.string().trim().min(1, "请输入笔记路径").max(500, "笔记路径过长"),
-  create_only: z.boolean().optional().default(false),
-});
-
-function getSafeKnowledgePath(rawPath: string) {
-  const input = rawPath.replaceAll("\\", "/");
-  if (input.includes("\0") || input.startsWith("/") || isAbsolute(input)) {
-    throw new WebUiValidationError("笔记路径不正确");
-  }
-
-  const normalizedPath = posix.normalize(input);
-  if (
-    normalizedPath === "." ||
-    normalizedPath.startsWith("../") ||
-    normalizedPath.includes("/../") ||
-    posix.extname(normalizedPath).toLocaleLowerCase() !== ".md"
-  ) {
-    throw new WebUiValidationError("笔记必须是知识库内的 Markdown 文件");
-  }
-
-  const fullPath = resolve(KNOWLEDGE_BASE_DIR, normalizedPath);
-  const relativePath = relative(KNOWLEDGE_BASE_DIR, fullPath);
-  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
-    throw new WebUiValidationError("笔记路径不正确");
-  }
-  return { path: normalizedPath, fullPath };
-}
 
 function parseWikiLinks(content: string) {
   return [...content.matchAll(/!?\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g)]
@@ -317,42 +288,6 @@ export function createApp() {
         notes,
         summary: { total: notes.length, links: notes.reduce((sum, note) => sum + note.links.length, 0) },
       });
-    } catch (error) {
-      const response = errorResponse(error);
-      return c.json(response.body, response.status);
-    }
-  });
-
-  app.get("/api/knowledge/note", async (c) => {
-    try {
-      const { path, fullPath } = getSafeKnowledgePath(z.string().parse(c.req.query("path")));
-      const content = await readFile(fullPath, "utf8");
-      return c.json({ path, content });
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-        return c.json({ error: { message: "笔记不存在" } }, 404);
-      }
-      const response = errorResponse(error);
-      return c.json(response.body, response.status);
-    }
-  });
-
-  app.put("/api/knowledge/note", async (c) => {
-    try {
-      const request = knowledgeFileSchema.parse(await c.req.json());
-      const { path, fullPath } = getSafeKnowledgePath(request.path);
-      const created = await stat(fullPath)
-        .then(() => false)
-        .catch((error: NodeJS.ErrnoException) => {
-          if (error.code === "ENOENT") return true;
-          throw error;
-        });
-      if (!created && request.create_only) {
-        return c.json({ error: { message: "同名笔记已存在，请换一个名称" } }, 409);
-      }
-      await mkdir(dirname(fullPath), { recursive: true });
-      await writeFile(fullPath, request.content, "utf8");
-      return c.json({ saved: true, created, path }, created ? 201 : 200);
     } catch (error) {
       const response = errorResponse(error);
       return c.json(response.body, response.status);

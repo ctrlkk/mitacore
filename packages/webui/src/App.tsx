@@ -28,7 +28,7 @@ const pageMeta = {
   mode: ["MODE", "运行模式"],
   models: ["MODELS", "模型配置"],
   persona: ["PERSONA", "人设编辑器"],
-  knowledge: ["KNOWLEDGE BASE", "知识库工作台"],
+  knowledge: ["KNOWLEDGE BASE", "知识关系图"],
   images: ["MEDIA LIBRARY", "图片缓存"],
   stickers: ["STICKER LIBRARY", "贴纸管理"],
   stickers_batch: ["STICKER BATCH", "批量创建贴纸"],

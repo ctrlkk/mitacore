@@ -18,22 +18,13 @@ function getNodeId(node: string | number | NodeObject<GraphNode> | undefined) {
   return node?.id ?? "";
 }
 
-export function KnowledgeGraph({
-  notes,
-  search,
-  selectedPath,
-  onSelect,
-}: {
-  notes: KnowledgeGraphNote[];
-  search: string;
-  selectedPath: string;
-  onSelect: (path: string) => void;
-}) {
+export function KnowledgeGraph({ notes, search }: { notes: KnowledgeGraphNote[]; search: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<ForceGraphMethods<GraphNode, GraphLink>>(undefined);
   const autoFitDoneRef = useRef(false);
   const [size, setSize] = useState({ width: 900, height: 620 });
   const [hoveredPath, setHoveredPath] = useState("");
+  const [selectedPath, setSelectedPath] = useState("");
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -84,6 +75,16 @@ export function KnowledgeGraph({
     return paths;
   }, [hoveredPath, notes]);
 
+  const selectedPaths = useMemo(() => {
+    const paths = new Set<string>();
+    if (!selectedPath) return paths;
+    paths.add(selectedPath);
+    const selectedNote = notes.find((note) => note.path === selectedPath);
+    selectedNote?.links.forEach((path) => paths.add(path));
+    notes.filter((note) => note.links.includes(selectedPath)).forEach((note) => paths.add(note.path));
+    return paths;
+  }, [selectedPath, notes]);
+
   useEffect(() => {
     const graph = graphRef.current;
     autoFitDoneRef.current = false;
@@ -99,17 +100,22 @@ export function KnowledgeGraph({
     return () => window.clearTimeout(fitTimer);
   }, [graphData]);
 
+  useEffect(() => {
+    if (selectedPath && !visiblePaths.has(selectedPath)) setSelectedPath("");
+  }, [selectedPath, visiblePaths]);
+
   const drawNode = (node: NodeObject<GraphNode>, context: CanvasRenderingContext2D, globalScale: number) => {
     if (node.x === undefined || node.y === undefined) return;
     const selected = node.id === selectedPath;
     const hovered = node.id === hoveredPath;
-    const connected = hoveredPaths.has(node.id);
-    const hasHover = Boolean(hoveredPath);
+    const activePath = hoveredPath || selectedPath;
+    const activePaths = hoveredPath ? hoveredPaths : selectedPaths;
+    const isConnected = activePaths.has(node.id);
     const radius = Math.min(11, 3.5 + Math.sqrt(node.degree + 1) * 0.85);
     context.beginPath();
     context.arc(node.x, node.y, hovered || selected ? radius + 1.5 : radius, 0, Math.PI * 2);
-    context.fillStyle = hovered || selected ? "#7962aa" : connected ? "#56524d" : "#8d8983";
-    context.globalAlpha = hasHover && !connected ? 0.12 : hovered ? 1 : 0.92;
+    context.fillStyle = hovered || selected ? "#7962aa" : isConnected ? "#56524d" : "#8d8983";
+    context.globalAlpha = hovered || selected ? 1 : 0.92;
     context.fill();
     context.globalAlpha = 1;
     if (hovered || selected) {
@@ -123,14 +129,14 @@ export function KnowledgeGraph({
       (globalScale >= 1 && node.degree >= 2) ||
       (globalScale >= 0.72 && node.degree >= 6) ||
       node.degree >= 14;
-    const showLabel = hasHover ? connected : selected || showByScale;
+    const showLabel = activePath ? isConnected || showByScale : showByScale;
     if (!showLabel) return;
 
     const label = node.title.length > 22 ? `${node.title.slice(0, 22)}…` : node.title;
     const fontSize = (hovered || selected ? 12 : 10.5) / globalScale;
-    context.globalAlpha = hasHover && !connected ? 0.1 : 1;
+    context.globalAlpha = 1;
     context.font = `${hovered || selected ? 600 : 400} ${fontSize}px "Noto Sans SC", sans-serif`;
-    context.fillStyle = hovered ? "#493568" : connected ? "#4f4b47" : selected ? "#624c88" : "#77736e";
+    context.fillStyle = hovered ? "#493568" : isConnected ? "#4f4b47" : selected ? "#624c88" : "#77736e";
     context.textAlign = "center";
     context.textBaseline = "top";
     context.fillText(label, node.x, node.y + radius + 3 / globalScale);
@@ -153,7 +159,7 @@ export function KnowledgeGraph({
   return (
     <div
       ref={containerRef}
-      className="relative h-[calc(100vh-220px)] min-h-[620px] overflow-hidden rounded-xl border border-[#dedbd5] bg-[#f5f4f1]"
+      className="relative h-[calc(100vh-220px)] min-h-[620px] overflow-hidden rounded-xl border border-[#dedbd5]"
       role="img"
       aria-label="知识库双链关系图"
       data-hovered-node={hoveredPath || undefined}
@@ -164,7 +170,7 @@ export function KnowledgeGraph({
         height={size.height}
         graphData={graphData}
         nodeId="id"
-        backgroundColor="#f5f4f1"
+        backgroundColor="rgba(0, 0, 0, 0)"
         nodeVal={(node) => Math.max(1, node.degree * 0.7)}
         nodeCanvasObject={drawNode}
         nodePointerAreaPaint={paintPointerArea}
@@ -172,16 +178,16 @@ export function KnowledgeGraph({
         linkColor={(link) => {
           const source = getNodeId(link.source);
           const target = getNodeId(link.target);
-          if (!hoveredPath) return "rgba(89, 84, 78, 0.24)";
-          return source === hoveredPath || target === hoveredPath
-            ? "rgba(112, 84, 161, 0.9)"
-            : "rgba(96, 91, 84, 0.035)";
+          const activePath = hoveredPath || selectedPath;
+          if (!activePath) return "rgba(89, 84, 78, 0.24)";
+          return source === activePath || target === activePath ? "rgba(112, 84, 161, 0.9)" : "rgba(89, 84, 78, 0.24)";
         }}
         linkWidth={(link) => {
           const source = getNodeId(link.source);
           const target = getNodeId(link.target);
-          if (!hoveredPath) return 0.65;
-          return source === hoveredPath || target === hoveredPath ? 2 : 0.25;
+          const activePath = hoveredPath || selectedPath;
+          if (!activePath) return 0.65;
+          return source === activePath || target === activePath ? 2 : 0.65;
         }}
         minZoom={0.35}
         maxZoom={8}
@@ -193,7 +199,7 @@ export function KnowledgeGraph({
           graphRef.current?.zoomToFit(350, 56, (node) => (node as NodeObject<GraphNode>).degree > 0);
           autoFitDoneRef.current = true;
         }}
-        onNodeClick={(node) => onSelect(node.id)}
+        onNodeClick={(node) => setSelectedPath((path) => (path === node.id ? "" : node.id))}
         onNodeHover={(node) => setHoveredPath(node?.id ?? "")}
       />
       <button
@@ -204,7 +210,7 @@ export function KnowledgeGraph({
         适应视图
       </button>
       <div className="pointer-events-none absolute bottom-4 left-4 rounded-lg border border-[#e1ded8] bg-white/92 px-3 py-2 text-[11px] leading-5 text-[#77736e] shadow-sm backdrop-blur">
-        悬浮节点查看关系 · 缩小自动隐藏标签 · 拖拽、缩放与平移
+        点击节点锁定关系 · 悬浮预览关联 · 拖拽、缩放与平移
       </div>
     </div>
   );
