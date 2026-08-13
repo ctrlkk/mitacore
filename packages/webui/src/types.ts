@@ -28,7 +28,6 @@ export type Config = {
     app_id?: string;
     app_secret?: string;
   };
-  economy_mode: boolean;
   max_queue: number;
   debounce_ms: number;
   models: Record<
@@ -83,7 +82,6 @@ export const defaultConfig: Config = {
     app_id: "",
     app_secret: "",
   },
-  economy_mode: false,
   max_queue: 10,
   debounce_ms: 1000,
   models: {

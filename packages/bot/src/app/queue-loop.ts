@@ -6,7 +6,6 @@ import type { ChannelReplyContext } from "@/channel/types";
 import type { MessagePart } from "@/message/parts";
 import type { ImageMap, MediaKind, MediaMap, PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import { imageToText, videoToText } from "@/ai/multimedia";
-import { runPlanner } from "@/agents/planner";
 import { runPlanner as runContinuousPlanner } from "@/agents/planner-continuous";
 import { config } from "@/config";
 import { get_media_description, set_media_description } from "@/database/media-cache";
@@ -348,12 +347,7 @@ export function createBot(sessionId: string) {
           await sleep(500);
         }
       };
-      let replied: boolean;
-      if (config.economy_mode) {
-        replied = await runPlanner(prompt, onReply, log);
-      } else {
-        replied = await runContinuousPlanner(prompt, onReply, log);
-      }
+      const replied = await runContinuousPlanner(prompt, onReply, log);
       if (!replied) {
         log.info("规划层未调用 submit_plan，跳过回复");
       }

@@ -1,4 +1,4 @@
-import { Alert, InputNumber, Switch } from "antd";
+import { Alert, InputNumber } from "antd";
 import type { Config } from "@/types";
 
 type Props = {
@@ -12,7 +12,7 @@ export function ModePage({ config, setConfig }: Props) {
       <Alert
         type="warning"
         message="非专业用户请保持默认配置"
-        description="修改运行模式可能影响消息处理性能、兼容性和响应方式。"
+        description="修改队列参数可能影响消息的合并和响应方式。"
       />
       <section className="rounded-[14px] b-ui bg-white p-6 shadow-[0_1px_2px_#17212b08] max-[480px]:p-4">
         <div className="mb-5.5">
@@ -20,20 +20,6 @@ export function ModePage({ config, setConfig }: Props) {
           <h2 className="text-lg tracking-[-0.02em]">运行模式</h2>
         </div>
         <div className="grid gap-4">
-          <section className="grid content-start gap-3.75 rounded-[10px] b-ui p-4.5">
-            <div className="flex justify-between gap-3">
-              <div>
-                <h3 className="text-sm">节约模式</h3>
-                <p className="mt-1.25 text-xs leading-[1.5] text-muted">
-                  开启后使用兼容性和性能可能较低的节约 planner；默认使用连续 planner。
-                </p>
-              </div>
-              <Switch
-                checked={config.economy_mode}
-                onChange={(economy_mode) => setConfig((value) => ({ ...value, economy_mode }))}
-              />
-            </div>
-          </section>
           <section className="grid content-start gap-3.75 rounded-[10px] b-ui p-4.5">
             <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
               单个会话单次处理前的消息等待队列上限
