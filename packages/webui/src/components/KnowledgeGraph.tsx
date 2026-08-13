@@ -21,7 +21,6 @@ function getNodeId(node: string | number | NodeObject<GraphNode> | undefined) {
 export function KnowledgeGraph({ notes, search }: { notes: KnowledgeGraphNote[]; search: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<ForceGraphMethods<GraphNode, GraphLink>>(undefined);
-  const autoFitDoneRef = useRef(false);
   const [size, setSize] = useState({ width: 900, height: 620 });
   const [hoveredPath, setHoveredPath] = useState("");
   const [selectedPath, setSelectedPath] = useState("");
@@ -87,17 +86,11 @@ export function KnowledgeGraph({ notes, search }: { notes: KnowledgeGraphNote[];
 
   useEffect(() => {
     const graph = graphRef.current;
-    autoFitDoneRef.current = false;
     const charge = graph?.d3Force("charge");
     if (charge && "strength" in charge && typeof charge.strength === "function") charge.strength(-180);
     const link = graph?.d3Force("link");
     if (link && "distance" in link && typeof link.distance === "function") link.distance(72);
     graph?.d3ReheatSimulation();
-    const fitTimer = window.setTimeout(() => {
-      graph?.zoomToFit(450, 56, (node) => (node as NodeObject<GraphNode>).degree > 0);
-      autoFitDoneRef.current = true;
-    }, 1_000);
-    return () => window.clearTimeout(fitTimer);
   }, [graphData]);
 
   useEffect(() => {
@@ -194,11 +187,6 @@ export function KnowledgeGraph({ notes, search }: { notes: KnowledgeGraphNote[];
         warmupTicks={80}
         cooldownTicks={220}
         d3VelocityDecay={0.32}
-        onEngineStop={() => {
-          if (autoFitDoneRef.current) return;
-          graphRef.current?.zoomToFit(350, 56, (node) => (node as NodeObject<GraphNode>).degree > 0);
-          autoFitDoneRef.current = true;
-        }}
         onNodeClick={(node) => setSelectedPath((path) => (path === node.id ? "" : node.id))}
         onNodeHover={(node) => setHoveredPath(node?.id ?? "")}
       />

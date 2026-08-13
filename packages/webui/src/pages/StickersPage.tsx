@@ -418,6 +418,7 @@ export function StickersPage({ config }: { config: Config }) {
               disabled={suggesting || creating}
               onChange={setSuggestionModel}
             />
+            <small className="font-400 text-muted">请仅选择支持图片模态输入的模型；纯文本模型无法分析贴纸图片。</small>
           </label>
           <Upload.Dragger
             accept=".webp,.png,.jpg,.jpeg,.gif"

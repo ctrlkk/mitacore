@@ -1,22 +1,29 @@
 import { LoaderCircle, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Input, Modal, Popconfirm } from "antd";
+import { Input, Modal, Pagination, Popconfirm } from "antd";
 import type { CachedImage } from "@/types";
+
+type ImagePagination = { page: number; page_size: number; total: number; total_pages: number };
 
 export function ImagesPage() {
   const [images, setImages] = useState<CachedImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<ImagePagination>({ page: 1, page_size: 48, total: 0, total_pages: 1 });
   const [selectedImage, setSelectedImage] = useState<CachedImage | null>(null);
   const [deleting, setDeleting] = useState(false);
   const load = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/images?page=1&page_size=48&search=${encodeURIComponent(search)}&sort=newest`);
+      const response = await fetch(
+        `/api/images?page=${page}&page_size=48&search=${encodeURIComponent(search)}&sort=newest`,
+      );
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error?.message ?? "读取图片缓存失败");
       setImages(payload.images ?? []);
+      setPagination(payload.pagination ?? { page: 1, page_size: 48, total: 0, total_pages: 1 });
       setError("");
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : "读取图片缓存失败");
@@ -27,7 +34,7 @@ export function ImagesPage() {
   useEffect(() => {
     const timer = window.setTimeout(load, 250);
     return () => window.clearTimeout(timer);
-  }, [search]);
+  }, [page, search]);
   const deleteSelectedImage = async () => {
     if (!selectedImage) return;
     setDeleting(true);
@@ -37,9 +44,13 @@ export function ImagesPage() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error?.message ?? "删除图片缓存失败");
-      setImages((value) => value.filter((image) => image.filename !== selectedImage.filename));
       setSelectedImage(null);
       setError("");
+      if (images.length === 1 && page > 1) {
+        setPage((value) => value - 1);
+      } else {
+        void load();
+      }
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : "删除图片缓存失败");
     } finally {
@@ -53,7 +64,10 @@ export function ImagesPage() {
           className="flex-1"
           prefix={<Search size={17} />}
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setPage(1);
+          }}
           placeholder="搜索文件名或图片描述"
         />
         <button
@@ -93,6 +107,18 @@ export function ImagesPage() {
               </strong>
             </button>
           ))}
+        </div>
+      )}
+      {pagination.total_pages > 1 && (
+        <div className="mt-6 flex justify-center">
+          <Pagination
+            current={pagination.page}
+            total={pagination.total}
+            pageSize={pagination.page_size}
+            showSizeChanger={false}
+            disabled={loading}
+            onChange={setPage}
+          />
         </div>
       )}
       <Modal

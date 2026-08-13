@@ -214,6 +214,9 @@ export function BatchStickersPage({ config }: { config: Config }) {
               options={[1, 2, 3, 4, 5].map((value) => ({ label: `${value} 个任务`, value }))}
             />
           </label>
+          <small className="col-span-2 font-400 text-muted max-[480px]:col-span-1">
+            请仅选择支持图片模态输入的模型；纯文本模型无法分析贴纸图片。
+          </small>
         </div>
         <Upload.Dragger
           accept=".webp,.png,.jpg,.jpeg,.gif"

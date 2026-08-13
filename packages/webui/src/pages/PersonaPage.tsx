@@ -96,6 +96,9 @@ export function PersonaPage() {
               <span className="block overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] text-muted">
                 prompts/role.txt
               </span>
+              <span className="mt-1 block text-[10px] leading-4 text-[#9a6b22]">
+                更换人设后请清理 <code>data/planner.json</code>、<code>data/chat.json</code>，否则可能不生效。
+              </span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">

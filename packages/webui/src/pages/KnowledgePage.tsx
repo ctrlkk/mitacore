@@ -80,6 +80,9 @@ export function KnowledgePage() {
           <span className="h-2 w-2 rounded-full bg-brand" />
         )}
         <span>{loading ? "正在索引知识库…" : `显示 ${matchedNotes.length} / ${notes.length} 个知识节点`}</span>
+        <span className="text-[10px]">
+          知识文件：<code>data/workspace/notepad</code>
+        </span>
       </div>
       <div className="min-h-[620px] flex-1">
         <KnowledgeGraph notes={notes} search={search} />
