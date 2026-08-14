@@ -1,5 +1,6 @@
 import os from "node:os";
 import { basename, posix } from "node:path";
+import { APICallError, RetryError } from "ai";
 import XMLBuilder from "fast-xml-builder";
 import dayjs, { sleep } from "shared/time";
 import type { ChannelReplyContext } from "@/channel/types";
@@ -146,6 +147,21 @@ function createMediaProcessor() {
 
 const processMediaAssets = createMediaProcessor();
 
+function withoutRequestBodyValues(error: unknown): unknown {
+  if (APICallError.isInstance(error)) {
+    const { requestBodyValues: _, ...details } = error;
+    return details;
+  }
+
+  if (!RetryError.isInstance(error)) return error;
+
+  return {
+    ...error,
+    errors: error.errors.map(withoutRequestBodyValues),
+    lastError: withoutRequestBodyValues(error.lastError),
+  };
+}
+
 function buildPrompt(batch: PendingMessage[], mediaMap: MediaMap) {
   const promptParts: string[] = [];
 
@@ -271,7 +287,7 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, o
       try {
         await process(batch, ctx);
       } catch (error) {
-        logger.error({ error }, "处理批次出错");
+        logger.error({ error: withoutRequestBodyValues(error) }, "处理批次出错");
       }
     }
   }
