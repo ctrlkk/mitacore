@@ -252,7 +252,7 @@ export function createApp() {
   app.put("/api/config", async (c) => {
     try {
       await saveConfig(await c.req.json());
-      return c.json({ saved: true, restart_required: true });
+      return c.json({ saved: true });
     } catch (error) {
       const response = errorResponse(error);
       return c.json(response.body, response.status);
@@ -292,11 +292,6 @@ export function createApp() {
       const response = errorResponse(error);
       return c.json(response.body, response.status);
     }
-  });
-
-  app.post("/api/restart", (c) => {
-    setTimeout(() => process.exit(0), 100);
-    return c.json({ restarting: true });
   });
 
   app.post("/api/models", async (c) => {

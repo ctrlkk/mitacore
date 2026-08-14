@@ -4,7 +4,6 @@ import {
   FilePenLine,
   Image,
   LoaderCircle,
-  RefreshCw,
   Save,
   Settings2,
   SlidersHorizontal,
@@ -35,18 +34,7 @@ const pageMeta = {
 } as const;
 
 function Page({ page }: { page: keyof typeof pageMeta }) {
-  const {
-    config,
-    setConfig,
-    loading,
-    error,
-    saveState,
-    saveConfig,
-    restartState,
-    restart,
-    updateProvider,
-    reloadConfig,
-  } = useConfig();
+  const { config, setConfig, loading, error, saveState, saveConfig, updateProvider, reloadConfig } = useConfig();
   const [eyebrow, title] = pageMeta[page];
   const usesConfig = !["images", "persona", "knowledge"].includes(page);
   const isConfigPage = !["images", "stickers", "persona", "knowledge"].includes(page);
@@ -165,20 +153,8 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
           {isConfigPage && (
             <div className="flex flex-wrap justify-end gap-2">
               <button
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#e9eff2] px-3.5 py-2.5 text-sm font-700 text-[#294051] hover:bg-[#dce5e9] disabled:cursor-wait disabled:opacity-65 max-[480px]:px-2.75 max-[480px]:py-2.25"
-                disabled={restartState === "restarting"}
-                onClick={restart}
-              >
-                {restartState === "restarting" ? (
-                  <LoaderCircle className="animate-spin" size={17} />
-                ) : (
-                  <RefreshCw size={17} />
-                )}
-                {restartState === "restarting" ? "正在重启" : "重启服务（仅桌面版）"}
-              </button>
-              <button
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-3.5 py-2.5 text-sm font-700 text-white hover:bg-brand-dark disabled:cursor-wait disabled:opacity-65 max-[480px]:px-2.75 max-[480px]:py-2.25"
-                disabled={saveState === "saving" || restartState === "restarting"}
+                disabled={saveState === "saving"}
                 onClick={saveConfig}
               >
                 {saveState === "saving" ? (
@@ -196,11 +172,6 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
         {usesConfig && error && (
           <p className="mx-[clamp(20px,5vw,72px)] mt-5 rounded-lg bg-[#fff0f0] px-3 py-2.5 text-xs leading-[1.5] text-[#922e2e]">
             {error}
-          </p>
-        )}
-        {isConfigPage && saveState === "saved" && (
-          <p className="mx-[clamp(20px,5vw,72px)] mt-5 rounded-lg bg-[#edf7f2] px-3 py-2.5 text-xs leading-[1.5] text-[#416050]">
-            配置已保存，重启服务后生效。重启功能仅支持桌面版。
           </p>
         )}
         <Suspense
