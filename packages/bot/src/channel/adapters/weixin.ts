@@ -4,6 +4,7 @@ import type { MessagePart } from "@/message/parts";
 import { WeixinClient, loginWithQr, type WeixinCredentials, type WeixinInboundSegment } from "channels/weixin";
 import { config, saveConfig } from "@/config";
 import { channelController } from "@/app/channel-controller";
+import { handleCommand } from "@/app/command";
 import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
 import { createBot } from "@/app/queue-loop";
 import { logger } from "@/logger";
@@ -109,9 +110,15 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
         .join(" ")
         .trim();
 
-      if (rawText === "/ping") {
-        const latency = inbound.message.create_time_ms ? Date.now() - inbound.message.create_time_ms : 0;
-        await client.reply(inbound.message, `pong (${latency}ms)`);
+      if (
+        await handleCommand({
+          rawText,
+          isAdmin: true,
+          latency: inbound.message.create_time_ms ? Date.now() - inbound.message.create_time_ms : 0,
+          reply: async (message) => await client.reply(inbound.message, message),
+          processing: getBot(`weixin:${WEIXIN_USER_KEY}`).processing,
+        })
+      ) {
         return;
       }
 

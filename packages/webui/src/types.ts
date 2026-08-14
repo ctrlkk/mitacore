@@ -17,6 +17,7 @@ export type Config = {
     groups: Scope;
     private_chats: Scope;
     group_members: Scope;
+    admins: string[];
   };
   weixin: {
     enabled: boolean;
@@ -27,6 +28,7 @@ export type Config = {
     enabled: boolean;
     app_id?: string;
     app_secret?: string;
+    admins: string[];
   };
   max_queue: number;
   debounce_ms: number;
@@ -71,6 +73,7 @@ export const defaultConfig: Config = {
     groups: { mode: "whitelist", ids: [] },
     private_chats: { mode: "whitelist", ids: [] },
     group_members: { mode: "blacklist", ids: [] },
+    admins: [],
   },
   weixin: {
     enabled: false,
@@ -81,6 +84,7 @@ export const defaultConfig: Config = {
     enabled: false,
     app_id: "",
     app_secret: "",
+    admins: [],
   },
   max_queue: 10,
   debounce_ms: 1000,

@@ -274,6 +274,19 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
                   onChange={(group_members) => updateNapcat({ group_members })}
                   idLabel="QQ号"
                 />
+                <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
+                  NapCat 管理员 QQ 号
+                  <Select
+                    mode="tags"
+                    value={config.napcat.admins}
+                    onChange={(admins) => updateNapcat({ admins })}
+                    placeholder="输入 QQ 号后按回车"
+                    tokenSeparators={[]}
+                  />
+                  <span className="font-400 leading-[1.5] text-muted">
+                    只有列表中的用户可使用 /help、/ping 和 /undo 指令。
+                  </span>
+                </label>
               </div>
             </div>
           </section>
@@ -370,6 +383,19 @@ export function PlatformPage({ config, setConfig, reloadConfig }: Props) {
                 </p>
               </div>
             </div>
+            <label className="mt-4 grid gap-1.75 text-xs font-700 text-[#40515f]">
+              QQ 官方机器人管理员用户 openid
+              <Select
+                mode="tags"
+                value={config.qqbot.admins}
+                onChange={(admins) => updateQQBot({ admins })}
+                placeholder="输入用户 openid 后按回车"
+                tokenSeparators={[]}
+              />
+              <span className="font-400 leading-[1.5] text-muted">
+                只有列表中的用户可使用 /help、/ping 和 /undo 指令。
+              </span>
+            </label>
           </section>
         )}
 

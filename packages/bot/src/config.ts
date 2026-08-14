@@ -50,6 +50,7 @@ const schema = z.object({
       groups: scopeConfig.default({ mode: "whitelist", ids: [] }).describe("群聊范围控制"),
       private_chats: scopeConfig.default({ mode: "whitelist", ids: [] }).describe("私聊范围控制"),
       group_members: scopeConfig.default({ mode: "blacklist", ids: [] }).describe("群内用户范围控制"),
+      admins: z.array(z.string()).default([]).describe("管理员 QQ 号列表"),
     })
     .describe("NapCat 配置"),
   weixin: z
@@ -67,9 +68,11 @@ const schema = z.object({
       enabled: z.boolean().default(false).describe("是否启用 QQ Bot 渠道"),
       app_id: z.string().trim().optional().describe("QQ Bot AppID"),
       app_secret: z.string().trim().optional().describe("QQ Bot AppSecret"),
+      admins: z.array(z.string()).default([]).describe("管理员用户 openid 列表"),
     })
     .default({
       enabled: false,
+      admins: [],
     })
     .describe("QQ Bot 配置"),
   max_queue: z.number().int().min(1).default(10).describe("单个会话单次处理前的消息等待队列上限"),
@@ -133,12 +136,14 @@ function getFieldDescription(path: PropertyKey[]): string | undefined {
     "napcat.groups": "群聊范围控制",
     "napcat.private_chats": "私聊范围控制",
     "napcat.group_members": "群内用户范围控制",
+    "napcat.admins": "管理员 QQ 号列表",
     "weixin.enabled": "是否启用微信渠道",
     "weixin.account_id": "微信 Bot 账号 ID",
     "weixin.token": "微信 Bot token",
     "qqbot.enabled": "是否启用 QQ Bot 渠道",
     "qqbot.app_id": "QQ Bot AppID",
     "qqbot.app_secret": "QQ Bot AppSecret",
+    "qqbot.admins": "管理员用户 openid 列表",
     max_queue: "单个会话单次处理前的消息等待队列上限",
     debounce_ms: "消息合并等待时间（毫秒）",
     providers: "供应商配置",

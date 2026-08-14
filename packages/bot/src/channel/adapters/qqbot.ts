@@ -6,6 +6,7 @@ import { config, saveConfig } from "@/config";
 import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
 import { logger } from "@/logger";
 import { channelController } from "@/app/channel-controller";
+import { handleCommand } from "@/app/command";
 import {
   QQBotClient,
   startQQBotQrLogin,
@@ -85,11 +86,24 @@ export async function startQQBotChannel(getBot: (sessionId: string) => ReturnTyp
       const alias = ensureUserAlias("qqbot", inbound.senderId, inbound.senderName);
       const sessionId =
         inbound.kind === "group" ? `qqbot:group:${inbound.replyTarget.targetId}` : `qqbot:private:${inbound.senderId}`;
+      const messageDate = inbound.timestamp ? new Date(inbound.timestamp) : new Date();
+      if (
+        await handleCommand({
+          rawText: inbound.content.trim(),
+          isAdmin: config.qqbot.admins.includes(inbound.senderId),
+          latency: Date.now() - messageDate.getTime(),
+          reply: async (message) => await client.reply(inbound, message),
+          processing: getBot(sessionId).processing,
+        })
+      ) {
+        return;
+      }
+
       const message: PendingMessage = {
         userId: shortIdFor(alias.id),
         unifiedMessages,
         nickname: inbound.senderName ?? "",
-        date: inbound.timestamp ? new Date(inbound.timestamp) : new Date(),
+        date: messageDate,
         isAt: true,
       };
       const context: ChannelReplyContext = {

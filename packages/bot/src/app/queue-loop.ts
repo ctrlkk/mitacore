@@ -319,40 +319,46 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, o
  */
 export function createBot(sessionId: string) {
   const log = logger.child({ sessionId });
+  let processing = false;
 
   async function processBatch(batch: PendingMessage[], ctx: ChannelReplyContext) {
-    const mediaMaps = await Promise.all(batch.map((m) => m.resourcesPromise!));
-    const mediaMap: MediaMap = new Map();
-    for (const map of mediaMaps) {
-      for (const [url, info] of map) {
-        mediaMap.set(url, info);
-      }
-    }
-    const prompt = buildPrompt(batch, mediaMap).trim();
-    log.info({ prompt }, "用户输入");
-
-    const cancelTyping = await ctx.setTyping();
+    processing = true;
     try {
-      const onReply = async (segments: MessagePart[]) => {
-        const mentionableUsers = (() => {
-          if (ctx.platform !== "onebot" || ctx.conversationType !== "group") return [];
-          if (segments.some((segment) => typeof segment === "string" && segment.includes("@"))) {
-            return listMentionableUserAliases("onebot").filter((user) => user.platformId !== ctx.selfId);
-          }
-          return [];
-        })();
-
-        for (const seg of segments) {
-          await ctx.reply(seg, mentionableUsers);
-          await sleep(500);
+      const mediaMaps = await Promise.all(batch.map((m) => m.resourcesPromise!));
+      const mediaMap: MediaMap = new Map();
+      for (const map of mediaMaps) {
+        for (const [url, info] of map) {
+          mediaMap.set(url, info);
         }
-      };
-      const replied = await runContinuousPlanner(prompt, onReply, log);
-      if (!replied) {
-        log.info("规划层未调用 submit_plan，跳过回复");
+      }
+      const prompt = buildPrompt(batch, mediaMap).trim();
+      log.info({ prompt }, "用户输入");
+
+      const cancelTyping = await ctx.setTyping();
+      try {
+        const onReply = async (segments: MessagePart[]) => {
+          const mentionableUsers = (() => {
+            if (ctx.platform !== "onebot" || ctx.conversationType !== "group") return [];
+            if (segments.some((segment) => typeof segment === "string" && segment.includes("@"))) {
+              return listMentionableUserAliases("onebot").filter((user) => user.platformId !== ctx.selfId);
+            }
+            return [];
+          })();
+
+          for (const seg of segments) {
+            await ctx.reply(seg, mentionableUsers);
+            await sleep(500);
+          }
+        };
+        const replied = await runContinuousPlanner(prompt, onReply, log);
+        if (!replied) {
+          log.info("规划层未调用 submit_plan，跳过回复");
+        }
+      } finally {
+        await cancelTyping();
       }
     } finally {
-      await cancelTyping();
+      processing = false;
     }
   }
 
@@ -468,6 +474,9 @@ export function createBot(sessionId: string) {
   }
 
   return {
+    get processing() {
+      return processing;
+    },
     enqueue: (message: PendingMessage, ctx: ChannelReplyContext) => {
       // 启动资源预处理（不阻塞入队）
       message.resourcesPromise = (async () => {

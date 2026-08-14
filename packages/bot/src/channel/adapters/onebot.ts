@@ -2,6 +2,7 @@ import type { OneBotIncomingMessageSegment, OneBotMessageEvent } from "channels/
 import type { PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import type { ChannelReplyContext } from "@/channel/types";
 import { createBot } from "@/app/queue-loop";
+import { handleCommand } from "@/app/command";
 import { config, type Config } from "@/config";
 import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
 import { OneBotClient, type OneBotEventContext } from "channels/onebot";
@@ -61,18 +62,6 @@ async function parseOneBotMessage(
     }
   }
   return messages;
-}
-
-async function handleCommand(
-  rawText: string,
-  ctx: OneBotEventContext<OneBotMessageEvent>,
-  isAdmin: boolean,
-): Promise<boolean> {
-  if (rawText !== "/ping" || !isAdmin) return false;
-  const event = ctx.event;
-  const latency = Date.now() - event.time * 1000;
-  await ctx.reply(`pong (${latency}ms)`);
-  return true;
 }
 
 function guessFileType(fileName: string): "image" | "video" | "audio" | "other" {
@@ -157,11 +146,22 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
       return;
     }
 
-    const isAdmin = true;
+    const isAdmin = config.napcat.admins.includes(String(event.user_id));
     const alias = ensureUserAlias("onebot", String(event.user_id), event.sender.nickname);
     const sessionId = event.message_type === "group" ? `group:${event.group_id}` : `private:${event.user_id}`;
 
-    if (isAt && (await handleCommand(rawText, ctx, isAdmin))) return;
+    if (
+      isAt &&
+      (await handleCommand({
+        rawText,
+        isAdmin,
+        latency: Date.now() - event.time * 1000,
+        reply: async (message) => await ctx.reply(message),
+        processing: getBot(sessionId).processing,
+      }))
+    ) {
+      return;
+    }
 
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
