@@ -359,7 +359,7 @@ export function createApp() {
               controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
             }
           } catch (error) {
-            const message = error instanceof Error ? error.message : "生成贴纸建议失败";
+            const message = error instanceof Error ? error.message : "生成贴纸表单建议失败";
             controller.enqueue(encoder.encode(`${JSON.stringify({ type: "error", message })}\n`));
           } finally {
             controller.close();

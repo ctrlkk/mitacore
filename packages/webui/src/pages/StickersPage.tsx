@@ -1,7 +1,6 @@
 import { ImagePlus, LoaderCircle, Plus, RefreshCw, Search, Sparkles, Trash2, UploadCloud, X } from "lucide-react";
 import { Input, Modal, Popconfirm, Select, Upload } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import type { Config, Sticker } from "@/types";
 
 const { TextArea } = Input;
@@ -24,12 +23,11 @@ type StickerSuggestionEvent =
   | { type: "reasoning"; delta: string }
   | {
       type: "result";
-      suggestion: { suitable: boolean; name: string; description: string; reason: string };
+      suggestion: { name: string; description: string };
     }
   | { type: "error"; message: string };
 
 export function StickersPage({ config }: { config: Config }) {
-  const navigate = useNavigate();
   const [stickers, setStickers] = useState<Sticker[]>([]);
   const [limit, setLimit] = useState(30);
   const [loading, setLoading] = useState(true);
@@ -150,57 +148,6 @@ export function StickersPage({ config }: { config: Config }) {
     }
   };
 
-  /* 批量创建逻辑已迁移至 BatchStickersPage。
-  const createBatchStickers = async () => {
-    const availableSlots = limit - stickers.length;
-    if (!batchStickers.length || batchStickers.length > availableSlots) return;
-
-    setBatchCreating(true);
-    setError("");
-    const updateBatchSticker = (id: string, patch: Partial<BatchSticker>) => {
-      setBatchStickers((value) => value.map((sticker) => (sticker.id === id ? { ...sticker, ...patch } : sticker)));
-    };
-    const createOneSticker = async (sticker: BatchSticker) => {
-      updateBatchSticker(sticker.id, { status: "creating", phase: "准备图片", message: "正在准备图片…", progress: 10 });
-      const suggestionForm = new FormData();
-      suggestionForm.set("image", sticker.image);
-      if (batchModel) suggestionForm.set("model", batchModel);
-      const suggestionResponse = await fetch("/api/stickers/suggestion", { method: "POST", body: suggestionForm });
-      if (!suggestionResponse.ok) {
-        const payload = await suggestionResponse.json();
-        throw new Error(getErrorMessage(payload, "生成贴纸建议失败"));
-      }
-      if (!suggestionResponse.body) throw new Error("浏览器不支持读取流式响应");
-
-      const reader = suggestionResponse.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let suggestion: Extract<StickerSuggestionEvent, { type: "result" }>["suggestion"] | undefined;
-      const consumeLine = (line: string) => {
-        if (!line.trim()) return;
-        const event = JSON.parse(line) as StickerSuggestionEvent;
-        if (event.type === "status") {
-          const isOrganizing = event.message.includes("整理");
-          const isAnalyzing = event.message.includes("分析");
-          updateBatchSticker(sticker.id, {
-            phase: isOrganizing ? "生成建议" : isAnalyzing ? "分析图片" : "上传图片",
-            message: event.message,
-            progress: isOrganizing ? 75 : isAnalyzing ? 45 : 20,
-          });
-          return;
-        }
-        if (event.type === "reasoning") {
-          setBatchStickers((value) =>
-            value.map((item) =>
-              item.id === sticker.id ? { ...item, reasoning: `${item.reasoning}${event.delta}`.slice(-20_000) } : item,
-            ),
-          );
-          return;
-        }
-        if (event.type === "error") throw new Error(event.message);
-        if (event.type === "result") suggestion = event.suggestion;
-      };
-  */
   const suggestSticker = async () => {
     if (!newImage) {
       setError("请先选择贴纸图片");
@@ -217,7 +164,7 @@ export function StickersPage({ config }: { config: Config }) {
       const response = await fetch("/api/stickers/suggestion", { method: "POST", body: form });
       if (!response.ok) {
         const payload = await response.json();
-        throw new Error(getErrorMessage(payload, "生成贴纸建议失败"));
+        throw new Error(getErrorMessage(payload, "生成贴纸表单建议失败"));
       }
       if (!response.body) throw new Error("浏览器不支持读取流式响应");
 
@@ -240,13 +187,9 @@ export function StickersPage({ config }: { config: Config }) {
 
         receivedResult = true;
         const { suggestion } = event;
-        if (suggestion.suitable) {
-          setNewName(suggestion.name);
-          setNewDescription(suggestion.description);
-        }
-        setSuggestionMessage(
-          suggestion.reason || (suggestion.suitable ? "已生成贴纸建议。" : "这张图片不适合作为贴纸。"),
-        );
+        setNewName(suggestion.name);
+        setNewDescription(suggestion.description);
+        setSuggestionMessage("已生成贴纸表单建议，可继续修改后添加。");
       };
 
       while (true) {
@@ -259,10 +202,10 @@ export function StickersPage({ config }: { config: Config }) {
       }
       buffer += decoder.decode();
       consumeLine(buffer);
-      if (!receivedResult) throw new Error("AI 未能生成贴纸建议，请重试");
+      if (!receivedResult) throw new Error("AI 未能生成贴纸表单建议，请重试");
       setError("");
     } catch (exception) {
-      setError(exception instanceof Error ? exception.message : "生成贴纸建议失败");
+      setError(exception instanceof Error ? exception.message : "生成贴纸表单建议失败");
       setSuggestionMessage("");
     } finally {
       setSuggesting(false);
@@ -303,17 +246,6 @@ export function StickersPage({ config }: { config: Config }) {
         >
           <Plus size={16} />
           添加贴纸
-        </button>
-        <button
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#e9eff2] px-3.5 py-2.5 text-sm font-700 text-[#294051] hover:bg-[#dce5e9] disabled:cursor-not-allowed disabled:opacity-65"
-          onClick={() => {
-            setError("");
-            navigate("/stickers/batch");
-          }}
-          disabled={stickers.length >= limit}
-        >
-          <ImagePlus size={16} />
-          批量创建
         </button>
       </div>
       {error && (

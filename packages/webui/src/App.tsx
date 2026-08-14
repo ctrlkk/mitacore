@@ -12,7 +12,6 @@ import {
 import { lazy, Suspense } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { useConfig } from "@/hooks/useConfig";
-import { BatchStickersPage } from "@/pages/BatchStickersPage";
 import { ImagesPage } from "@/pages/ImagesPage";
 import { ModePage } from "@/pages/ModePage";
 import { ModelsPage } from "@/pages/ModelsPage";
@@ -30,7 +29,6 @@ const pageMeta = {
   knowledge: ["KNOWLEDGE BASE", "知识关系图"],
   images: ["MEDIA LIBRARY", "图片缓存"],
   stickers: ["STICKER LIBRARY", "贴纸管理"],
-  stickers_batch: ["STICKER BATCH", "批量创建贴纸"],
 } as const;
 
 function Page({ page }: { page: keyof typeof pageMeta }) {
@@ -58,8 +56,6 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
       <PersonaPage />
     ) : page === "knowledge" ? (
       <KnowledgePage />
-    ) : page === "stickers_batch" ? (
-      <BatchStickersPage config={config} />
     ) : (
       <StickersPage config={config} />
     );
@@ -198,7 +194,6 @@ export default function App() {
       <Route path="/knowledge" element={<Page page="knowledge" />} />
       <Route path="/images" element={<Page page="images" />} />
       <Route path="/stickers" element={<Page page="stickers" />} />
-      <Route path="/stickers/batch" element={<Page page="stickers_batch" />} />
       <Route path="*" element={<Navigate to="/platform" replace />} />
     </Routes>
   );
