@@ -46,4 +46,4 @@ migration-tmp/
 src/database/.drizzle-out/
 
 /config.toml
-/packages/napcat-supervisor/target/
+target/

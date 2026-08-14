@@ -1,10 +1,11 @@
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 declare const __STANDALONE__: boolean;
 
 const installRoot =
   typeof __STANDALONE__ !== "undefined" && __STANDALONE__
-    ? dirname(process.execPath)
+    ? dirname(fileURLToPath(import.meta.url))
     : resolve(import.meta.dir, "../../../..");
 
 /**

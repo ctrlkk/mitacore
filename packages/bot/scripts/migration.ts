@@ -1,17 +1,19 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 // Drizzle TypeScript 迁移 codegen（适配 drizzle-kit 0.31.10）
 // 参考 specs/storage/typescript-migrations.md；本项目装的是 0.31.10 而非规范的 1.0+，
 // 所以不用 spec 里的 throwaway out + baseline/snapshot.json 约定（0.31.10 不支持），
 // 改用持久化 out 目录让 drizzle-kit 的 journal 跨运行保留，自动产出增量迁移。
 
-import { $ } from "bun";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { cwd } from "node:process";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { createRequire } from "node:module";
+import { glob } from "glob";
+import { spawn } from "../src/utils/spawn.ts";
 
 const botDir = path.join(import.meta.dirname, "..");
 const tsDir = path.join(botDir, "src/database/migration");
@@ -22,6 +24,8 @@ const persistentOut = path.join(botDir, "src/database/.drizzle-out");
 // 跨盘符（如项目在 E:\，os.tmpdir() 在 C:\）算出的"相对路径"是绝对路径，
 // drizzle-kit 又会 prepend cwd，导致 ENOENT。
 const localTmp = path.join(cwd(), "migration-tmp");
+const require = createRequire(import.meta.url);
+const drizzleKit = path.join(path.dirname(require.resolve("drizzle-kit")), "bin.cjs");
 
 const args = parseArgs({
   args: process.argv.slice(2),
@@ -41,8 +45,8 @@ await generate();
 async function generate() {
   // 当前没有 *.sql.ts / sql.ts 时跳过 drizzle 调用，直接写空 stub。
   if (!(await hasAnySchemaFiles())) {
-    await Bun.write(schema, renderSchema(""));
-    await Bun.write(registry, renderRegistry([]));
+    await fs.writeFile(schema, renderSchema(""));
+    await fs.writeFile(registry, renderRegistry([]));
     return;
   }
 
@@ -54,8 +58,8 @@ async function generate() {
   const generated = await generatedMigrations(persistentOut);
   for (const name of generated) {
     const target = path.join(tsDir, `${name}.ts`);
-    if (await Bun.file(target).exists()) continue;
-    await Bun.write(target, renderMigration(name, await migrationSql(persistentOut, name)));
+    if (await fileExists(target)) continue;
+    await fs.writeFile(target, renderMigration(name, await migrationSql(persistentOut, name)));
   }
 
   // === Step 4: 一次性 throwaway out 跑全量 DDL（schema.gen.ts 给空库 bootstrap 用）===
@@ -65,22 +69,22 @@ async function generate() {
     await drizzle(fullOut, "schema");
     const fullMigrations = await generatedMigrations(fullOut);
     const fullSql = fullMigrations[0] ? await migrationSql(fullOut, fullMigrations[0]) : "";
-    await Bun.write(schema, renderSchema(fullSql));
+    await fs.writeFile(schema, renderSchema(fullSql));
   } finally {
     await fs.rm(fullOut, { recursive: true, force: true });
   }
 
   // === Step 5: 重新生成迁移注册表 ===
-  await Bun.write(registry, renderRegistry(await typescriptMigrations()));
+  await fs.writeFile(registry, renderRegistry(await typescriptMigrations()));
 }
 
 async function check() {
   if (!(await hasAnySchemaFiles())) {
-    if ((await Bun.file(schema).text()) !== renderSchema("")) {
-      throw new Error("数据库 schema 已过期，运行 `bun run migration` 重新生成。");
+    if ((await fs.readFile(schema, "utf8")) !== renderSchema("")) {
+      throw new Error("数据库 schema 已过期，运行 `node packages/bot/scripts/migration.ts` 重新生成。");
     }
-    if ((await Bun.file(registry).text()) !== renderRegistry([])) {
-      throw new Error("迁移注册表已过期，运行 `bun run migration` 重新生成。");
+    if ((await fs.readFile(registry, "utf8")) !== renderRegistry([])) {
+      throw new Error("迁移注册表已过期，运行 `node packages/bot/scripts/migration.ts` 重新生成。");
     }
     return;
   }
@@ -107,15 +111,15 @@ async function check() {
       await drizzle(fullOut, "schema");
       const fullMigrations = await generatedMigrations(fullOut);
       const fullSql = fullMigrations[0] ? await migrationSql(fullOut, fullMigrations[0]) : "";
-      if ((await Bun.file(schema).text()) !== renderSchema(fullSql)) {
-        throw new Error("数据库 schema 已过期，运行 `bun run migration` 重新生成。");
+      if ((await fs.readFile(schema, "utf8")) !== renderSchema(fullSql)) {
+        throw new Error("数据库 schema 已过期，运行 `node packages/bot/scripts/migration.ts` 重新生成。");
       }
     } finally {
       await fs.rm(fullOut, { recursive: true, force: true });
     }
 
-    if ((await Bun.file(registry).text()) !== renderRegistry(await typescriptMigrations())) {
-      throw new Error("迁移注册表已过期，运行 `bun run migration` 重新生成。");
+    if ((await fs.readFile(registry, "utf8")) !== renderRegistry(await typescriptMigrations())) {
+      throw new Error("迁移注册表已过期，运行 `node packages/bot/scripts/migration.ts` 重新生成。");
     }
   } finally {
     await fs.rm(tempOut, { recursive: true, force: true });
@@ -130,10 +134,18 @@ async function dirExists(p: string): Promise<boolean> {
   }
 }
 
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    return (await fs.stat(p)).isFile();
+  } catch {
+    return false;
+  }
+}
+
 async function hasAnySchemaFiles() {
   const cwd = path.join(botDir, "src");
   for (const pattern of ["**/*.sql.ts", "**/sql.ts"]) {
-    const matches = await Array.fromAsync(new Bun.Glob(pattern).scan({ cwd }));
+    const matches = await glob(pattern, { cwd });
     if (matches.length > 0) return true;
   }
   return false;
@@ -146,7 +158,7 @@ async function drizzle(output: string, name?: string) {
     `agents-bot-drizzle-${Date.now()}-${Math.random().toString(36).slice(2)}.config.ts`,
   );
   const relOut = path.relative(botDir, output);
-  await Bun.write(
+  await fs.writeFile(
     config,
     `import config from ${JSON.stringify(pathToFileURL(path.join(botDir, "drizzle.config.ts")).href)}
 
@@ -154,7 +166,12 @@ export default { ...config, out: ${JSON.stringify(relOut)} }
 `,
   );
   try {
-    await $`bun drizzle-kit generate --config ${config} ${name ? ["--name", name] : []}`.cwd(botDir);
+    const result = await spawn(
+      process.execPath,
+      [drizzleKit, "generate", "--config", config, ...(name ? ["--name", name] : [])],
+      { cwd: botDir },
+    );
+    if (result.exitCode !== 0) throw new Error(`drizzle-kit 生成失败：${result.stderr}`);
   } finally {
     await fs.rm(config, { force: true });
   }
@@ -162,24 +179,20 @@ export default { ...config, out: ${JSON.stringify(relOut)} }
 
 // drizzle-kit 0.31.10 输出结构：<name>.sql + meta/<name>_snapshot.json
 async function generatedMigrations(directory: string) {
-  return (await Array.fromAsync(new Bun.Glob("*.sql").scan({ cwd: directory })))
-    .map((file) => path.basename(file, ".sql"))
-    .sort();
+  return (await glob("*.sql", { cwd: directory })).map((file) => path.basename(file, ".sql")).sort();
 }
 
 async function migrationSql(directory: string, name: string) {
-  return Bun.file(path.join(directory, `${name}.sql`)).text();
+  return fs.readFile(path.join(directory, `${name}.sql`), "utf8");
 }
 
 async function typescriptMigrations() {
   // 容忍目录不存在（fresh 状态下 check 也要能跑通）
   await fs.mkdir(tsDir, { recursive: true });
-  return (await Array.fromAsync(new Bun.Glob("*.ts").scan({ cwd: tsDir })))
-    .map((file) => path.basename(file, ".ts"))
-    .sort();
+  return (await glob("*.ts", { cwd: tsDir })).map((file) => path.basename(file, ".ts")).sort();
 }
 
-// 与 src/database/migration.ts 的 `Migration` 类型一致；bun:sqlite 的 tx.run 是同步，所以生成代码无 yield*。
+// 与 src/database/migration.ts 的 `Migration` 类型一致；node:sqlite 的 tx.run 是同步，所以生成代码无 yield*。
 function renderMigration(name: string, sql: string) {
   return `import { sql } from "drizzle-orm";
 import type { Migration } from "../migration";

@@ -1,5 +1,5 @@
 import { dirname, join } from "node:path";
-import { rm, mkdir, copyFile, readFile, access, stat, chmod, readdir, cp } from "node:fs/promises";
+import { rm, mkdir, copyFile, access, stat, chmod, readdir, cp } from "node:fs/promises";
 
 const root = join(import.meta.dir, "..");
 const outDir = join(root, "dist");
@@ -20,37 +20,19 @@ async function runCmd(cmd: string[], cwd: string) {
 }
 
 /**
- * 构建应用主程序：Bun 编译为单文件可执行程序
+ * 构建应用主程序：Vite 编译为单个 ESM 文件
  */
 async function buildApp() {
-  const bunBin = `app${exeExt}`;
+  const appBundle = "app.mjs";
   const botDir = join(root, "packages", "bot");
 
-  // 从 package.json 读 main 入口
-  const pkgRaw = await readFile(join(botDir, "package.json"), "utf-8");
-  const pkg = JSON.parse(pkgRaw);
-  const bunEntry = join(botDir, pkg.module ?? "src/index.ts");
-
   // 清理旧产物 (force: true 确保路径不存在时不报错，省去 existsSync 判断)
-  await rm(join(outDir, bunBin), { force: true });
+  await rm(join(outDir, appBundle), { force: true });
+  await rm(join(outDir, "app.cjs"), { force: true });
   await rm(join(root, "build"), { recursive: true, force: true });
   await rm(join(root, "pyrpc.spec"), { force: true });
 
-  // 执行 Bun 编译
-  await runCmd(
-    [
-      "bun",
-      "build",
-      "--compile",
-      "--minify",
-      "--define",
-      "__STANDALONE__=true",
-      "--outfile",
-      join(outDir, bunBin),
-      bunEntry,
-    ],
-    root,
-  );
+  await runCmd(["bun", "run", "--cwd", botDir, "build"], root);
 }
 
 /** 构建负责约束 NapCat 进程树生命周期的原生 supervisor。 */
@@ -65,6 +47,17 @@ async function buildSupervisor() {
     join(outputDir, binaryName),
   );
   if (process.platform !== "win32") await chmod(join(outputDir, binaryName), 0o755);
+}
+
+/** 构建兼容旧版 app.exe 使用方式的 Node 启动器。 */
+async function buildLauncher() {
+  const manifest = join(root, "packages", "app-launcher", "Cargo.toml");
+  const binaryName = `app-launcher${exeExt}`;
+  const outputName = `app${exeExt}`;
+
+  await runCmd(["cargo", "build", "--release", "--manifest-path", manifest], root);
+  await copyFile(join(root, "packages", "app-launcher", "target", "release", binaryName), join(outDir, outputName));
+  if (process.platform !== "win32") await chmod(join(outDir, outputName), 0o755);
 }
 
 /** 构建 WebUI 并复制到应用同目录，供 Hono 在生产环境托管。 */
@@ -181,6 +174,7 @@ await mkdir(outDir, { recursive: true });
 await Promise.all([
   buildApp(),
   buildSupervisor(),
+  buildLauncher(),
   buildWebUi(),
   buildDesktop(),
   buildSidecar(),

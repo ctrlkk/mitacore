@@ -3,7 +3,7 @@ import { logger } from "@/logger";
 import { startWebUi } from "@/webui";
 
 if (import.meta.main) {
-  startWebUi();
+  await startWebUi();
 
   try {
     const { startBot } = await import("@/app/runtime");

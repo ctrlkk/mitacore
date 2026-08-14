@@ -272,7 +272,3 @@ export async function saveConfig(input: unknown, path = projectPath("config.toml
 }
 
 export const config = loadConfig();
-
-if (import.meta.main) {
-  logger.info({ config }, "配置加载成功");
-}

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { serveStatic } from "hono/bun";
+import { serve } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { access, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, posix, relative, resolve } from "node:path";
 import { logger } from "@/logger";
@@ -23,6 +24,7 @@ const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".bm
 const PERSONA_PATH = projectPath("prompts", "role.txt");
 const KNOWLEDGE_BASE_DIR = dataPath("workspace", "notepad");
 const MAX_TEXT_FILE_SIZE = 2 * 1024 * 1024;
+const WEB_UI_DIR = projectPath("webui");
 
 class WebUiValidationError extends Error {}
 
@@ -384,7 +386,7 @@ export function createApp() {
       const name = stickerNameSchema.parse(c.req.param("name"));
       const path = await getStickerPath(name);
       if (!path) return c.json({ error: { message: `贴纸 [${name}] 不存在` } }, 404);
-      return new Response(Bun.file(path), { headers: { "cache-control": "private, max-age=300" } });
+      return new Response(await readFile(path), { headers: { "cache-control": "private, max-age=300" } });
     } catch (error) {
       const response = errorResponse(error);
       return c.json(response.body, response.status);
@@ -528,28 +530,27 @@ export function createApp() {
     }
   });
 
-  app.use("*", serveStatic({ root: projectPath("webui") }));
+  app.use("*", serveStatic({ root: WEB_UI_DIR }));
   app.get("*", async (c) => {
     if (c.req.path.startsWith("/api/")) return c.notFound();
 
-    const index = await readFile(projectPath("webui", "index.html"));
+    const index = await readFile(resolve(WEB_UI_DIR, "index.html"));
     return new Response(index, { headers: { "content-type": "text/html; charset=utf-8" } });
   });
   return app;
 }
 
-export function startWebUi() {
+export async function startWebUi() {
   const app = createApp();
-  const server = Bun.serve({
-    fetch(request, server) {
-      const pathname = new URL(request.url).pathname;
-      if (pathname === "/api/runtime/events" || pathname === "/api/stickers/suggestion") {
-        server.timeout(request, 0);
-      }
-      return app.fetch(request);
-    },
-    hostname: "127.0.0.1",
-    port: Bun.env.WEBUI_PORT ?? 0,
+  const portValue = process.env.WEBUI_PORT;
+  const port = portValue ? Number(portValue) : 0;
+  if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new Error("WEBUI_PORT 必须是 0 到 65535 之间的整数");
+
+  await new Promise<void>((resolve, reject) => {
+    const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port }, (info) => {
+      logger.info({ url: `http://127.0.0.1:${info.port}` }, "WebUI 已启动");
+      resolve();
+    });
+    server.once("error", reject);
   });
-  logger.info({ url: `http://127.0.0.1:${server.port}` }, "WebUI 已启动");
 }
