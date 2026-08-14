@@ -1,7 +1,6 @@
 import { tool, ToolLoopAgent } from "ai";
 import { z } from "zod";
-import { getModel } from "@/ai/model";
-import { config } from "@/config";
+import { getModel, getModelForRole } from "@/ai/model";
 import { getStickersContext } from "@/message/stickers";
 import { blobToDataURL } from "@/utils/blob";
 import { compressImage } from "@/utils/image-resize";
@@ -27,9 +26,9 @@ const suggestionTools = {
   }),
 };
 
-function createSuggestionAgent(modelAlias: string) {
+function createSuggestionAgent(modelAlias?: string) {
   return new ToolLoopAgent({
-    model: getModel(modelAlias),
+    model: modelAlias ? getModel(modelAlias) : getModelForRole("multimodal_image"),
     instructions: `${systemPrompt}\n\n本次任务只提供建议，不得修改贴纸库。分析完成后必须调用 submit_suggestion 提交结果，不要输出普通文本。`,
     tools: suggestionTools,
     toolChoice: { type: "tool", toolName: "submit_suggestion" },
@@ -39,7 +38,7 @@ function createSuggestionAgent(modelAlias: string) {
 
 export async function* streamStickerSuggestion(
   image: File,
-  modelAlias = config.models.multimodal_image,
+  modelAlias?: string,
   abortSignal?: AbortSignal,
 ): AsyncGenerator<StickerSuggestionEvent> {
   yield { type: "status", message: "正在准备图片…" };

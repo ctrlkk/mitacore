@@ -2,12 +2,32 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { config, type Config } from "@/config";
+import { config, type Config, type ModelRole } from "@/config";
+import { getTimeInTimezone } from "shared/time";
 import type { LanguageModel } from "ai";
 
 type ProviderFn = (modelId: string) => LanguageModel;
 
 const providerCache = new Map<string, ProviderFn>();
+
+function timeMatchesRule(start: string, end: string, currentTime: string): boolean {
+  if (start < end) return currentTime >= start && currentTime < end;
+  return currentTime >= start || currentTime < end;
+}
+
+/** 根据当前时段解析指定职责实际使用的模型别名。 */
+export function resolveModelAlias(
+  modelConfig: Pick<Config, "models" | "model_schedule">,
+  role: ModelRole,
+  now = new Date(),
+): string {
+  const { model_schedule: schedule } = modelConfig;
+  const currentTime = getTimeInTimezone(now, schedule.timezone);
+  return schedule.rules.reduce((alias, rule) => {
+    if (!timeMatchesRule(rule.start, rule.end, currentTime)) return alias;
+    return rule.models[role] ?? alias;
+  }, modelConfig.models[role]);
+}
 
 function createProvider(cfg: Config["providers"][number]): ProviderFn {
   const { name, type, options } = cfg;
@@ -44,6 +64,11 @@ export function getModel(alias: string): LanguageModel {
   throw new Error(`未找到别名为 "${alias}" 的模型，请检查 config.toml 配置`);
 }
 
+/** 根据模型职责获取当前时段应使用的模型实例。 */
+export function getModelForRole(role: ModelRole): LanguageModel {
+  return getModel(resolveModelAlias(config, role));
+}
+
 /**
  * 返回别名为 alias 的模型对应的 provider 配置与真实 model id，
  * 用于绕过 AI SDK 直接调用 provider API（如 mimo 的 video_url 扩展）。
@@ -64,4 +89,13 @@ export function getModelConfig(alias: string): {
     }
   }
   throw new Error(`未找到别名为 "${alias}" 的模型，请检查 config.toml 配置`);
+}
+
+/** 根据模型职责获取当前时段应使用的 provider 配置与真实模型 ID。 */
+export function getModelConfigForRole(role: ModelRole): {
+  baseUrl: string;
+  apiKey: string;
+  modelId: string;
+} {
+  return getModelConfig(resolveModelAlias(config, role));
 }

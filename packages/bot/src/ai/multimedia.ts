@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getModel, getModelConfig } from "./model";
+import { getModelConfigForRole, getModelForRole, resolveModelAlias } from "./model";
 import { config } from "@/config";
 import { blobToDataURL } from "@/utils/blob";
 import { z } from "zod";
@@ -20,7 +20,7 @@ const IMAGE_SYSTEM_PROMPT = `你将作为视觉模块，负责解释图片内容
  * @returns 返回一个Promise，解析为图片的文本描述
  */
 export async function imageToText(image: Blob): Promise<string> {
-  const model = getModel(config.models.multimodal_image);
+  const model = getModelForRole("multimodal_image");
   const { text } = await generateText({
     model,
     instructions: IMAGE_SYSTEM_PROMPT,
@@ -67,8 +67,8 @@ const VIDEO_SYSTEM_PROMPT = `你将作为视觉模块，负责解释视频内容
  * @returns 视频的文本描述
  */
 export async function videoToText(blob: Blob): Promise<string> {
-  const alias = config.models.multimodal_video;
-  const { baseUrl, apiKey, modelId } = getModelConfig(alias);
+  const alias = resolveModelAlias(config, "multimodal_video");
+  const { baseUrl, apiKey, modelId } = getModelConfigForRole("multimodal_video");
 
   const mediaType = blob.type || "video/mp4";
   if (!mediaType.startsWith("video/")) {

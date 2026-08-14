@@ -21,6 +21,31 @@ const roles = [
   ["multimodal_audio", "音频理解"],
 ] as const;
 
+const commonTimezones = [
+  { value: "Asia/Shanghai", label: "中国标准时间（UTC+08:00）" },
+  { value: "Asia/Taipei", label: "台北时间（UTC+08:00）" },
+  { value: "Asia/Tokyo", label: "日本标准时间（UTC+09:00）" },
+  { value: "America/Los_Angeles", label: "美国太平洋时间" },
+  { value: "America/New_York", label: "美国东部时间" },
+  { value: "Europe/London", label: "英国时间" },
+  { value: "Europe/Paris", label: "中欧时间" },
+] as const;
+
+function getTimezoneOptions(currentTimezone: string) {
+  const timezoneNames =
+    typeof Intl.supportedValuesOf === "function"
+      ? Intl.supportedValuesOf("timeZone")
+      : commonTimezones.map(({ value }) => value);
+  const commonOptions = commonTimezones.map(({ value, label }) => ({ value, label: `${label} · ${value}` }));
+  const otherOptions = timezoneNames
+    .filter((timezone) => !commonTimezones.some(({ value }) => value === timezone))
+    .map((timezone) => ({ value: timezone, label: timezone }));
+  const options = [...commonOptions, ...otherOptions];
+  if (!options.some(({ value }) => value === currentTimezone))
+    options.unshift({ value: currentTimezone, label: currentTimezone });
+  return options;
+}
+
 export function ModelsPage({ config, setConfig, updateProvider }: Props) {
   const [loading, setLoading] = useState<Record<number, boolean>>({});
   const [errors, setErrors] = useState<Record<number, string>>({});
@@ -30,6 +55,10 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
       ...new Set(config.providers.flatMap((provider) => provider.models.map((model) => model.alias)).filter(Boolean)),
     ],
     [config.providers],
+  );
+  const timezoneOptions = useMemo(
+    () => getTimezoneOptions(config.model_schedule.timezone),
+    [config.model_schedule.timezone],
   );
   const addProvider = () =>
     setConfig((value) => ({
@@ -44,6 +73,39 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
         },
       ],
     }));
+  const addScheduleRule = () =>
+    setConfig((value) => ({
+      ...value,
+      model_schedule: {
+        ...value.model_schedule,
+        rules: [...value.model_schedule.rules, { start: "00:30", end: "08:30", models: { plan: "", reply: "" } }],
+      },
+    }));
+  const updateScheduleRule = (index: number, patch: Partial<Config["model_schedule"]["rules"][number]>) =>
+    setConfig((value) => ({
+      ...value,
+      model_schedule: {
+        ...value.model_schedule,
+        rules: value.model_schedule.rules.map((rule, ruleIndex) =>
+          ruleIndex === index ? { ...rule, ...patch } : rule,
+        ),
+      },
+    }));
+  const updateScheduledRole = (ruleIndex: number, role: (typeof roles)[number][0], model: string) =>
+    setConfig((value) => {
+      const rule = value.model_schedule.rules[ruleIndex];
+      if (!rule) return value;
+      const models = { ...rule.models };
+      if (model) models[role] = model;
+      else delete models[role];
+      return {
+        ...value,
+        model_schedule: {
+          ...value.model_schedule,
+          rules: value.model_schedule.rules.map((item, index) => (index === ruleIndex ? { ...item, models } : item)),
+        },
+      };
+    });
   const fetchModels = async (index: number) => {
     const provider = config.providers[index];
     if (!provider) return;
@@ -91,6 +153,97 @@ export function ModelsPage({ config, setConfig, updateProvider }: Props) {
                 onChange={(model) => setConfig((value) => ({ ...value, models: { ...value.models, [key]: model } }))}
               />
             </label>
+          ))}
+        </div>
+      </section>
+      <section className="rounded-[14px] b-ui bg-white p-6 shadow-[0_1px_2px_#17212b08] max-[480px]:p-4">
+        <div className="mb-5.5 flex items-start justify-between gap-4">
+          <div>
+            <p className="mb-1.25 font-mono text-[10px] font-500 tracking-[0.12em] text-muted">SCHEDULE</p>
+            <h2 className="text-lg tracking-[-0.02em]">按时段切换模型</h2>
+            <p className="mt-1.25 text-xs leading-[1.5] text-muted">
+              命中规则时仅覆盖已选择的职责，其他职责继续使用上方默认模型。多个规则同时命中时，后面的规则优先。
+            </p>
+          </div>
+          <button
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#e9eff2] px-3.5 py-2.5 text-sm font-700 text-[#294051] hover:bg-[#dce5e9]"
+            onClick={addScheduleRule}
+          >
+            <Plus size={16} />
+            添加时段
+          </button>
+        </div>
+        <label className="mb-4 grid max-w-sm gap-1.75 text-xs font-700 text-[#40515f]">
+          时区
+          <Select
+            showSearch
+            value={config.model_schedule.timezone}
+            options={timezoneOptions}
+            optionFilterProp="label"
+            placeholder="选择时区"
+            onChange={(timezone) =>
+              setConfig((value) => ({
+                ...value,
+                model_schedule: { ...value.model_schedule, timezone },
+              }))
+            }
+          />
+        </label>
+        <div className="grid gap-3.5">
+          {config.model_schedule.rules.map((rule, ruleIndex) => (
+            <section className="grid gap-3.5 rounded-[10px] b-ui p-4.5" key={ruleIndex}>
+              <div className="flex items-end justify-between gap-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
+                    开始
+                    <Input
+                      type="time"
+                      value={rule.start}
+                      onChange={(event) => updateScheduleRule(ruleIndex, { start: event.target.value })}
+                    />
+                  </label>
+                  <label className="grid gap-1.75 text-xs font-700 text-[#40515f]">
+                    结束
+                    <Input
+                      type="time"
+                      value={rule.end}
+                      onChange={(event) => updateScheduleRule(ruleIndex, { end: event.target.value })}
+                    />
+                  </label>
+                </div>
+                <button
+                  aria-label="删除时段"
+                  className="grid h-8.5 w-7.5 place-items-center rounded-md bg-[#edf1f3] p-0 text-[#ae3737]"
+                  onClick={() =>
+                    setConfig((value) => ({
+                      ...value,
+                      model_schedule: {
+                        ...value.model_schedule,
+                        rules: value.model_schedule.rules.filter((_, index) => index !== ruleIndex),
+                      },
+                    }))
+                  }
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-4 max-[820px]:grid-cols-1">
+                {roles.map(([key, label]) => (
+                  <label className="grid gap-1.75 text-xs font-700 text-[#40515f]" key={key}>
+                    {label}
+                    <Select
+                      value={rule.models[key] || undefined}
+                      options={[
+                        { label: "保持默认", value: "" },
+                        ...aliases.map((option) => ({ label: option, value: option })),
+                      ]}
+                      placeholder="保持默认"
+                      onChange={(model) => updateScheduledRole(ruleIndex, key, model)}
+                    />
+                  </label>
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       </section>

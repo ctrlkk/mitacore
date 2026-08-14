@@ -2,9 +2,8 @@ import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-histor
 import { generateText, hasToolCall, isStepCount, tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { getModel } from "@/ai/model";
+import { getModelForRole } from "@/ai/model";
 import { dataPath, projectPath } from "@/utils/path";
-import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { task } from "./tools/task";
 import { webfetch } from "./tools/web-fetch";
@@ -48,7 +47,7 @@ export async function runPlanner(
   onReply: (segments: MessagePart[]) => Promise<void>,
   log: PinoLogger = logger,
 ): Promise<boolean> {
-  const model = getModel(config.models.plan);
+  const model = getModelForRole("plan");
   const historyMessages: ChatHistory = await loadHistory();
   const { records } = await injectSystemContext(historyMessages, userInputMessage, log);
   const runtimeMessages: ChatHistory = [...records];

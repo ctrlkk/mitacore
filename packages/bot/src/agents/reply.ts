@@ -1,7 +1,7 @@
 import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-history";
 import { generateText, type LanguageModelUsage } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { getModel } from "@/ai/model";
+import { getModelForRole } from "@/ai/model";
 import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message/parts";
 import { splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
@@ -60,7 +60,7 @@ export async function createReplySession(
 ): Promise<{
   send: (plan: string, reasoning: string) => Promise<{ replyText: string; usage: LanguageModelUsage | undefined }>;
 }> {
-  const model = getModel(config.models.reply);
+  const model = getModelForRole("reply");
 
   let historyMessages: ChatHistory = await loadHistory();
   const { records } = await injectSystemContext(historyMessages, userPrompt, log);

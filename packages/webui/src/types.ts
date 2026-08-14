@@ -43,6 +43,14 @@ export type Config = {
     | "multimodal_audio",
     string
   >;
+  model_schedule: {
+    timezone: string;
+    rules: {
+      start: string;
+      end: string;
+      models: Partial<Config["models"]>;
+    }[];
+  };
   providers: Provider[];
 };
 
@@ -97,6 +105,10 @@ export const defaultConfig: Config = {
     multimodal_image: "",
     multimodal_video: "",
     multimodal_audio: "",
+  },
+  model_schedule: {
+    timezone: "Asia/Shanghai",
+    rules: [],
   },
   providers: [],
 };
