@@ -130,7 +130,7 @@ export async function getStickersContext() {
   const list = stickers.length
     ? stickers.map(({ name, description }) => `<sticker>\n<name>${name}</name>\n${description}\n</sticker>`).join("\n")
     : "[暂无贴纸资源]";
-  const { default: stickerPrompt } = await import("./stickers.txt");
+  const { default: stickerPrompt } = await import("./stickers.txt?raw");
   return { stickers, content: `<stickers>\n${stickerPrompt.replace("{{list}}", list)}\n</stickers>` };
 }
 

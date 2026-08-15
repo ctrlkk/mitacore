@@ -6,7 +6,7 @@ declare const __STANDALONE__: boolean;
 const installRoot =
   typeof __STANDALONE__ !== "undefined" && __STANDALONE__
     ? dirname(fileURLToPath(import.meta.url))
-    : resolve(import.meta.dir, "../../../..");
+    : resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 /**
  * 获取数据目录下的路径

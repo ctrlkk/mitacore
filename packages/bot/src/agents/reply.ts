@@ -67,8 +67,8 @@ export async function createReplySession(
   historyMessages = [...historyMessages, ...records];
 
   const prompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
-  const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt");
-  const { default: replyGroupPrompt } = await import("../prompts/reply-group.txt");
+  const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt?raw");
+  const { default: replyGroupPrompt } = await import("../prompts/reply-group.txt?raw");
 
   const system = [
     "<role>",

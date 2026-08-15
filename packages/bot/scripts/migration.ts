@@ -102,7 +102,7 @@ async function check() {
     const existing = new Set(await typescriptMigrations());
     const missing = generated.filter((name) => !existing.has(name));
     if (missing.length > 0) {
-      throw new Error(`有未生成的迁移: ${missing.join(", ")}，运行 \`bun run migration\` 重新生成。`);
+      throw new Error(`有未生成的迁移: ${missing.join(", ")}，运行 \`pnpm run migration\` 重新生成。`);
     }
 
     // 校验 schema.gen.ts 和 registry 是否最新（全量 DDL 对比，也在 temp 上跑）

@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "build": "vite build",
-    "postbuild": "bun run build/prepare-dist.ts",
+    "postbuild": "tsx build/prepare-dist.ts",
     "server": "node src/server.ts"
   },
   "dependencies": {
@@ -22,6 +22,7 @@
     "@types/node": "^26.0.1",
     "postject": "^1.0.0-alpha.6",
     "prettier": "^3.9.0",
+    "tsx": "^4.20.3",
     "typescript": "^5",
     "vite": "^8.1.5"
   },

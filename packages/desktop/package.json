@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "prepackage": "bun run --cwd ../.. build",
+    "prepackage": "pnpm --workspace-root run build",
     "package": "electron-builder --config electron-builder.config.ts"
   },
   "devDependencies": {

@@ -120,7 +120,7 @@ export async function compactHistory(
     log.warn("无需压缩：头部为空或保留预算未超出");
     return messages;
   }
-  const { default: summaryPrompt } = await import("../prompts/summary.txt");
+  const { default: summaryPrompt } = await import("../prompts/summary.txt?raw");
   const userContent = `<system_reminder>${summaryPrompt.trim()}</system_reminder>`;
 
   log.info({ headCount: head.length, tailCount: tail.length }, "开始执行上下文压缩");

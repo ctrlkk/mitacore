@@ -22,15 +22,18 @@ function startBot() {
     if (!existsSync(entry)) throw new Error(`找不到 bot 运行文件：${entry}`);
     bot = spawn(entry, [], { cwd: runtimePath(), stdio: "inherit", windowsHide: true });
   } else {
-    bot = spawn("bun", ["run", "packages/bot/src/index.ts"], {
+    const packageManager = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+    bot = spawn(packageManager, ["--dir", "packages/bot", "run", "start"], {
       cwd: rootDir,
       stdio: "inherit",
       windowsHide: true,
+      shell: process.platform === "win32",
     });
-    webui = spawn("bun", ["run", "--cwd", "packages/webui", "dev", "--host", "127.0.0.1"], {
+    webui = spawn(packageManager, ["--dir", "packages/webui", "run", "dev"], {
       cwd: rootDir,
       stdio: "inherit",
       windowsHide: true,
+      shell: process.platform === "win32",
     });
   }
   bot.once("exit", () => {

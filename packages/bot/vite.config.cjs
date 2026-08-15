@@ -1,10 +1,10 @@
-import { resolve } from "node:path";
-import { defineConfig } from "vite";
+const { resolve } = require("node:path");
+const { defineConfig } = require("vite");
 
-const packageDir = import.meta.dirname;
+const packageDir = __dirname;
 const rootDir = resolve(packageDir, "../..");
 
-export default defineConfig({
+module.exports = defineConfig(({ command }) => ({
   resolve: {
     alias: {
       "@": resolve(packageDir, "src"),
@@ -31,6 +31,6 @@ export default defineConfig({
   },
   define: {
     "import.meta.main": "true",
-    __STANDALONE__: "true",
+    __STANDALONE__: JSON.stringify(command === "build"),
   },
-});
+}));

@@ -1,0 +1,14 @@
+packages:
+  - "packages/*"
+confirmModulesPurge: false
+allowBuilds:
+  electron-winstaller: true
+  esbuild: true
+  protobufjs: true
+minimumReleaseAgeExclude:
+  - "@hono/node-server@2.1.1"
+onlyBuiltDependencies:
+  - electron
+  - electron-winstaller
+  - esbuild
+  - protobufjs

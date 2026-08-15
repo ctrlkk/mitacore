@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test } from "vitest";
 import { ChannelController } from "./channel-controller";
 
 test("验证码只能提交给正在等待的登录请求", async () => {

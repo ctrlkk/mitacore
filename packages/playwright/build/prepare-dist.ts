@@ -31,10 +31,16 @@ await writeFile(
   ),
 );
 
-const child = spawn("bun", ["install", "--linker=hoisted", "--omit=dev", "--omit=peer"], {
-  cwd: distDir,
-  stdio: ["ignore", "inherit", "inherit"],
-});
+const packageManager = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const child = spawn(
+  packageManager,
+  ["install", "--ignore-workspace", "--prod", "--node-linker=hoisted", "--config.confirmModulesPurge=false"],
+  {
+    cwd: distDir,
+    stdio: ["ignore", "inherit", "inherit"],
+    shell: process.platform === "win32",
+  },
+);
 const exitCode = await new Promise<number | null>((resolve, reject) => {
   child.once("error", reject);
   child.once("exit", resolve);

@@ -13,7 +13,7 @@ export interface SpawnOptions {
 export interface SpawnResult {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
-  stdout: Buffer;
+  stdout: Buffer<ArrayBuffer>;
   stderr: string;
 }
 
@@ -77,7 +77,9 @@ export async function spawn(
   return {
     exitCode,
     signal,
-    stdout: outputResult.value,
+    // buffer() 收集的 Buffer 总是由普通 ArrayBuffer 支撑（不会是 SharedArrayBuffer），
+    // 收窄类型以便调用方直接传入 Blob 等标准 Web API
+    stdout: outputResult.value as Buffer<ArrayBuffer>,
     stderr: errorsResult.value,
   };
 }

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { QQBotHttpClient } from "./api";
 import { QQBotClient, type QQBotWebSocket } from "./client";
 import type { QQBotInboundMessage } from "./protocol";

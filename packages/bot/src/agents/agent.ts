@@ -73,8 +73,8 @@ export async function runMain(
   const savedMessages: ChatHistory = [...records];
 
   const replyPrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
-  const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt");
-  const { default: workspacePrompt } = await import("../workspace/memory.txt");
+  const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt?raw");
+  const { default: workspacePrompt } = await import("../workspace/memory.txt?raw");
 
   const system = [
     "<capabilities>",

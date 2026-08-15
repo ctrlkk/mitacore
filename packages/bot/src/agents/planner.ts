@@ -57,9 +57,9 @@ export async function runPlanner(
   let replySessionPromise: ReturnType<typeof createReplySession> | undefined;
   let replyQueue = Promise.resolve();
 
-  const { default: planPrompt } = await import("../prompts/plan.txt");
-  const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt");
-  const { default: workspacePrompt } = await import("../workspace/memory.txt");
+  const { default: planPrompt } = await import("../prompts/plan.txt?raw");
+  const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt?raw");
+  const { default: workspacePrompt } = await import("../workspace/memory.txt?raw");
   const replyPrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
 
   const system = [

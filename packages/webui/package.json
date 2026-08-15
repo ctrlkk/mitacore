@@ -5,8 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
-    "test": "bun test"
+    "build": "tsc --noEmit && vite build"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

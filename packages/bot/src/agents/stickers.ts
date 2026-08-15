@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getModel, getModelForRole } from "@/ai/model";
 import { blobToDataURL } from "@/utils/blob";
 import { compressImage } from "@/utils/image-resize";
-import creationPrompt from "@/prompts/sticker-create.txt";
+import creationPrompt from "@/prompts/sticker-create.txt?raw";
 
 const suggestionSchema = z.object({
   name: z.string().min(2).max(32).describe("简短、直接表达聊天语义的贴纸名"),

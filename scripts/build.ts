@@ -1,7 +1,10 @@
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
+import { spawn } from "node:child_process";
+import { constants } from "node:fs";
 import { rm, mkdir, copyFile, access, stat, chmod, readdir, cp } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
-const root = join(import.meta.dir, "..");
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = join(root, "dist");
 
 const exeExt = process.platform === "win32" ? ".exe" : "";
@@ -10,13 +13,43 @@ const exeExt = process.platform === "win32" ? ".exe" : "";
  * 执行子进程，如果退出码非 0 则抛出异常
  */
 async function runCmd(cmd: string[], cwd: string) {
-  const proc = Bun.spawn({
-    cmd,
-    cwd,
-    stdio: ["ignore", "inherit", "inherit"],
+  const [executable, ...args] = cmd;
+  if (!executable) throw new Error("命令不能为空");
+
+  const code = await new Promise<number>((resolve, reject) => {
+    const child = spawn(executable, args, {
+      cwd,
+      stdio: ["ignore", "inherit", "inherit"],
+      windowsHide: true,
+      shell: process.platform === "win32" && executable.endsWith(".cmd"),
+    });
+    child.once("error", reject);
+    child.once("exit", (exitCode, signal) => resolve(exitCode ?? (signal ? 1 : 0)));
   });
-  const code = await proc.exited;
   if (code !== 0) throw new Error(`命令执行失败: ${cmd.join(" ")} (退出码: ${code})`);
+}
+
+const packageManager = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+
+async function findExecutable(name: string) {
+  const pathEntries = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+  const candidates =
+    process.platform === "win32"
+      ? [name, ...(process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";").map((ext) => `${name}${ext.toLowerCase()}`)]
+      : [name];
+
+  for (const pathEntry of pathEntries) {
+    for (const candidate of candidates) {
+      const executablePath = join(pathEntry, candidate);
+      try {
+        await access(executablePath, constants.X_OK);
+        if ((await stat(executablePath)).isFile()) return executablePath;
+      } catch {
+        // 继续检查 PATH 中的下一个候选路径。
+      }
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -32,7 +65,7 @@ async function buildApp() {
   await rm(join(root, "build"), { recursive: true, force: true });
   await rm(join(root, "pyrpc.spec"), { force: true });
 
-  await runCmd(["bun", "run", "--cwd", botDir, "build"], root);
+  await runCmd([packageManager, "--dir", botDir, "run", "build"], root);
 }
 
 /** 构建负责约束 NapCat 进程树生命周期的原生 supervisor。 */
@@ -64,7 +97,7 @@ async function buildLauncher() {
 async function buildWebUi() {
   const webUiDir = join(root, "packages", "webui");
   const outputDir = join(outDir, "webui");
-  await runCmd(["bun", "run", "build"], webUiDir);
+  await runCmd([packageManager, "run", "build"], webUiDir);
   await rm(outputDir, { recursive: true, force: true });
   await cp(join(webUiDir, "dist"), outputDir, { recursive: true });
 }
@@ -72,7 +105,7 @@ async function buildWebUi() {
 /** 构建 Electron 桌面程序的主进程、预加载脚本和渲染进程。 */
 async function buildDesktop() {
   const desktopDir = join(root, "packages", "desktop");
-  await runCmd(["bun", "run", "build"], desktopDir);
+  await runCmd([packageManager, "run", "build"], desktopDir);
 }
 
 /**
@@ -88,7 +121,7 @@ async function buildSidecar() {
   await mkdir(sidecarDir, { recursive: true });
 
   // 子包自管多入口打包
-  await runCmd(["bun", "run", "build"], pkgDir);
+  await runCmd([packageManager, "run", "build"], pkgDir);
 
   const sidecarEntries = ["entries/server.js", "entries/html-renderer.js"];
   for (const entry of sidecarEntries) {
@@ -113,7 +146,7 @@ async function copyBin() {
   await mkdir(outBinDir, { recursive: true });
 
   for (const name of bins) {
-    const srcPath = Bun.which(name);
+    const srcPath = await findExecutable(name);
     if (!srcPath) {
       console.warn(`找不到系统 ${name}，跳过复制。请确保目标环境有 ${name}。`);
       continue;
