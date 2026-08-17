@@ -38,7 +38,7 @@ unsafe extern "system" {
 fn run() -> io::Result<u8> {
     let root = install_root()?;
     let node = root.join("bin").join(node_name());
-    let entry = root.join("app.mjs");
+    let entry = root.join("supervisor.cjs");
 
     let status = Command::new(&node)
         .arg(&entry)

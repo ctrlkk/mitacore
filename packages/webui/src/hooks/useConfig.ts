@@ -6,6 +6,7 @@ export function useConfig() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [restartState, setRestartState] = useState<"idle" | "restarting">("idle");
   const reloadConfig = useCallback(async () => {
     try {
       const response = await fetch("/api/config");
@@ -21,7 +22,7 @@ export function useConfig() {
   useEffect(() => {
     void reloadConfig();
   }, [reloadConfig]);
-  const saveConfig = async () => {
+  const saveConfig = async (): Promise<boolean> => {
     setSaveState("saving");
     setError("");
     try {
@@ -34,10 +35,28 @@ export function useConfig() {
       if (!response.ok) throw new Error(payload?.error?.message ?? "保存失败");
       setSaveState("saved");
       window.setTimeout(() => setSaveState("idle"), 2500);
+      return true;
     } catch (exception) {
       setSaveState("error");
       setError(exception instanceof Error ? exception.message : "保存失败");
+      return false;
     }
+  };
+  const restart = async () => {
+    setRestartState("restarting");
+    setError("");
+    try {
+      const response = await fetch("/api/runtime/restart", { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error?.message ?? "重启失败");
+      window.setTimeout(() => setRestartState("idle"), 2500);
+    } catch (exception) {
+      setRestartState("idle");
+      setError(exception instanceof Error ? exception.message : "重启失败");
+    }
+  };
+  const saveAndRestart = async () => {
+    if (await saveConfig()) await restart();
   };
   const updateProvider = (index: number, patch: Partial<Provider>) =>
     setConfig((value) => ({
@@ -53,6 +72,8 @@ export function useConfig() {
     error,
     saveState,
     saveConfig,
+    restartState,
+    saveAndRestart,
     updateProvider,
     reloadConfig,
   };

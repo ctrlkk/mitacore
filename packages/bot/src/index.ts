@@ -3,7 +3,10 @@ import { logger } from "@/logger";
 import { startWebUi } from "@/webui";
 
 if (import.meta.main) {
-  await startWebUi();
+  const webUiPort = await startWebUi();
+  if (typeof process.send === "function") {
+    process.send({ type: "ready", port: webUiPort });
+  }
 
   try {
     const { startBot } = await import("@/app/runtime");

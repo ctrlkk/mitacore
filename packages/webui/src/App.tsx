@@ -4,6 +4,7 @@ import {
   FilePenLine,
   Image,
   LoaderCircle,
+  RotateCw,
   Save,
   Settings2,
   SlidersHorizontal,
@@ -32,7 +33,18 @@ const pageMeta = {
 } as const;
 
 function Page({ page }: { page: keyof typeof pageMeta }) {
-  const { config, setConfig, loading, error, saveState, saveConfig, updateProvider, reloadConfig } = useConfig();
+  const {
+    config,
+    setConfig,
+    loading,
+    error,
+    saveState,
+    saveConfig,
+    restartState,
+    saveAndRestart,
+    updateProvider,
+    reloadConfig,
+  } = useConfig();
   const [eyebrow, title] = pageMeta[page];
   const usesConfig = !["images", "persona", "knowledge"].includes(page);
   const isConfigPage = !["images", "stickers", "persona", "knowledge"].includes(page);
@@ -149,9 +161,21 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
           {isConfigPage && (
             <div className="flex flex-wrap justify-end gap-2">
               <button
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-brand px-3.5 py-2.5 text-sm font-700 text-brand hover:bg-brand-pale disabled:cursor-wait disabled:opacity-65 max-[480px]:px-2.75 max-[480px]:py-2.25"
+                disabled={saveState === "saving" || restartState === "restarting"}
+                onClick={() => void saveAndRestart()}
+              >
+                {restartState === "restarting" ? (
+                  <LoaderCircle className="animate-spin" size={17} />
+                ) : (
+                  <RotateCw size={17} />
+                )}
+                {restartState === "restarting" ? "正在重启" : "保存并重启"}
+              </button>
+              <button
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-3.5 py-2.5 text-sm font-700 text-white hover:bg-brand-dark disabled:cursor-wait disabled:opacity-65 max-[480px]:px-2.75 max-[480px]:py-2.25"
-                disabled={saveState === "saving"}
-                onClick={saveConfig}
+                disabled={saveState === "saving" || restartState === "restarting"}
+                onClick={() => void saveConfig()}
               >
                 {saveState === "saving" ? (
                   <LoaderCircle className="animate-spin" size={17} />

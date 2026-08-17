@@ -58,7 +58,7 @@ async function findExecutable(name: string) {
 }
 
 /**
- * 构建应用主程序：Vite 编译为单个 ESM 文件
+ * 构建应用主程序
  */
 async function buildApp() {
   const appBundle = "app.mjs";
@@ -66,11 +66,15 @@ async function buildApp() {
 
   // 清理旧产物 (force: true 确保路径不存在时不报错，省去 existsSync 判断)
   await rm(join(outDir, appBundle), { force: true });
+  await rm(join(outDir, "supervisor.cjs"), { force: true });
+  await rm(join(outDir, "supervisor.mjs"), { force: true });
+  await rm(join(outDir, "app-chunks"), { recursive: true, force: true });
   await rm(join(outDir, "app.cjs"), { force: true });
   await rm(join(root, "build"), { recursive: true, force: true });
   await rm(join(root, "pyrpc.spec"), { force: true });
 
   await runCmd([packageManager, "--dir", botDir, "run", "build"], root);
+  await copyFile(join(botDir, "supervisor.cjs"), join(outDir, "supervisor.cjs"));
 }
 
 /** 构建负责约束 NapCat 进程树生命周期的原生 supervisor。 */

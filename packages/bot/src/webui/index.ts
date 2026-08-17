@@ -204,6 +204,11 @@ export function createApp() {
 
   app.get("/api/runtime", (c) => c.json(channelController.getSnapshot()));
 
+  app.post("/api/runtime/restart", (c) => {
+    setImmediate(() => process.exit(75));
+    return c.json({ accepted: true }, 202);
+  });
+
   app.get("/api/runtime/events", (c) => {
     const encoder = new TextEncoder();
     let unsubscribe: (() => void) | undefined;
@@ -537,16 +542,16 @@ export function createApp() {
   return app;
 }
 
-export async function startWebUi() {
+export async function startWebUi(): Promise<number> {
   const app = createApp();
   const portValue = process.env.WEBUI_PORT;
   const port = portValue ? Number(portValue) : 0;
   if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new Error("WEBUI_PORT 必须是 0 到 65535 之间的整数");
 
-  await new Promise<void>((resolve, reject) => {
+  return await new Promise<number>((resolve, reject) => {
     const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port }, (info) => {
       logger.info({ url: `http://127.0.0.1:${info.port}` }, "WebUI 已启动");
-      resolve();
+      resolve(info.port);
     });
     server.once("error", reject);
   });
