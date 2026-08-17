@@ -87,7 +87,7 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
         qqPath: "",
         supervisorPaths: [
           binPath(supervisorName),
-          projectPath("packages", "napcat-supervisor", "target", "release", supervisorName),
+          projectPath("native", "napcat-supervisor", "target", "release", supervisorName),
         ],
         logger,
         onWebUiReady: (embed_url) =>

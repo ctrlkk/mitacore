@@ -8,14 +8,11 @@
     "node": ">=24"
   },
   "scripts": {
-    "supervisor:build": "cargo build --release --manifest-path packages/napcat-supervisor/Cargo.toml",
+    "supervisor:build": "cargo build --release --manifest-path native/napcat-supervisor/Cargo.toml",
     "dev": "pnpm --filter bot dev",
     "start": "pnpm --filter bot start",
     "webui:dev": "pnpm --filter webui dev",
     "webui:build": "pnpm --filter webui build",
-    "desktop:dev": "pnpm --filter desktop dev",
-    "desktop:build": "pnpm --filter desktop build",
-    "desktop:package": "pnpm --filter desktop package",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db": "pnpm --filter bot exec drizzle-kit",

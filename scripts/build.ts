@@ -75,13 +75,13 @@ async function buildApp() {
 
 /** 构建负责约束 NapCat 进程树生命周期的原生 supervisor。 */
 async function buildSupervisor() {
-  const manifest = join(root, "packages", "napcat-supervisor", "Cargo.toml");
+  const manifest = join(root, "native", "napcat-supervisor", "Cargo.toml");
   const binaryName = `napcat-supervisor${exeExt}`;
   const outputDir = join(outDir, "bin");
   await runCmd(["cargo", "build", "--release", "--manifest-path", manifest], root);
   await mkdir(outputDir, { recursive: true });
   await copyFile(
-    join(root, "packages", "napcat-supervisor", "target", "release", binaryName),
+    join(root, "native", "napcat-supervisor", "target", "release", binaryName),
     join(outputDir, binaryName),
   );
   if (process.platform !== "win32") await chmod(join(outputDir, binaryName), 0o755);
@@ -89,12 +89,12 @@ async function buildSupervisor() {
 
 /** 构建兼容旧版 app.exe 使用方式的 Node 启动器。 */
 async function buildLauncher() {
-  const manifest = join(root, "packages", "app-launcher", "Cargo.toml");
+  const manifest = join(root, "native", "app-launcher", "Cargo.toml");
   const binaryName = `app-launcher${exeExt}`;
   const outputName = `app${exeExt}`;
 
   await runCmd(["cargo", "build", "--release", "--manifest-path", manifest], root);
-  await copyFile(join(root, "packages", "app-launcher", "target", "release", binaryName), join(outDir, outputName));
+  await copyFile(join(root, "native", "app-launcher", "target", "release", binaryName), join(outDir, outputName));
   if (process.platform !== "win32") await chmod(join(outDir, outputName), 0o755);
 }
 
@@ -105,12 +105,6 @@ async function buildWebUi() {
   await runCmd([packageManager, "run", "build"], webUiDir);
   await rm(outputDir, { recursive: true, force: true });
   await cp(join(webUiDir, "dist"), outputDir, { recursive: true });
-}
-
-/** 构建 Electron 桌面程序的主进程、预加载脚本和渲染进程。 */
-async function buildDesktop() {
-  const desktopDir = join(root, "packages", "desktop");
-  await runCmd([packageManager, "run", "build"], desktopDir);
 }
 
 /**
@@ -216,7 +210,6 @@ await Promise.all([
   buildSupervisor(),
   buildLauncher(),
   buildWebUi(),
-  buildDesktop(),
   buildSidecar(),
   copyBin(),
   copyAssets(),
