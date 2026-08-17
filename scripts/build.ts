@@ -2,7 +2,12 @@ import { delimiter, dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { rm, mkdir, copyFile, access, stat, chmod, readdir, cp } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+const { path: ffmpegPath } = require("@ffmpeg-installer/ffmpeg") as typeof import("@ffmpeg-installer/ffmpeg");
+const { path: ffprobePath } = require("@ffprobe-installer/ffprobe") as typeof import("@ffprobe-installer/ffprobe");
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = join(root, "dist");
@@ -137,15 +142,27 @@ async function buildSidecar() {
 }
 
 /**
- * 复制所需的外部二进制文件到输出目录的 bin 子目录
+ * 复制所需的外部二进制文件到输出目录的 bin 子目录。
+ * FFmpeg 使用 npm 包提供的静态二进制，不依赖构建机器上的安装或 DLL。
  */
 async function copyBin() {
   const outBinDir = join(outDir, "bin");
-  const bins = ["node", "ffmpeg", "ffprobe", "gifsicle"];
+  const staticBins = [
+    { name: "ffmpeg", sourcePath: ffmpegPath },
+    { name: "ffprobe", sourcePath: ffprobePath },
+  ];
+  const systemBins = ["node", "gifsicle"];
 
   await mkdir(outBinDir, { recursive: true });
 
-  for (const name of bins) {
+  for (const { name, sourcePath } of staticBins) {
+    const targetPath = join(outBinDir, `${name}${exeExt}`);
+    console.log(`复制 ${sourcePath} → ${targetPath}`);
+    await copyFile(sourcePath, targetPath);
+    if (process.platform !== "win32") await chmod(targetPath, 0o755);
+  }
+
+  for (const name of systemBins) {
     const srcPath = await findExecutable(name);
     if (!srcPath) {
       console.warn(`找不到系统 ${name}，跳过复制。请确保目标环境有 ${name}。`);
@@ -160,16 +177,6 @@ async function copyBin() {
       // 非 Windows 环境补充执行权限
       if (process.platform !== "win32") {
         await chmod(targetPath, 0o755);
-      }
-
-      // Windows 下 shared 版 ffmpeg/ffprobe 依赖同目录的 DLL（如 avcodec-63.dll），
-      // 只复制 exe 会导致打包后无法运行，故把同目录 DLL 一并复制保持自包含。
-      if (process.platform === "win32" && (name === "ffmpeg" || name === "ffprobe")) {
-        const srcDir = dirname(srcPath);
-        const dlls = (await readdir(srcDir)).filter((f) => f.toLowerCase().endsWith(".dll"));
-        for (const dll of dlls) {
-          await copyFile(join(srcDir, dll), join(outBinDir, dll));
-        }
       }
     } catch (error) {
       console.warn(`复制 ${name} 失败:`, error);

@@ -12,7 +12,7 @@
     "db": "drizzle-kit",
     "migration": "tsx scripts/migration.ts",
     "migration:check": "tsx scripts/migration.ts --check",
-    "test": "vitest run --exclude .tsbuild/**"
+    "test": "vitest run"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.18",

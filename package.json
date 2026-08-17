@@ -25,6 +25,8 @@
     "test": "pnpm --filter bot test && pnpm --filter channels test"
   },
   "devDependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
     "@types/node": "^24.0.0",
     "drizzle-kit": "^0.31.10",
     "esbuild": "^0.28.1",

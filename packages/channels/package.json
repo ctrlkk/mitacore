@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "vitest run --exclude .tsbuild/**"
+    "test": "vitest run"
   },
   "module": "src/index.ts",
   "types": "src/index.ts",

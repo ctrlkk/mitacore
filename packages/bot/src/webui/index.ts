@@ -531,12 +531,9 @@ export function createApp() {
   });
 
   app.use("*", serveStatic({ root: WEB_UI_DIR }));
-  app.get("*", async (c) => {
-    if (c.req.path.startsWith("/api/")) return c.notFound();
-
-    const index = await readFile(resolve(WEB_UI_DIR, "index.html"));
-    return new Response(index, { headers: { "content-type": "text/html; charset=utf-8" } });
-  });
+  app.get("/api", (c) => c.notFound());
+  app.get("/api/*", (c) => c.notFound());
+  app.get("*", serveStatic({ path: resolve(WEB_UI_DIR, "index.html") }));
   return app;
 }
 
