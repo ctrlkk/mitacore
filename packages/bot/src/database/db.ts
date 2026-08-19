@@ -2,8 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { dataPath } from "@/utils/path";
-import { drizzle } from "./node-sqlite";
-import * as schema from "./schema.sql";
+import { drizzle } from "drizzle-orm/node-sqlite";
 
 // 必须与 drizzle.config.ts 中的 dbCredentials.url 保持一致
 const DB_PATH = dataPath("db", "app.db");
@@ -14,4 +13,4 @@ mkdirSync(dirname(DB_PATH), { recursive: true });
 const sqlite = new DatabaseSync(DB_PATH);
 sqlite.exec("PRAGMA journal_mode = WAL;");
 
-export const db = drizzle(sqlite, { schema });
+export const db = drizzle({ client: sqlite });

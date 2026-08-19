@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
-// Drizzle TypeScript 迁移 codegen（适配 drizzle-kit 0.31.10）
-// 参考 specs/storage/typescript-migrations.md；本项目装的是 0.31.10 而非规范的 1.0+，
-// 所以不用 spec 里的 throwaway out + baseline/snapshot.json 约定（0.31.10 不支持），
-// 改用持久化 out 目录让 drizzle-kit 的 journal 跨运行保留，自动产出增量迁移。
+// Drizzle TypeScript 迁移 codegen（适配 drizzle-kit 1.0 RC）
+// RC 使用 v3 迁移目录结构：每个迁移目录同时包含 migration.sql 和 snapshot.json。
+// 持久化 out 目录让 drizzle-kit 跨运行保留快照，自动产出增量迁移。
 
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -50,12 +49,13 @@ async function generate() {
     return;
   }
 
-  // === Step 1-3: 持久化 out，让 drizzle-kit 的 journal 跨运行保留 ===
+  // === Step 1-3: 持久化 out，让 drizzle-kit 的 snapshot 跨运行保留 ===
   await fs.mkdir(persistentOut, { recursive: true });
+  const previousMigrations = new Set(await generatedMigrations(persistentOut));
   await drizzle(persistentOut, args.values.name);
 
   // 把所有新生成的 .sql 镜像成 .ts（已存在的跳过，避免覆盖历史）
-  const generated = await generatedMigrations(persistentOut);
+  const generated = (await generatedMigrations(persistentOut)).filter((name) => !previousMigrations.has(name));
   for (const name of generated) {
     const target = path.join(tsDir, `${name}.ts`);
     if (await fileExists(target)) continue;
@@ -89,16 +89,16 @@ async function check() {
     return;
   }
 
-  // check 是纯校验，不应污染持久 out。把 .drizzle-out/meta/ 复制到 temp，drizzle 跑在 temp 上。
+  // check 是纯校验，不应污染持久 out。复制完整迁移目录到 temp，drizzle 跑在 temp 上。
   await fs.mkdir(localTmp, { recursive: true });
   const tempOut = await fs.mkdtemp(path.join(localTmp, "check-"));
   try {
-    const metaSrc = path.join(persistentOut, "meta");
-    if (await dirExists(metaSrc)) {
-      await fs.cp(metaSrc, path.join(tempOut, "meta"), { recursive: true });
+    if (await dirExists(persistentOut)) {
+      await fs.cp(persistentOut, tempOut, { recursive: true, force: true });
     }
+    const previousMigrations = new Set(await generatedMigrations(tempOut));
     await drizzle(tempOut, args.values.name);
-    const generated = await generatedMigrations(tempOut);
+    const generated = (await generatedMigrations(tempOut)).filter((name) => !previousMigrations.has(name));
     const existing = new Set(await typescriptMigrations());
     const missing = generated.filter((name) => !existing.has(name));
     if (missing.length > 0) {
@@ -126,17 +126,17 @@ async function check() {
   }
 }
 
-async function dirExists(p: string): Promise<boolean> {
+async function fileExists(p: string): Promise<boolean> {
   try {
-    return (await fs.stat(p)).isDirectory();
+    return (await fs.stat(p)).isFile();
   } catch {
     return false;
   }
 }
 
-async function fileExists(p: string): Promise<boolean> {
+async function dirExists(p: string): Promise<boolean> {
   try {
-    return (await fs.stat(p)).isFile();
+    return (await fs.stat(p)).isDirectory();
   } catch {
     return false;
   }
@@ -177,13 +177,13 @@ export default { ...config, out: ${JSON.stringify(relOut)} }
   }
 }
 
-// drizzle-kit 0.31.10 输出结构：<name>.sql + meta/<name>_snapshot.json
+// drizzle-kit 1.0 RC 输出结构：<name>/migration.sql + snapshot.json
 async function generatedMigrations(directory: string) {
-  return (await glob("*.sql", { cwd: directory })).map((file) => path.basename(file, ".sql")).sort();
+  return (await glob("*/migration.sql", { cwd: directory })).map((file) => path.basename(path.dirname(file))).sort();
 }
 
 async function migrationSql(directory: string, name: string) {
-  return fs.readFile(path.join(directory, `${name}.sql`), "utf8");
+  return fs.readFile(path.join(directory, name, "migration.sql"), "utf8");
 }
 
 async function typescriptMigrations() {
@@ -202,7 +202,7 @@ export default {
   up(tx) {
 ${renderStatements(sql)}
   },
-} satisfies Migration
+} satisfies Migration;
 `;
 }
 
@@ -214,7 +214,7 @@ export default {
   up(tx) {
 ${renderStatements(sql)}
   },
-} satisfies Omit<Migration, "id">
+} satisfies Omit<Migration, "id">;
 `;
 }
 
@@ -245,6 +245,6 @@ export const migrations = (
   await Promise.all<{ default: Migration }>([
 ${names.map((name) => `    import("./migration/${name}"),`).join("\n")}
   ])
-).map((module) => module.default) satisfies Migration[]
+).map((module) => module.default) satisfies Migration[];
 `;
 }
