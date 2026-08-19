@@ -1,5 +1,7 @@
 packages:
   - "packages/*"
+  # mitacore-mobile 是独立的 npm 项目，不参与根目录 pnpm 工作区。
+  - "!mitacore-mobile/**"
 confirmModulesPurge: false
 allowBuilds:
   esbuild: true
