@@ -2,7 +2,7 @@ import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-histor
 import { generateText, hasToolCall, isStepCount, tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { getModelForRole } from "@/ai/model";
+import { getModelForRole } from "@/agents/model";
 import { dataPath, projectPath } from "@/utils/path";
 import { logger, type PinoLogger } from "@/logger";
 import { task } from "./tools/task";

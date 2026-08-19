@@ -4,7 +4,7 @@ import type { LanguageModel, ToolSet } from "ai";
 import { z } from "zod";
 import { generateText, tool } from "ai";
 import { lookup } from "mime-types";
-import { imageToText } from "@/ai/multimedia";
+import { imageToText } from "@/agents/multimedia";
 import { sanitizeImagePath, virtualToRealPath } from "@/utils/image-cache";
 import { createFsFile, exists } from "@/utils/fs-file";
 import { logger, type PinoLogger } from "@/logger";

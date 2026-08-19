@@ -6,7 +6,7 @@ import dayjs, { sleep } from "shared/time";
 import type { ChannelReplyContext } from "@/channel/types";
 import type { MessagePart } from "@/message/parts";
 import type { ImageMap, MediaKind, MediaMap, PendingMessage, UnifiedInboundMessage } from "@/message/types";
-import { imageToText, videoToText } from "@/ai/multimedia";
+import { imageToText, videoToText } from "@/agents/multimedia";
 import { runPlanner as runContinuousPlanner } from "@/agents/planner-continuous";
 import { config } from "@/config";
 import { get_media_description, set_media_description } from "@/database/media-cache";

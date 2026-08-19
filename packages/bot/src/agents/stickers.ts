@@ -1,6 +1,6 @@
 import { tool, ToolLoopAgent } from "ai";
 import { z } from "zod";
-import { getModel, getModelForRole } from "@/ai/model";
+import { getModel, getModelForRole } from "@/agents/model";
 import { blobToDataURL } from "@/utils/blob";
 import { compressImage } from "@/utils/image-resize";
 import creationPrompt from "@/prompts/sticker-create.txt?raw";

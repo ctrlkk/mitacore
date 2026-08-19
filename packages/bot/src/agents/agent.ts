@@ -1,6 +1,6 @@
 import { generateText, type LanguageModelUsage, type ToolSet } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { getModelForRole } from "@/ai/model";
+import { getModelForRole } from "@/agents/model";
 import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message/parts";
 import { splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";

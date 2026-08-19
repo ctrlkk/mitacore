@@ -1,5 +1,5 @@
 import { workspaceTools } from "@/workspace/tool";
-import { getModelForRole } from "@/ai/model";
+import { getModelForRole } from "@/agents/model";
 import { generateText, isStepCount, tool } from "ai";
 import { logger, type PinoLogger } from "@/logger";
 import { logUsage } from "@/utils/format";
