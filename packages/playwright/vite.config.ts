@@ -12,7 +12,7 @@ export default defineConfig({
     minify: true,
     rollupOptions: {
       input: {
-        server: resolve(import.meta.dirname, "src/server.ts"),
+        "image-gen": resolve(import.meta.dirname, "src/image-gen.ts"),
         "html-renderer": resolve(import.meta.dirname, "src/html-renderer.ts"),
       },
       external: isRuntimeExternal,

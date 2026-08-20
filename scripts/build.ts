@@ -126,7 +126,7 @@ async function buildSidecar() {
   // 子包自管多入口打包
   await runCmd([packageManager, "run", "build"], pkgDir);
 
-  const sidecarEntries = ["entries/server.js", "entries/html-renderer.js"];
+  const sidecarEntries = ["entries/image-gen.js", "entries/html-renderer.js"];
   for (const entry of sidecarEntries) {
     const bundleSrc = join(pkgDir, "dist", entry);
     try {
