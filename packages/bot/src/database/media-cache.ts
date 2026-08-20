@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { MediaKind } from "@/message/types";
 import { db } from "./db";
 import { mediaCache } from "./schema.sql";
@@ -16,19 +16,18 @@ export function set_media_description(kind: MediaKind, path: string, description
     .run();
 }
 
-export function list_image_descriptions(): Map<string, string> {
+export type MediaDescription = { kind: MediaKind; description: string };
+
+export function list_media_descriptions(): Map<string, MediaDescription> {
   return new Map(
     db
-      .select({ path: mediaCache.path, description: mediaCache.description })
+      .select({ path: mediaCache.path, kind: mediaCache.kind, description: mediaCache.description })
       .from(mediaCache)
-      .where(eq(mediaCache.kind, "image"))
       .all()
-      .map((row) => [row.path, row.description]),
+      .map((row) => [row.path, { kind: row.kind, description: row.description }]),
   );
 }
 
-export function delete_image_description(path: string): void {
-  db.delete(mediaCache)
-    .where(and(eq(mediaCache.kind, "image"), eq(mediaCache.path, path)))
-    .run();
+export function delete_media_description(path: string): void {
+  db.delete(mediaCache).where(eq(mediaCache.path, path)).run();
 }

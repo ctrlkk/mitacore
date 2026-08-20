@@ -1,12 +1,10 @@
-import os from "node:os";
-import { basename, posix } from "node:path";
 import { APICallError, RetryError } from "ai";
 import XMLBuilder from "fast-xml-builder";
 import dayjs, { sleep } from "shared/time";
 import type { ChannelReplyContext } from "@/channel/types";
 import type { MessagePart } from "@/message/parts";
-import type { ImageMap, MediaKind, MediaMap, PendingMessage, UnifiedInboundMessage } from "@/message/types";
-import { imageToText, videoToText } from "@/agents/multimedia";
+import type { MediaKind, MediaMap, PendingMessage, UnifiedInboundMessage } from "@/message/types";
+import { audioToText, imageToText, videoToText } from "@/agents/multimedia";
 import { runPlanner as runContinuousPlanner } from "@/agents/planner-continuous";
 import { config } from "@/config";
 import { get_media_description, set_media_description } from "@/database/media-cache";
@@ -58,9 +56,9 @@ function createMediaProcessor() {
             if (kind === "image") {
               return await downloadToCache(url, { limit: 5 * 1024 * 1024 });
             } else if (kind === "video") {
-              const { downloadToCache } = await import("@/utils/blob");
-              const { realPath } = await downloadToCache(url, { cacheDir: os.tmpdir(), limit: 20 * 1024 * 1024 });
-              return { virtualPath: posix.join("/videos", basename(realPath)), realPath };
+              return await downloadToCache(url, { limit: 20 * 1024 * 1024 });
+            } else if (kind === "audio") {
+              return await downloadToCache(url, { limit: 5 * 1024 * 1024 });
             }
           } catch (error) {
             logger.error({ url, kind, error }, "下载失败");
@@ -115,9 +113,11 @@ function createMediaProcessor() {
             if (item.kind === "image") {
               const blob = await compressImage(await createFsFile(item.realPath));
               result = (await imageToText(blob)).trim();
-            } else {
+            } else if (item.kind === "video") {
               const blob = await compressVideo(await createFsFile(item.realPath));
               result = (await videoToText(blob)).trim();
+            } else {
+              result = (await audioToText(await createFsFile(item.realPath))).trim();
             }
 
             set_media_description(item.kind, cacheKey, result);
@@ -125,7 +125,9 @@ function createMediaProcessor() {
             return result;
           } catch (error) {
             logger.error({ path: item.virtualPath, kind: item.kind, error }, "转述失败");
-            return item.kind === "image" ? "图片转述失败" : "视频转述失败";
+            if (item.kind === "image") return "图片转述失败";
+            if (item.kind === "video") return "视频转述失败";
+            return "音频转述失败";
           }
         });
 
@@ -171,14 +173,16 @@ function buildPrompt(batch: PendingMessage[], mediaMap: MediaMap) {
         return seg.text.length > 0 ? [{ content: seg.text, standalone: false }] : [];
       } else if (seg.type === "at") {
         return seg.data.nickname ? [{ content: `@${seg.data.nickname}`, standalone: false }] : [];
-      } else if (seg.type === "image" || seg.type === "video") {
+      } else if (seg.type === "image" || seg.type === "video" || seg.type === "audio") {
         const media = mediaMap.get(seg.data.url);
 
         if (media?.path) {
           return [{ content: `\`${media.path}\``, standalone: false }];
         }
 
-        return [{ content: seg.type === "image" ? "[图片]" : "[视频]", standalone: false }];
+        if (seg.type === "image") return [{ content: "[图片]", standalone: false }];
+        if (seg.type === "video") return [{ content: "[视频]", standalone: false }];
+        return [{ content: "[音频]", standalone: false }];
       } else if (seg.type === "reply") {
         const inner = formatMessage(seg.data.segments);
         if (inner.length === 0) return [];
@@ -227,15 +231,21 @@ function buildPrompt(batch: PendingMessage[], mediaMap: MediaMap) {
     .filter((media) => media.kind === "video")
     .map(({ path, description }) => ({ path, description }));
 
+  const audios = uniqueMedia
+    .filter((media) => media.kind === "audio")
+    .map(({ path, description }) => ({ path, description }));
+
   const reminder: {
     image?: Array<{ path: string; description: string }>;
     video?: Array<{ path: string; description: string }>;
+    audio?: Array<{ path: string; description: string }>;
   } = {};
 
   if (images.length > 0) reminder.image = images;
   if (videos.length > 0) reminder.video = videos;
+  if (audios.length > 0) reminder.audio = audios;
 
-  if (images.length > 0 || videos.length > 0) {
+  if (images.length > 0 || videos.length > 0 || audios.length > 0) {
     const builder = new XMLBuilder({ format: true, ignoreAttributes: false });
     const reminderText = builder
       .build({
@@ -459,18 +469,7 @@ export function createBot(sessionId: string) {
           shouldTrigger = true;
         } else {
           // 软触发，被群聊普通消息触发（主动插话逻辑）
-          // 当前 dispatchMessage 只消费 path / description，
-          // 因此这里把图片和视频都压平成旧的 ImageMap 结构，避免改动 dispatcher。
-          const globalImageMap: ImageMap = new Map();
-          for (const map of resolvedMediaMaps) {
-            for (const [url, media] of map) {
-              globalImageMap.set(url, {
-                path: media.path,
-                description: media.description,
-              });
-            }
-          }
-          // shouldTrigger = await dispatchMessage(unprocessed, globalImageMap);
+          // 允许在这里进行异步的耗时操作，判断是否进行主动插话
           // 禁用主动插话逻辑
           shouldTrigger = false;
         }
@@ -509,6 +508,11 @@ export function createBot(sessionId: string) {
               resources.set(`video:${seg.data.url}`, {
                 url: seg.data.url,
                 kind: "video",
+              });
+            } else if (seg.type === "audio") {
+              resources.set(`audio:${seg.data.url}`, {
+                url: seg.data.url,
+                kind: "audio",
               });
             } else if (seg.type === "reply") {
               extractResources(seg.data.segments);

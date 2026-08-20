@@ -1,18 +1,23 @@
-import type { OneBotIncomingMessageSegment, OneBotMessageEvent } from "channels/onebot";
+import type { OneBotIncomingMessageSegment } from "channels/onebot";
 import type { PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import type { ChannelReplyContext } from "@/channel/types";
 import { createBot } from "@/app/queue-loop";
 import { handleCommand } from "@/app/command";
 import { config, type Config } from "@/config";
 import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
-import { OneBotClient, type OneBotEventContext } from "channels/onebot";
+import { OneBotClient } from "channels/onebot";
 import { resolveMentions } from "@/message/mention";
 import { startBuiltinNapCat } from "napcat";
 import { logger } from "@/logger";
 import { channelController } from "@/app/channel-controller";
 import { binPath, dataPath, projectPath } from "@/utils/path";
 
-const ENABLE_VIDEO_PROCESSING = false;
+const ENABLE_VIDEO_PROCESSING = true;
+
+function exceedsSize(fileSize: number | string | undefined, limit: number): boolean {
+  const size = Number(fileSize);
+  return Number.isFinite(size) && size > limit;
+}
 
 function isIdInScope(id: string, scope: Config["napcat"]["groups"]): boolean {
   const isInList = scope.ids.includes(id);
@@ -24,6 +29,8 @@ async function parseOneBotMessage(
   segments: OneBotIncomingMessageSegment[],
   getNickname: (qq: number) => Promise<string>,
   getMessage: (id: number) => Promise<{ userId: number; message: OneBotIncomingMessageSegment[] } | null>,
+  getRecordDataUrl: (file: string) => Promise<string | undefined>,
+  allowVideo: boolean,
 ) {
   const messages: UnifiedInboundMessage[] = [];
   for (const seg of segments) {
@@ -34,27 +41,48 @@ async function parseOneBotMessage(
       const alias = ensureUserAlias("onebot", seg.data.qq, nickname);
       messages.push({ type: "at", data: { userId: shortIdFor(alias.id), nickname: nickname ?? " " } });
     } else if (seg.type === "image") {
-      if (Number(seg.data.file_size) < 5 * 1024 * 1024) {
-        messages.push({ type: "image", data: { url: seg.data.url } });
-      } else {
+      const url = seg.data.url!;
+      if (exceedsSize(seg.data.file_size, 5 * 1024 * 1024)) {
         logger.info({ url: seg.data.url }, "忽略图片，大小超过5MB");
+      } else {
+        messages.push({ type: "image", data: { url } });
       }
     } else if (seg.type === "video") {
-      if (!ENABLE_VIDEO_PROCESSING) continue;
-      const url = seg.data.url;
-      if (!url) {
-        logger.warn("视频消息缺少 url，跳过处理");
-        continue;
-      }
-      if (Number(seg.data.file_size) < 20 * 1024 * 1024) {
-        messages.push({ type: "video", data: { url } });
-      } else {
+      if (!ENABLE_VIDEO_PROCESSING || !allowVideo) continue;
+      const url = seg.data.url!;
+      if (exceedsSize(seg.data.file_size, 20 * 1024 * 1024)) {
         logger.info({ url }, "忽略视频，大小超过20MB");
+      } else {
+        messages.push({ type: "video", data: { url } });
+      }
+    } else if (seg.type === "record") {
+      const url = await getRecordDataUrl(seg.data.file);
+      if (!url) {
+        logger.warn({ file: seg.data.file }, "语音消息缺少可用音频内容，跳过处理");
+      } else if (exceedsSize(seg.data.file_size, 5 * 1024 * 1024)) {
+        logger.info({ file: seg.data.file }, "忽略语音，大小超过5MB");
+      } else {
+        messages.push({ type: "audio", data: { url } });
+      }
+    } else if (seg.type === "file") {
+      if (guessFileType(seg.data.file) !== "audio") continue;
+
+      const url = seg.data.url!;
+      if (exceedsSize(seg.data.file_size, 5 * 1024 * 1024)) {
+        logger.info({ fileId: seg.data.file_id, fileName: seg.data.file }, "忽略音频文件，大小超过5MB");
+      } else {
+        messages.push({ type: "audio", data: { url } });
       }
     } else if (seg.type === "reply") {
       const result = await getMessage(Number(seg.data.id));
       if (!result) continue;
-      const inner = await parseOneBotMessage(result.message, getNickname, () => Promise.resolve(null));
+      const inner = await parseOneBotMessage(
+        result.message,
+        getNickname,
+        () => Promise.resolve(null),
+        getRecordDataUrl,
+        allowVideo,
+      );
       if (inner.length === 0) continue;
       const nickname = await getNickname(result.userId);
       const alias = ensureUserAlias("onebot", String(result.userId), nickname);
@@ -167,8 +195,7 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
       const seg = segments[i]!;
       if (seg.type !== "file") continue;
       const fileType = guessFileType(seg.data.file);
-      if (fileType !== "image" && !(ENABLE_VIDEO_PROCESSING && fileType === "video")) continue;
-
+      if (fileType !== "image" && !(ENABLE_VIDEO_PROCESSING && isAt && fileType === "video")) continue;
       const url = await (async () => {
         if (seg.data.url) return seg.data.url;
         return await (
@@ -178,11 +205,10 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
         ).then((res) => res.url);
       })();
       if (!url) {
-        logger.warn({ fileId: seg.data.file_id, fileName: seg.data.file }, "无法获取文件下载 URL，跳过映射");
+        logger.warn({ fileId: seg.data.file_id, fileName: seg.data.file }, "无法获取文件URL，跳过映射");
         continue;
       }
-
-      segments[i] = { type: fileType, data: { file: url, url, file_size: seg.data.file_size } };
+      segments[i] = { type: fileType, data: { file: seg.data.file_id, url, file_size: seg.data.file_size } };
     }
 
     try {
@@ -200,6 +226,12 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
           const { user_id, message } = await ctx.client.getMessage(Number(id));
           return { userId: user_id, message };
         },
+        async (file) => {
+          const info = await ctx.client.getRecordInfo(file);
+          if (!info.base64) return info.url;
+          return info.base64.startsWith("data:") ? info.base64 : `data:audio/mpeg;base64,${info.base64}`;
+        },
+        isAt,
       );
 
       if (unified.length === 0) {

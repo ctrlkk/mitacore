@@ -25,8 +25,9 @@ export interface IncomingImageSegment {
   type: "image";
   data: {
     file: string;
-    url: string;
-    file_size: number | string;
+    /** NapCat 在极端情况下可能无法直接提供图片 URL */
+    url?: string;
+    file_size?: number | string;
     summary?: string;
     sub_type?: number;
     [key: string]: unknown;
@@ -51,7 +52,7 @@ export interface IncomingRecordSegment {
   data: {
     file: string;
     path: string;
-    file_size: number | string;
+    file_size?: number | string;
     url?: string;
     [key: string]: unknown;
   };
@@ -63,7 +64,7 @@ export interface IncomingFileSegment {
   data: {
     file: string;
     file_id: string;
-    file_size: number | string;
+    file_size?: number | string;
     url?: string;
     [key: string]: unknown;
   };

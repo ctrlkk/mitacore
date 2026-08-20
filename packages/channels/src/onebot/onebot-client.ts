@@ -97,6 +97,25 @@ export interface OneBotMessageInfo {
   [key: string]: unknown;
 }
 
+/** 文件信息（NapCat get_file API） */
+export interface OneBotFileInfo {
+  file: string;
+  file_name: string;
+  file_size: number | string;
+  url: string;
+  [key: string]: unknown;
+}
+
+/** 语音信息（NapCat get_record API） */
+export interface OneBotRecordInfo {
+  file: string;
+  file_name: string;
+  file_size: number | string;
+  url?: string;
+  base64?: string;
+  [key: string]: unknown;
+}
+
 /** 请求处理选项（审批/拒绝） */
 export interface RequestDecisionOptions extends RequestOptions {
   approve?: boolean;
@@ -261,6 +280,16 @@ export class OneBotClient {
       },
       options,
     );
+  }
+
+  /** 获取媒体文件的真实下载 URL */
+  getFileInfo(file: string, options?: RequestOptions): Promise<OneBotFileInfo> {
+    return this.call<OneBotFileInfo>("get_file", { file }, options);
+  }
+
+  /** 获取语音内容，优先使用 NapCat 返回的 Base64，避免依赖易失效的 CDN URL */
+  getRecordInfo(file: string, options?: RequestOptions): Promise<OneBotRecordInfo> {
+    return this.call<OneBotRecordInfo>("get_record", { file, out_format: "mp3" }, options);
   }
 
   /** 处理好友请求 */

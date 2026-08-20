@@ -3,10 +3,12 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { access, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, posix, relative, resolve } from "node:path";
+import { lookup } from "mime-types";
 import { logger } from "@/logger";
 import { dataPath, projectPath } from "@/utils/path";
 import { config, ConfigValidationError, loadConfig, saveConfig } from "@/config";
-import { delete_image_description, list_image_descriptions, set_media_description } from "@/database/media-cache";
+import { delete_media_description, list_media_descriptions, set_media_description } from "@/database/media-cache";
+import type { MediaKind } from "@/message/types";
 import { IMAGE_CACHE_DIR, sanitizeImagePath, virtualToRealPath } from "@/utils/image-cache";
 import {
   MAX_STICKER_SIZE,
@@ -20,7 +22,33 @@ import { streamStickerSuggestion } from "@/agents/stickers";
 import { z } from "zod";
 import { channelController } from "@/app/channel-controller";
 
-const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"]);
+const MEDIA_KIND_BY_EXTENSION = new Map<string, MediaKind>([
+  [".jpg", "image"],
+  [".jpeg", "image"],
+  [".png", "image"],
+  [".webp", "image"],
+  [".gif", "image"],
+  [".bmp", "image"],
+  [".svg", "image"],
+  [".ico", "image"],
+  [".mp4", "video"],
+  [".webm", "video"],
+  [".mov", "video"],
+  [".avi", "video"],
+  [".mkv", "video"],
+  [".flv", "video"],
+  [".wmv", "video"],
+  [".mp3", "audio"],
+  [".mpga", "audio"],
+  [".m4a", "audio"],
+  [".opus", "audio"],
+  [".wav", "audio"],
+  [".ogg", "audio"],
+  [".flac", "audio"],
+  [".aac", "audio"],
+  [".amr", "audio"],
+  [".silk", "audio"],
+]);
 const PERSONA_PATH = projectPath("prompts", "role.txt");
 const KNOWLEDGE_BASE_DIR = dataPath("workspace", "notepad");
 const MAX_TEXT_FILE_SIZE = 2 * 1024 * 1024;
@@ -96,11 +124,11 @@ async function listKnowledgeNotes() {
   });
 }
 
-const imageUpdateSchema = z.object({
-  description: z.string().trim().max(10_000, "图片描述不能超过 10000 个字符"),
+const mediaUpdateSchema = z.object({
+  description: z.string().trim().max(10_000, "媒体描述不能超过 10000 个字符"),
 });
 
-const imageListQuerySchema = z.object({
+const mediaListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   page_size: z.coerce.number().int().min(1).max(100).default(24),
   search: z.string().trim().max(200).default(""),
@@ -120,13 +148,14 @@ const stickerDescriptionSchema = z
   .min(1, "贴纸描述不能为空")
   .max(10_000, "贴纸描述不能超过 10000 个字符");
 
-function getSafeImagePath(rawFilename: string) {
+function getSafeMediaPath(rawFilename: string) {
   const filename = basename(rawFilename);
-  if (filename !== rawFilename || !IMAGE_EXTENSIONS.has(extname(filename).toLowerCase())) {
-    throw new Error("图片文件名不正确");
+  const kind = MEDIA_KIND_BY_EXTENSION.get(extname(filename).toLowerCase());
+  if (filename !== rawFilename || !kind) {
+    throw new Error("媒体文件名不正确");
   }
   const virtualPath = sanitizeImagePath(filename);
-  return { filename, virtualPath, realPath: virtualToRealPath(virtualPath) };
+  return { filename, kind, virtualPath, realPath: virtualToRealPath(virtualPath) };
 }
 
 const modelRequestSchema = z.object({
@@ -428,20 +457,24 @@ export function createApp() {
     }
   });
 
-  app.get("/api/images", async (c) => {
+  app.get("/api/media", async (c) => {
     try {
-      const query = imageListQuerySchema.parse(c.req.query());
-      const descriptions = list_image_descriptions();
+      const query = mediaListQuerySchema.parse(c.req.query());
+      const descriptions = list_media_descriptions();
       const entries = await readdir(IMAGE_CACHE_DIR, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
         if (error.code === "ENOENT") return [];
         throw error;
       });
-      const imageEntries = (
+      const mediaEntries = (
         await Promise.all(
           entries
-            .filter((entry) => entry.isFile() && IMAGE_EXTENSIONS.has(extname(entry.name).toLowerCase()))
+            .filter((entry) => entry.isFile())
             .map(async (entry) => {
+              const extensionKind = MEDIA_KIND_BY_EXTENSION.get(extname(entry.name).toLowerCase());
               const virtualPath = sanitizeImagePath(entry.name);
+              const cachedDescription = descriptions.get(virtualPath);
+              const kind = cachedDescription?.kind ?? extensionKind;
+              if (!kind) return undefined;
               const fileStat = await stat(virtualToRealPath(virtualPath)).catch((error: NodeJS.ErrnoException) => {
                 if (error.code === "ENOENT") return undefined;
                 throw error;
@@ -449,37 +482,38 @@ export function createApp() {
               if (!fileStat) return undefined;
               return {
                 filename: entry.name,
+                kind,
                 path: virtualPath,
-                description: descriptions.get(virtualPath) ?? "",
+                description: cachedDescription?.description ?? "",
                 size: fileStat.size,
                 updated_at: fileStat.mtimeMs,
-                url: `/api/images/${encodeURIComponent(entry.name)}/content`,
+                url: `/api/media/${encodeURIComponent(entry.name)}/content`,
               };
             }),
         )
       ).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
 
-      const totalSize = imageEntries.reduce((sum, image) => sum + image.size, 0);
+      const totalSize = mediaEntries.reduce((sum, media) => sum + media.size, 0);
       const keyword = query.search.toLocaleLowerCase();
-      const filteredImages = imageEntries.filter((image) => {
+      const filteredMedia = mediaEntries.filter((media) => {
         if (!keyword) return true;
-        return `${image.filename}\n${image.description}`.toLocaleLowerCase().includes(keyword);
+        return `${media.filename}\n${media.description}`.toLocaleLowerCase().includes(keyword);
       });
-      filteredImages.sort((left, right) => {
+      filteredMedia.sort((left, right) => {
         if (query.sort === "oldest") return left.updated_at - right.updated_at;
         if (query.sort === "largest") return right.size - left.size;
         if (query.sort === "smallest") return left.size - right.size;
         return right.updated_at - left.updated_at;
       });
 
-      const total = filteredImages.length;
+      const total = filteredMedia.length;
       const totalPages = Math.max(1, Math.ceil(total / query.page_size));
       const page = Math.min(query.page, totalPages);
       const offset = (page - 1) * query.page_size;
       return c.json({
-        images: filteredImages.slice(offset, offset + query.page_size),
+        media: filteredMedia.slice(offset, offset + query.page_size),
         pagination: { page, page_size: query.page_size, total, total_pages: totalPages },
-        summary: { total: imageEntries.length, total_size: totalSize },
+        summary: { total: mediaEntries.length, total_size: totalSize },
       });
     } catch (error) {
       const response = errorResponse(error);
@@ -487,32 +521,37 @@ export function createApp() {
     }
   });
 
-  app.get("/api/images/:filename/content", async (c) => {
+  app.get("/api/media/:filename/content", async (c) => {
     try {
-      const { realPath } = getSafeImagePath(c.req.param("filename"));
+      const { filename, realPath } = getSafeMediaPath(c.req.param("filename"));
       try {
         await access(realPath);
       } catch {
-        return c.json({ error: { message: "图片不存在" } }, 404);
+        return c.json({ error: { message: "媒体不存在" } }, 404);
       }
       const file = await readFile(realPath);
-      return new Response(file, { headers: { "cache-control": "private, max-age=300" } });
+      return new Response(file, {
+        headers: {
+          "cache-control": "private, max-age=300",
+          "content-type": lookup(filename) || "application/octet-stream",
+        },
+      });
     } catch (error) {
       const response = errorResponse(error);
       return c.json(response.body, response.status);
     }
   });
 
-  app.patch("/api/images/:filename", async (c) => {
+  app.patch("/api/media/:filename", async (c) => {
     try {
-      const { virtualPath, realPath } = getSafeImagePath(c.req.param("filename"));
+      const { kind, virtualPath, realPath } = getSafeMediaPath(c.req.param("filename"));
       try {
         await access(realPath);
       } catch {
-        return c.json({ error: { message: "图片不存在" } }, 404);
+        return c.json({ error: { message: "媒体不存在" } }, 404);
       }
-      const request = imageUpdateSchema.parse(await c.req.json());
-      set_media_description("image", virtualPath, request.description);
+      const request = mediaUpdateSchema.parse(await c.req.json());
+      set_media_description(kind, virtualPath, request.description);
       return c.json({ saved: true, description: request.description });
     } catch (error) {
       const response = errorResponse(error);
@@ -520,15 +559,15 @@ export function createApp() {
     }
   });
 
-  app.delete("/api/images/:filename", async (c) => {
+  app.delete("/api/media/:filename", async (c) => {
     try {
-      const { virtualPath, realPath } = getSafeImagePath(c.req.param("filename"));
+      const { virtualPath, realPath } = getSafeMediaPath(c.req.param("filename"));
       await unlink(realPath);
-      delete_image_description(virtualPath);
+      delete_media_description(virtualPath);
       return c.json({ deleted: true });
     } catch (error) {
       if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-        return c.json({ error: { message: "图片不存在" } }, 404);
+        return c.json({ error: { message: "媒体不存在" } }, 404);
       }
       const response = errorResponse(error);
       return c.json(response.body, response.status);

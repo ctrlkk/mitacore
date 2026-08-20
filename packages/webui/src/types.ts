@@ -54,8 +54,11 @@ export type Config = {
   providers: Provider[];
 };
 
-export type CachedImage = {
+export type MediaKind = "image" | "video" | "audio";
+
+export type CachedMedia = {
   filename: string;
+  kind: MediaKind;
   description: string;
   size: number;
   updated_at: number;

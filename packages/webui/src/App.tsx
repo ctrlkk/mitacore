@@ -28,7 +28,7 @@ const pageMeta = {
   models: ["MODELS", "模型配置"],
   persona: ["PERSONA", "人设编辑器"],
   knowledge: ["KNOWLEDGE BASE", "知识关系图"],
-  images: ["MEDIA LIBRARY", "图片缓存"],
+  images: ["MEDIA LIBRARY", "媒体缓存"],
   stickers: ["STICKER LIBRARY", "贴纸管理"],
 } as const;
 
@@ -136,7 +136,7 @@ function Page({ page }: { page: keyof typeof pageMeta }) {
             }
           >
             <Image size={16} />
-            图片缓存
+            媒体缓存
           </NavLink>
           <NavLink
             to="/stickers"

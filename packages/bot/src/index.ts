@@ -1,4 +1,4 @@
-export type { UnifiedInboundMessage, MediaKind, MediaMap, ImageMap, PendingMessage } from "@/message/types";
+export type { UnifiedInboundMessage, MediaKind, MediaMap, PendingMessage } from "@/message/types";
 import { logger } from "@/logger";
 import { startWebUi } from "@/webui";
 
