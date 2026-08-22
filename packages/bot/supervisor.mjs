@@ -1,10 +1,15 @@
-const { fork } = require("node:child_process");
-const { resolve } = require("node:path");
+import { fork } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const RESTART_EXIT_CODE = 75;
 const SHUTDOWN_TIMEOUT_MS = 8_000;
-const installRoot = __dirname;
+const installRoot = dirname(fileURLToPath(import.meta.url));
+const configPath = resolve(installRoot, ".env");
 const appPath = resolve(installRoot, "app.mjs");
+
+if (existsSync(configPath)) process.loadEnvFile(configPath);
 
 async function waitForExit(child) {
   return await new Promise((resolveExit) => {

@@ -74,7 +74,7 @@ async function buildApp() {
   await rm(join(root, "pyrpc.spec"), { force: true });
 
   await runCmd([packageManager, "--dir", botDir, "run", "build"], root);
-  await copyFile(join(botDir, "supervisor.cjs"), join(outDir, "supervisor.cjs"));
+  await copyFile(join(botDir, "supervisor.mjs"), join(outDir, "supervisor.mjs"));
 }
 
 /** 构建负责约束 NapCat 进程树生命周期的原生 supervisor。 */

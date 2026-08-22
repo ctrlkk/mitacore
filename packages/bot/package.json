@@ -49,6 +49,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "drizzle-kit": "1.0.0-rc.4",
     "tsx": "^4.20.3",
     "vite": "^8.1.5",
     "vite-node": "^6.0.0",
