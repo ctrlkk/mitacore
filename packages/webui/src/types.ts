@@ -76,11 +76,11 @@ export type Sticker = {
 
 export const defaultConfig: Config = {
   napcat: {
-    enabled: true,
+    enabled: false,
     qq_id: "",
     ws_url: "",
     token: "",
-    wake_keywords: [],
+    wake_keywords: ["米塔", "mita"],
     groups: { mode: "whitelist", ids: [] },
     private_chats: { mode: "whitelist", ids: [] },
     group_members: { mode: "blacklist", ids: [] },
@@ -100,18 +100,34 @@ export const defaultConfig: Config = {
   max_queue: 10,
   debounce_ms: 1000,
   models: {
-    plan: "",
-    reply: "",
-    main: "",
-    task_explore: "",
-    task_general: "",
-    multimodal_image: "",
-    multimodal_video: "",
-    multimodal_audio: "",
+    plan: "deepseek-v4-flash",
+    reply: "deepseek-v4-pro",
+    main: "deepseek-v4-flash",
+    task_explore: "deepseek-v4-flash",
+    task_general: "deepseek-v4-pro",
+    multimodal_image: "mimo-v2.5",
+    multimodal_video: "mimo-v2.5",
+    multimodal_audio: "mimo-v2.5",
   },
   model_schedule: {
     timezone: "Asia/Shanghai",
     rules: [],
   },
-  providers: [],
+  providers: [
+    {
+      name: "deepseek",
+      type: "anthropic",
+      options: { base_url: "https://api.deepseek.com/anthropic", api_key: "sk-xxxx" },
+      models: [
+        { id: "deepseek-v4-flash", alias: "deepseek-v4-flash" },
+        { id: "deepseek-v4-pro", alias: "deepseek-v4-pro" },
+      ],
+    },
+    {
+      name: "openai-compatible",
+      type: "openai-compatible",
+      options: { base_url: "https://api.xiaomimimo.com/v1", api_key: "sk-xxxx" },
+      models: [{ id: "mimo-v2.5", alias: "mimo-v2.5" }],
+    },
+  ],
 };

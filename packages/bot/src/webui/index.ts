@@ -6,7 +6,7 @@ import { basename, dirname, extname, posix, relative, resolve } from "node:path"
 import { lookup } from "mime-types";
 import { logger } from "@/logger";
 import { dataPath, projectPath } from "@/utils/path";
-import { config, ConfigValidationError, loadConfig, saveConfig } from "@/config";
+import { config, ConfigValidationError, saveConfig } from "@/config";
 import { delete_media_description, list_media_descriptions, set_media_description } from "@/database/media-cache";
 import type { MediaKind } from "@/message/types";
 import { IMAGE_CACHE_DIR, sanitizeImagePath, virtualToRealPath } from "@/utils/image-cache";
@@ -276,14 +276,7 @@ export function createApp() {
     }
   });
 
-  app.get("/api/config", (c) => {
-    try {
-      return c.json(loadConfig());
-    } catch (error) {
-      const response = errorResponse(error);
-      return c.json(response.body, response.status);
-    }
-  });
+  app.get("/api/config", (c) => c.json(config));
 
   app.put("/api/config", async (c) => {
     try {

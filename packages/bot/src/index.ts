@@ -1,7 +1,9 @@
 import { logger } from "@/logger";
+import { loadConfig } from "@/config";
 import { startWebUi } from "@/webui";
 
 if (import.meta.main) {
+  await loadConfig();
   const webUiPort = await startWebUi();
   if (typeof process.send === "function") {
     process.send({ type: "ready", port: webUiPort });
