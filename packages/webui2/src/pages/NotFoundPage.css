@@ -1,0 +1,23 @@
+.not-found-page {
+  display: grid;
+  min-height: calc(100svh - 3.5rem);
+  place-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.not-found-page p,
+.not-found-page h1 {
+  margin: 0;
+}
+
+.not-found-page p {
+  color: #666666;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.not-found-page a {
+  color: inherit;
+}
