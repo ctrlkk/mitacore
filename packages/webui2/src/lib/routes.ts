@@ -8,6 +8,7 @@ export const appRoutes = [
   { path: "/models", label: "模型配置" },
   { path: "/persona", label: "人设编辑器" },
   { path: "/knowledge", label: "知识图谱" },
+  { path: "/media", label: "媒体缓存" },
 ] as const satisfies readonly BreadcrumbItem[];
 
 export function getBreadcrumbItems(pathname: string): BreadcrumbItem[] {

@@ -10,6 +10,7 @@ const HomePage = lazyPage(async () => (await import("./pages/HomePage.tsx")).Hom
 const ModelConfigPage = lazyPage(async () => (await import("./pages/ModelConfigPage.tsx")).ModelConfigPage);
 const PersonaPage = lazyPage(async () => (await import("./pages/PersonaPage.tsx")).PersonaPage);
 const KnowledgeGraphPage = lazyPage(async () => (await import("./pages/KnowledgeGraphPage.tsx")).KnowledgeGraphPage);
+const MediaCachePage = lazyPage(async () => (await import("./pages/MediaCachePage.tsx")).MediaCachePage);
 const NotFoundPage = lazyPage(async () => (await import("./pages/NotFoundPage.tsx")).NotFoundPage);
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
           <Route path="models" element={<ModelConfigPage />} />
           <Route path="persona" element={<PersonaPage />} />
           <Route path="knowledge" element={<KnowledgeGraphPage />} />
+          <Route path="media" element={<MediaCachePage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

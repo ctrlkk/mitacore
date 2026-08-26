@@ -107,6 +107,40 @@ describe("App", () => {
     expect(screen.getByText("1 个链接")).toBeInTheDocument();
   });
 
+  it("显示媒体缓存并支持打开详情", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            media: [
+              {
+                filename: "forest.webp",
+                kind: "image",
+                path: "/images/forest.webp",
+                description: "一片晨雾中的森林",
+                size: 2048,
+                updated_at: 0,
+                url: "/api/media/forest.webp/content",
+              },
+            ],
+            pagination: { page: 1, page_size: 24, total: 1, total_pages: 1 },
+            summary: { total: 1, total_size: 2048 },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    renderApp("/media");
+
+    expect(await screen.findByRole("heading", { name: "媒体缓存" })).toBeInTheDocument();
+    expect(await screen.findByText("forest.webp")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看详情" }));
+
+    expect(await screen.findByRole("textbox", { name: "媒体转述" })).toHaveValue("一片晨雾中的森林");
+  });
+
   it("移动端可打开抽屉并通过内容层关闭", async () => {
     renderMobileApp();
 
