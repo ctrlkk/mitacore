@@ -1,4 +1,4 @@
-import { FlaskConicalIcon, HouseIcon } from "lucide-react";
+import { BrainCircuitIcon, FileText, HouseIcon, NetworkIcon } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import {
   Sidebar,
@@ -42,7 +42,7 @@ export function AppSidebarContent() {
         <SidebarGroup>
           <SidebarGroupLabel>导航</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="gap-2">
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={pathname === "/"}>
                   <Link to="/" onClick={handleNavigation}>
@@ -52,10 +52,26 @@ export function AppSidebarContent() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={pathname.startsWith("/tests")}>
-                  <Link to="/tests" onClick={handleNavigation}>
-                    <FlaskConicalIcon />
-                    <span>测试页</span>
+                <SidebarMenuButton asChild isActive={pathname === "/models"}>
+                  <Link to="/models" onClick={handleNavigation}>
+                    <BrainCircuitIcon />
+                    <span>模型配置</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={pathname === "/persona"}>
+                  <Link to="/persona" onClick={handleNavigation}>
+                    <FileText />
+                    <span>人设编辑器</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={pathname === "/knowledge"}>
+                  <Link to="/knowledge" onClick={handleNavigation}>
+                    <NetworkIcon />
+                    <span>知识图谱</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

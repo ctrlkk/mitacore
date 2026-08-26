@@ -5,10 +5,9 @@ export type BreadcrumbItem = {
 
 export const appRoutes = [
   { path: "/", label: "首页" },
-  { path: "/tests", label: "测试页" },
-  { path: "/tests/overview", label: "概览" },
-  { path: "/tests/scenes", label: "场景" },
-  { path: "/tests/scenes/preview", label: "预览" },
+  { path: "/models", label: "模型配置" },
+  { path: "/persona", label: "人设编辑器" },
+  { path: "/knowledge", label: "知识图谱" },
 ] as const satisfies readonly BreadcrumbItem[];
 
 export function getBreadcrumbItems(pathname: string): BreadcrumbItem[] {

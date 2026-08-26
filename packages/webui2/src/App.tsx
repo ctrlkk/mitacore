@@ -1,21 +1,34 @@
+import { lazy, Suspense, type ComponentType } from "react";
 import { Route, Routes } from "react-router";
-import { AppLayout } from "./layouts/AppLayout.tsx";
-import { HomePage } from "./pages/HomePage.tsx";
-import { NotFoundPage } from "./pages/NotFoundPage.tsx";
-import { TestIndexPage, TestOverviewPage, TestPreviewPage, TestScenesPage } from "./pages/TestPages.tsx";
+
+function lazyPage(load: () => Promise<ComponentType>) {
+  return lazy(async () => ({ default: await load() }));
+}
+
+const AppLayout = lazyPage(async () => (await import("./layouts/AppLayout.tsx")).AppLayout);
+const HomePage = lazyPage(async () => (await import("./pages/HomePage.tsx")).HomePage);
+const ModelConfigPage = lazyPage(async () => (await import("./pages/ModelConfigPage.tsx")).ModelConfigPage);
+const PersonaPage = lazyPage(async () => (await import("./pages/PersonaPage.tsx")).PersonaPage);
+const KnowledgeGraphPage = lazyPage(async () => (await import("./pages/KnowledgeGraphPage.tsx")).KnowledgeGraphPage);
+const NotFoundPage = lazyPage(async () => (await import("./pages/NotFoundPage.tsx")).NotFoundPage);
 
 function App() {
   return (
-    <Routes>
-      <Route element={<AppLayout />}>
-        <Route index element={<HomePage />} />
-        <Route path="tests" element={<TestIndexPage />} />
-        <Route path="tests/overview" element={<TestOverviewPage />} />
-        <Route path="tests/scenes" element={<TestScenesPage />} />
-        <Route path="tests/scenes/preview" element={<TestPreviewPage />} />
-        <Route path="*" element={<NotFoundPage />} />
-      </Route>
-    </Routes>
+    <Suspense
+      fallback={
+        <div className="flex min-h-svh items-center justify-center text-sm text-muted-foreground">正在加载页面</div>
+      }
+    >
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route index element={<HomePage />} />
+          <Route path="models" element={<ModelConfigPage />} />
+          <Route path="persona" element={<PersonaPage />} />
+          <Route path="knowledge" element={<KnowledgeGraphPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+    </Suspense>
   );
 }
 

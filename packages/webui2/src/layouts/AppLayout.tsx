@@ -106,7 +106,7 @@ function MobileAppShell() {
         className="relative z-10 flex min-h-svh w-full flex-1 flex-col bg-background touch-pan-y will-change-transform"
         {...drawerHandlers}
       >
-        <div inert={openMobile}>
+        <div inert={openMobile} className="flex min-h-svh flex-1 flex-col">
           <AppContent />
         </div>
         <button
@@ -134,7 +134,7 @@ function AppContent() {
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <SidebarTrigger className="-ml-1" />
         <Separator orientation="vertical" className="mr-2 h-4 data-vertical:self-center" />
-        <Breadcrumb className="min-w-0">
+        <Breadcrumb aria-label="面包屑" className="min-w-0">
           <BreadcrumbList className="flex-nowrap overflow-hidden">
             {breadcrumbItems.map((item, index) => {
               const isCurrentPage = index === breadcrumbItems.length - 1;
