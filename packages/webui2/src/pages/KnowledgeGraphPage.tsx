@@ -224,7 +224,7 @@ export function KnowledgeGraphPage() {
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">知识图谱</h1>
-          <p className="text-sm text-muted-foreground">通过笔记中的 Wiki 链接查看知识之间的关联。</p>
+          <p className="text-sm text-muted-foreground">data/workspace/notepad</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">{summary.total} 篇笔记</Badge>

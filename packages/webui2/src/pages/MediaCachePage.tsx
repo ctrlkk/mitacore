@@ -2,10 +2,7 @@ import { useDeferredValue, useEffect, useState } from "react";
 import {
   AudioLinesIcon,
   FileImageIcon,
-  FilmIcon,
-  ImageIcon,
   LoaderCircleIcon,
-  PencilIcon,
   RefreshCwIcon,
   SearchIcon,
   Trash2Icon,
@@ -24,7 +21,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -199,10 +203,21 @@ export function MediaCachePage() {
         </Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <SummaryCard label="缓存文件" value={String(summary.total)} hint="已识别的媒体资源" icon={FileImageIcon} />
-        <SummaryCard label="占用空间" value={formatBytes(summary.total_size)} hint="缓存目录总大小" icon={ImageIcon} />
-        <SummaryCard label="当前结果" value={String(pagination.total)} hint={search ? "匹配搜索条件" : "全部可浏览资源"} icon={FilmIcon} />
+      <div className="flex flex-wrap items-center rounded-xl border bg-muted/30 px-4 py-3 text-sm">
+        <span className="mr-4 text-muted-foreground">缓存概览</span>
+        <div className="flex items-center gap-2 pr-4 sm:border-r">
+          <FileImageIcon className="size-4 text-muted-foreground" />
+          <span className="text-muted-foreground">文件</span>
+          <strong className="font-semibold tabular-nums">{summary.total}</strong>
+        </div>
+        <div className="flex items-center gap-2 py-1 sm:border-r sm:px-4 sm:py-0">
+          <span className="text-muted-foreground">占用空间</span>
+          <strong className="font-semibold tabular-nums">{formatBytes(summary.total_size)}</strong>
+        </div>
+        <div className="flex items-center gap-2 py-1 sm:pl-4 sm:py-0">
+          <span className="text-muted-foreground">{search ? "匹配结果" : "当前结果"}</span>
+          <strong className="font-semibold tabular-nums">{pagination.total}</strong>
+        </div>
       </div>
 
       <Card>
@@ -238,7 +253,11 @@ export function MediaCachePage() {
             </Select>
           </div>
 
-          {error ? <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</p> : null}
+          {error ? (
+            <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
           {isLoading ? (
             <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground">
               <LoaderCircleIcon className="size-4 animate-spin" />
@@ -250,9 +269,14 @@ export function MediaCachePage() {
               <p className="text-sm">{search ? "没有匹配的媒体资源" : "媒体缓存还是空的"}</p>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               {media.map((item) => (
-                <MediaCard key={item.filename} media={item} onOpen={() => openEditor(item)} onDelete={() => setMediaToDelete(item)} />
+                <MediaCard
+                  key={item.filename}
+                  media={item}
+                  onOpen={() => openEditor(item)}
+                  onDelete={() => setMediaToDelete(item)}
+                />
               ))}
             </div>
           )}
@@ -304,7 +328,11 @@ export function MediaCachePage() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>取消</AlertDialogCancel>
             <AlertDialogAction variant="destructive" disabled={isDeleting} onClick={() => void deleteMedia()}>
-              {isDeleting ? <LoaderCircleIcon data-icon="inline-start" className="animate-spin" /> : <Trash2Icon data-icon="inline-start" />}
+              {isDeleting ? (
+                <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <Trash2Icon data-icon="inline-start" />
+              )}
               删除缓存
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -314,68 +342,73 @@ export function MediaCachePage() {
   );
 }
 
-function SummaryCard({ label, value, hint, icon: Icon }: { label: string; value: string; hint: string; icon: typeof FileImageIcon }) {
-  return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <Icon className="size-4" />
-          {label}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-1">
-        <strong className="text-2xl font-semibold tracking-tight">{value}</strong>
-        <span className="text-xs text-muted-foreground">{hint}</span>
-      </CardContent>
-    </Card>
-  );
-}
-
 function MediaCard({ media, onOpen, onDelete }: { media: CachedMedia; onOpen: () => void; onDelete: () => void }) {
   return (
-    <Card size="sm" className="min-w-0">
-      <MediaPreview media={media} />
-      <CardHeader>
-        <CardTitle className="truncate font-mono text-xs" title={media.filename}>
-          {media.filename}
-        </CardTitle>
-        <CardDescription className="flex items-center gap-2 text-xs">
-          <Badge variant="secondary">{mediaLabels[media.kind]}</Badge>
-          <span>{formatBytes(media.size)}</span>
-          <span>{formatDate(media.updated_at)}</span>
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="line-clamp-2 min-h-10 text-sm leading-5 text-muted-foreground">
-          {media.description || "尚未生成媒体转述"}
-        </p>
-      </CardContent>
-      <CardFooter className="justify-between gap-2">
-        <Button variant="outline" size="sm" onClick={onOpen}>
-          <PencilIcon data-icon="inline-start" />
-          查看详情
-        </Button>
-        <Button variant="ghost" size="icon-sm" aria-label={`删除 ${media.filename}`} onClick={onDelete}>
+    <Card size="sm" className="min-w-0 gap-2 py-0">
+      <button
+        type="button"
+        aria-label="查看详情"
+        className="group block w-full overflow-hidden text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        onClick={onOpen}
+      >
+        <MediaPreview media={media} />
+      </button>
+      <CardContent className="flex items-start gap-1 px-3 pb-3">
+        <div className="min-w-0 flex-1">
+          <CardTitle className="truncate font-mono text-xs" title={media.filename}>
+            {media.filename}
+          </CardTitle>
+          <CardDescription className="flex items-center gap-1 text-xs">
+            <Badge variant="secondary">{mediaLabels[media.kind]}</Badge>
+            <span>{formatBytes(media.size)}</span>
+          </CardDescription>
+          <p className="line-clamp-1 text-xs text-muted-foreground">{media.description || "尚未生成媒体转述"}</p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0"
+          aria-label={`删除 ${media.filename}`}
+          onClick={onDelete}
+        >
           <Trash2Icon />
         </Button>
-      </CardFooter>
+      </CardContent>
     </Card>
   );
 }
 
 function MediaPreview({ media, controls = false }: { media: CachedMedia; controls?: boolean }) {
   if (media.kind === "image") {
-    return <img className="aspect-video w-full object-cover" src={media.url} alt={media.description || media.filename} loading="lazy" />;
+    return (
+      <img
+        className="aspect-video w-full object-cover"
+        src={media.url}
+        alt={media.description || media.filename}
+        loading="lazy"
+      />
+    );
   }
 
   if (media.kind === "video") {
-    return <video className="aspect-video w-full bg-muted object-contain" src={media.url} controls={controls} preload="metadata" />;
+    return (
+      <video
+        className="aspect-video w-full bg-muted object-contain"
+        src={media.url}
+        controls={controls}
+        preload="metadata"
+      />
+    );
   }
 
   return (
     <div className="flex aspect-video flex-col items-center justify-center gap-3 bg-muted px-4 text-muted-foreground">
       <AudioLinesIcon className="size-9" />
-      {controls ? <audio className="w-full" src={media.url} controls preload="metadata" /> : <span className="text-sm">音频文件</span>}
+      {controls ? (
+        <audio className="w-full" src={media.url} controls preload="metadata" />
+      ) : (
+        <span className="text-sm">音频文件</span>
+      )}
     </div>
   );
 }
@@ -420,7 +453,7 @@ function MediaDialog({
                 id="media-description"
                 value={description}
                 placeholder="描述媒体中的主体、场景或语音内容"
-                className="min-h-32 resize-y"
+                className="min-h-20 resize-y text-sm"
                 onChange={(event) => onDescriptionChange(event.target.value)}
               />
             </label>

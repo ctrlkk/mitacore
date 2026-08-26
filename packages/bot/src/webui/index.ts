@@ -18,7 +18,7 @@ import {
   listStickers,
   removeSticker,
 } from "@/message/stickers";
-import { streamStickerSuggestion } from "@/agents/stickers";
+import { streamStickerFormSuggestion } from "@/agents/stickers";
 import { z } from "zod";
 import { channelController } from "@/app/channel-controller";
 
@@ -384,7 +384,7 @@ export function createApp() {
       const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
           try {
-            for await (const event of streamStickerSuggestion(image, model, c.req.raw.signal)) {
+            for await (const event of streamStickerFormSuggestion(image, model, c.req.raw.signal)) {
               controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
             }
           } catch (error) {

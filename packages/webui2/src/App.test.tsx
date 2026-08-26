@@ -141,6 +141,91 @@ describe("App", () => {
     expect(await screen.findByRole("textbox", { name: "媒体转述" })).toHaveValue("一片晨雾中的森林");
   });
 
+  it("显示贴纸管理路由", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            stickers: [
+              {
+                name: "开心",
+                filename: "开心.webp",
+                description: "角色开心地比出胜利手势。",
+                size: 2048,
+                updated_at: 0,
+                url: "/api/stickers/%E5%BC%80%E5%BF%83/content",
+              },
+            ],
+            summary: { total: 1, limit: 30 },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    renderApp("/stickers");
+
+    expect(await screen.findByRole("heading", { name: "贴纸管理" })).toBeInTheDocument();
+    expect(await screen.findByText("[开心]")).toBeInTheDocument();
+    expect(screen.getByText("角色开心地比出胜利手势。")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "预览贴纸 [开心]" }));
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent("[开心]");
+  });
+
+  it("可使用 AI 辅助填写贴纸表单", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/stickers") {
+          return Promise.resolve(
+            new Response(JSON.stringify({ stickers: [], summary: { total: 0, limit: 30 } }), {
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        if (url === "/api/config") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                providers: [{ models: [{ alias: "vision-model" }] }],
+                models: { multimodal_image: "vision-model" },
+              }),
+              { headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url === "/api/stickers/suggestion") {
+          return Promise.resolve(
+            new Response(
+              [
+                JSON.stringify({ type: "status", message: "正在分析图片…" }),
+                JSON.stringify({ type: "reasoning", delta: "识别到开心表情。" }),
+                JSON.stringify({ type: "result", suggestion: { name: "开心", description: "表达开心和庆祝的场景。" } }),
+              ].join("\n"),
+            ),
+          );
+        }
+        return Promise.reject(new Error(`意外请求：${url}`));
+      }),
+    );
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:sticker-preview");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    renderApp("/stickers");
+
+    fireEvent.click(await screen.findByRole("button", { name: "添加贴纸" }));
+    fireEvent.change(screen.getByLabelText("贴纸图片"), {
+      target: { files: [new File(["sticker"], "happy.png", { type: "image/png" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "生成建议" }));
+
+    expect(await screen.findByDisplayValue("开心")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("表达开心和庆祝的场景。")).toBeInTheDocument();
+    expect(screen.getByText("分析过程")).toBeInTheDocument();
+  });
+
   it("移动端可打开抽屉并通过内容层关闭", async () => {
     renderMobileApp();
 
