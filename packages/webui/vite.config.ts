@@ -1,17 +1,20 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from "vitest/config";
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
+import babel from "@rolldown/plugin-babel";
 import { fileURLToPath, URL } from "node:url";
-import UnoCSS from "unocss/vite";
 
+// https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), UnoCSS()],
+  plugins: [tailwindcss(), react(), babel({ presets: [reactCompilerPreset()] })],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
-  build: {
-    minify: "esbuild",
+  test: {
+    environment: "jsdom",
+    setupFiles: "./src/test/setup.ts",
   },
   server: {
     proxy: {

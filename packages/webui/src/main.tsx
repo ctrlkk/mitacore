@@ -1,15 +1,21 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
-import "antd/dist/reset.css";
-import "virtual:uno.css";
-import App from "@/App";
-import "@/style.css";
+import { HashRouter } from "react-router";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import "./index.css";
+import App from "./App.tsx";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange enableSystem>
+      <TooltipProvider delayDuration={300}>
+        <HashRouter>
+          <App />
+        </HashRouter>
+        <Toaster />
+      </TooltipProvider>
+    </ThemeProvider>
   </StrictMode>,
 );
