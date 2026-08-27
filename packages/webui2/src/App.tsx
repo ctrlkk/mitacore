@@ -7,6 +7,9 @@ function lazyPage(load: () => Promise<ComponentType>) {
 
 const AppLayout = lazyPage(async () => (await import("./layouts/AppLayout.tsx")).AppLayout);
 const HomePage = lazyPage(async () => (await import("./pages/HomePage.tsx")).HomePage);
+const OneBotChannelPage = lazyPage(async () => (await import("./pages/OneBotChannelPage.tsx")).OneBotChannelPage);
+const WeixinChannelPage = lazyPage(async () => (await import("./pages/WeixinChannelPage.tsx")).WeixinChannelPage);
+const QQBotChannelPage = lazyPage(async () => (await import("./pages/QQBotChannelPage.tsx")).QQBotChannelPage);
 const ModelConfigPage = lazyPage(async () => (await import("./pages/ModelConfigPage.tsx")).ModelConfigPage);
 const PersonaPage = lazyPage(async () => (await import("./pages/PersonaPage.tsx")).PersonaPage);
 const KnowledgeGraphPage = lazyPage(async () => (await import("./pages/KnowledgeGraphPage.tsx")).KnowledgeGraphPage);
@@ -24,6 +27,9 @@ function App() {
       <Routes>
         <Route element={<AppLayout />}>
           <Route index element={<HomePage />} />
+          <Route path="channels/onebot" element={<OneBotChannelPage />} />
+          <Route path="channels/weixin" element={<WeixinChannelPage />} />
+          <Route path="channels/qqbot" element={<QQBotChannelPage />} />
           <Route path="models" element={<ModelConfigPage />} />
           <Route path="persona" element={<PersonaPage />} />
           <Route path="knowledge" element={<KnowledgeGraphPage />} />

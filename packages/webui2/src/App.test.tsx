@@ -42,7 +42,59 @@ describe("App", () => {
   it("显示首页", async () => {
     renderApp();
 
-    expect(await screen.findByRole("heading", { name: "WebUI" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "渠道管理" })).toBeInTheDocument();
+  });
+
+  it("显示 OneBot 配置路由", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            napcat: {
+              enabled: false,
+              wake_keywords: [],
+              groups: { mode: "blacklist", ids: [] },
+              private_chats: { mode: "blacklist", ids: [] },
+              group_members: { mode: "blacklist", ids: [] },
+              admins: [],
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    renderApp("/channels/onebot");
+
+    expect(await screen.findByRole("heading", { name: "OneBot" })).toBeInTheDocument();
+  });
+
+  it("显示微信配置路由", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ weixin: { enabled: false } }), {
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    renderApp("/channels/weixin");
+
+    expect(await screen.findByRole("heading", { name: "微信" })).toBeInTheDocument();
+  });
+
+  it("显示 QQ Bot 配置路由", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ qqbot: { enabled: false, admins: [] } }), {
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    renderApp("/channels/qqbot");
+
+    expect(await screen.findByRole("heading", { name: "QQ Bot" })).toBeInTheDocument();
   });
 
   it("为未知路由显示 404，并可返回首页", async () => {
@@ -52,7 +104,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("link", { name: "返回首页" }));
 
-    expect(await screen.findByRole("heading", { name: "WebUI" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "渠道管理" })).toBeInTheDocument();
   });
 
   it("显示人设编辑器路由", async () => {
@@ -244,9 +296,9 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Toggle Sidebar" }));
     const drawer = await screen.findByRole("complementary", { name: "主导航" });
 
-    fireEvent.click(within(drawer).getByRole("link", { name: "首页" }));
+    fireEvent.click(within(drawer).getByRole("link", { name: "渠道管理" }));
 
-    expect(await screen.findByRole("heading", { name: "WebUI" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "渠道管理" })).toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "主导航" })).not.toBeInTheDocument();
   });
 

@@ -4,7 +4,10 @@ export type BreadcrumbItem = {
 };
 
 export const appRoutes = [
-  { path: "/", label: "首页" },
+  { path: "/", label: "渠道管理" },
+  { path: "/channels/onebot", label: "OneBot" },
+  { path: "/channels/weixin", label: "微信" },
+  { path: "/channels/qqbot", label: "QQ Bot" },
   { path: "/models", label: "模型配置" },
   { path: "/persona", label: "人设编辑器" },
   { path: "/knowledge", label: "知识图谱" },

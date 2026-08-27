@@ -47,7 +47,7 @@ export function AppSidebarContent() {
                 <SidebarMenuButton asChild isActive={pathname === "/"}>
                   <Link to="/" onClick={handleNavigation}>
                     <HouseIcon />
-                    <span>首页</span>
+                    <span>渠道管理</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
