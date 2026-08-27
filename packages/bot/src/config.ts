@@ -2,7 +2,6 @@ import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { parse, stringify, type TomlTableWithoutBigInt } from "smol-toml";
 import { z } from "zod";
 import { projectPath } from "./utils/path";
-import { isValidTimezone } from "shared/time";
 
 const providerType = z.enum(["anthropic", "openai-responses", "openai-compatible", "deepseek"]);
 
@@ -41,7 +40,7 @@ const defaultModelConfig = {
   multimodal_video: "mimo-v2.5",
   multimodal_audio: "mimo-v2.5",
 };
-const defaultModelSchedule = { timezone: "Asia/Shanghai", rules: [] };
+const defaultModelSchedule = { rules: [] };
 const defaultProviders = [
   {
     name: "deepseek",
@@ -122,7 +121,6 @@ const modelScheduleRuleSchema = z
   });
 
 const modelScheduleSchema = z.object({
-  timezone: z.string().trim().min(1, "时区不能为空").describe("用于匹配时段的 IANA 时区"),
   rules: z.array(modelScheduleRuleSchema).max(50, "最多配置 50 条时段规则").default([]).describe("模型时段规则"),
 });
 
@@ -161,10 +159,6 @@ const schema = z
     model_schedule: modelScheduleSchema.default(defaultModelSchedule).describe("按时段切换模型的配置"),
   })
   .superRefine((config, ctx) => {
-    if (!isValidTimezone(config.model_schedule.timezone)) {
-      ctx.addIssue({ code: "custom", path: ["model_schedule", "timezone"], message: "不是有效的 IANA 时区" });
-    }
-
     const hasEnabledChannel = config.napcat.enabled || config.weixin.enabled || config.qqbot.enabled;
     if (!hasEnabledChannel) return;
 

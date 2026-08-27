@@ -81,7 +81,7 @@ type ScheduleRule = {
 type BotConfig = Record<string, unknown> & {
   providers: ModelProvider[];
   models: Record<ModelRole, string>;
-  model_schedule: { timezone: string; rules: ScheduleRule[] };
+  model_schedule: { rules: ScheduleRule[] };
 };
 
 const roleDefinitions: Array<{ key: ModelRole; label: string; description: string }> = [
@@ -275,7 +275,9 @@ export function ModelConfigPage() {
                 按时段切换
               </h2>
             </div>
-            <p className="text-sm text-muted-foreground">时段内填写的职责会覆盖上方的默认分工。</p>
+            <p className="text-sm text-muted-foreground">
+              按服务器本地时区匹配，时段内填写的职责会覆盖上方的默认分工。
+            </p>
           </div>
           <Button
             variant="outline"
@@ -294,19 +296,6 @@ export function ModelConfigPage() {
           </Button>
         </div>
         <div className="flex flex-col gap-4 p-4 sm:p-5">
-          <label className="flex max-w-sm flex-col gap-2 text-sm font-medium">
-            时区
-            <Input
-              value={config.model_schedule.timezone}
-              placeholder="Asia/Shanghai"
-              onChange={(event) =>
-                updateConfig((current) => ({
-                  ...current,
-                  model_schedule: { ...current.model_schedule, timezone: event.target.value },
-                }))
-              }
-            />
-          </label>
           {config.model_schedule.rules.length === 0 ? (
             <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
               尚未设置时段覆盖规则。

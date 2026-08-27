@@ -44,7 +44,6 @@ export type Config = {
     string
   >;
   model_schedule: {
-    timezone: string;
     rules: {
       start: string;
       end: string;
@@ -110,7 +109,6 @@ export const defaultConfig: Config = {
     multimodal_audio: "mimo-v2.5",
   },
   model_schedule: {
-    timezone: "Asia/Shanghai",
     rules: [],
   },
   providers: [

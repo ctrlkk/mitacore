@@ -3,7 +3,6 @@ import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { config, type Config, type ModelRole } from "@/config";
-import { getTimeInTimezone } from "shared/time";
 import type { LanguageModel } from "ai";
 
 type ProviderFn = (modelId: string) => LanguageModel;
@@ -15,14 +14,14 @@ function timeMatchesRule(start: string, end: string, currentTime: string): boole
   return currentTime >= start || currentTime < end;
 }
 
-/** 根据当前时段解析指定职责实际使用的模型别名。 */
+/** 根据服务器本地时段解析指定职责实际使用的模型别名。 */
 export function resolveModelAlias(
   modelConfig: Pick<Config, "models" | "model_schedule">,
   role: ModelRole,
   now = new Date(),
 ): string {
   const { model_schedule: schedule } = modelConfig;
-  const currentTime = getTimeInTimezone(now, schedule.timezone);
+  const currentTime = now.toTimeString().slice(0, 5);
   return schedule.rules.reduce((alias, rule) => {
     if (!timeMatchesRule(rule.start, rule.end, currentTime)) return alias;
     return rule.models[role] ?? alias;
