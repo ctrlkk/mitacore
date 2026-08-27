@@ -1,11 +1,11 @@
-import { lazy, Suspense, type ComponentType } from "react";
+import { lazy, type ComponentType } from "react";
 import { Route, Routes } from "react-router";
+import { AppLayout } from "./layouts/AppLayout.tsx";
 
 function lazyPage(load: () => Promise<ComponentType>) {
   return lazy(async () => ({ default: await load() }));
 }
 
-const AppLayout = lazyPage(async () => (await import("./layouts/AppLayout.tsx")).AppLayout);
 const HomePage = lazyPage(async () => (await import("./pages/HomePage.tsx")).HomePage);
 const OneBotChannelPage = lazyPage(async () => (await import("./pages/OneBotChannelPage.tsx")).OneBotChannelPage);
 const WeixinChannelPage = lazyPage(async () => (await import("./pages/WeixinChannelPage.tsx")).WeixinChannelPage);
@@ -19,26 +19,20 @@ const NotFoundPage = lazyPage(async () => (await import("./pages/NotFoundPage.ts
 
 function App() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-svh items-center justify-center text-sm text-muted-foreground">正在加载页面</div>
-      }
-    >
-      <Routes>
-        <Route element={<AppLayout />}>
-          <Route index element={<HomePage />} />
-          <Route path="channels/onebot" element={<OneBotChannelPage />} />
-          <Route path="channels/weixin" element={<WeixinChannelPage />} />
-          <Route path="channels/qqbot" element={<QQBotChannelPage />} />
-          <Route path="models" element={<ModelConfigPage />} />
-          <Route path="persona" element={<PersonaPage />} />
-          <Route path="knowledge" element={<KnowledgeGraphPage />} />
-          <Route path="media" element={<MediaCachePage />} />
-          <Route path="stickers" element={<StickersPage />} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Route>
-      </Routes>
-    </Suspense>
+    <Routes>
+      <Route element={<AppLayout />}>
+        <Route index element={<HomePage />} />
+        <Route path="channels/onebot" element={<OneBotChannelPage />} />
+        <Route path="channels/weixin" element={<WeixinChannelPage />} />
+        <Route path="channels/qqbot" element={<QQBotChannelPage />} />
+        <Route path="models" element={<ModelConfigPage />} />
+        <Route path="persona" element={<PersonaPage />} />
+        <Route path="knowledge" element={<KnowledgeGraphPage />} />
+        <Route path="media" element={<MediaCachePage />} />
+        <Route path="stickers" element={<StickersPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+    </Routes>
   );
 }
 

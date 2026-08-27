@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, Suspense, useEffect, useState } from "react";
 import { MoreHorizontalIcon } from "lucide-react";
 import { Link, Outlet, useLocation } from "react-router";
 import { AppSidebar, AppSidebarContent } from "@/components/AppSidebar";
@@ -186,7 +186,13 @@ function AppContent() {
         </div>
       </header>
       <main className="flex min-h-0 flex-1 flex-col">
-        <Outlet />
+        <Suspense
+          fallback={
+            <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">正在加载页面</div>
+          }
+        >
+          <Outlet />
+        </Suspense>
       </main>
     </>
   );
