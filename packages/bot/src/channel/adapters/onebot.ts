@@ -103,9 +103,18 @@ function guessFileType(fileName: string): "image" | "video" | "audio" | "other" 
 async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<typeof createBot>) {
   let wsUrl: string;
   let accessToken: string;
+  let qqIsOnline = false;
+  let hasLoggedIn = false;
+  let oneBotConnected = false;
+  let oneBotReady = false;
 
   if (config.napcat.qq_id) {
-    channelController.updateNapcat({ status: "starting", error: undefined });
+    channelController.updateNapcat({
+      status: "starting",
+      qrcode_content: undefined,
+      login_error: undefined,
+      error: undefined,
+    });
     try {
       const supervisorName = `napcat-supervisor${process.platform === "win32" ? ".exe" : ""}`;
       const result = await startBuiltinNapCat({
@@ -119,15 +128,53 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
         ],
         logger,
         onWebUiReady: (embed_url) =>
-          channelController.updateNapcat({ status: "starting", embed_url, error: undefined }),
+          channelController.updateNapcat({ status: "starting", embed_url, login_error: undefined, error: undefined }),
+        onLoginStatus: ({ isLoggedIn, isOffline, qrcodeContent, loginError }) => {
+          if (isLoggedIn && !isOffline) {
+            qqIsOnline = true;
+            hasLoggedIn = true;
+            channelController.updateNapcat({
+              status: oneBotConnected && oneBotReady ? "ready" : "connecting",
+              qrcode_content: undefined,
+              login_error: undefined,
+              error: undefined,
+            });
+            return;
+          }
+
+          qqIsOnline = false;
+          if (hasLoggedIn) {
+            channelController.updateNapcat({
+              status: "offline",
+              qrcode_content: undefined,
+              login_error: loginError,
+              error: undefined,
+            });
+            return;
+          }
+
+          channelController.updateNapcat({
+            status: "waiting_qr",
+            qrcode_content: qrcodeContent,
+            login_error: loginError,
+            error: undefined,
+          });
+        },
       });
       wsUrl = result.wsUrl;
       accessToken = result.accessToken;
-      channelController.updateNapcat({ status: "ready", embed_url: result.webuiUrl });
+      channelController.updateNapcat({
+        status: "connecting",
+        qrcode_content: undefined,
+        login_error: undefined,
+        embed_url: result.webuiUrl,
+      });
     } catch (error) {
       channelController.updateNapcat({
         status: "failed",
+        qrcode_content: undefined,
         embed_url: undefined,
+        login_error: undefined,
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -135,22 +182,78 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
   } else if (config.napcat.ws_url && config.napcat.token) {
     wsUrl = config.napcat.ws_url;
     accessToken = config.napcat.token;
-    channelController.updateNapcat({ status: "external", embed_url: undefined, error: undefined });
+    channelController.updateNapcat({
+      status: "external",
+      qrcode_content: undefined,
+      embed_url: undefined,
+      login_error: undefined,
+      error: undefined,
+    });
     logger.info({ wsUrl }, "使用外置 NapCat");
   } else {
     const message = "NapCat 必须配置 qq_id，或同时配置 ws_url 和 token；请完成配置后重启程序";
-    channelController.updateNapcat({ status: "failed", embed_url: undefined, error: message });
+    channelController.updateNapcat({
+      status: "failed",
+      qrcode_content: undefined,
+      embed_url: undefined,
+      login_error: undefined,
+      error: message,
+    });
     logger.warn(message);
     return;
   }
 
   const bot = new OneBotClient({ url: wsUrl, accessToken, reconnect: true });
-  await bot.connect();
+  bot.onOpen(() => {
+    oneBotConnected = true;
+    if (config.napcat.qq_id && qqIsOnline && oneBotReady) {
+      channelController.updateNapcat({ status: "ready", error: undefined });
+    }
+  });
+  bot.onClose(() => {
+    oneBotConnected = false;
+    if (config.napcat.qq_id && qqIsOnline && oneBotReady) {
+      channelController.updateNapcat({ status: "connecting" });
+    }
+  });
+  bot.onNotice("bot_offline", () => {
+    if (!config.napcat.qq_id) return;
+    qqIsOnline = false;
+    hasLoggedIn = true;
+    channelController.updateNapcat({
+      status: "offline",
+      qrcode_content: undefined,
+      login_error: undefined,
+      error: undefined,
+    });
+    logger.warn("NapCat QQ 账号已下线");
+  });
+  let selfId: string;
+  try {
+    await bot.connect();
 
-  const user = await bot.getLoginInfo();
-  const selfId = String(user.user_id);
-  ensureUserAlias("onebot", selfId, user.nickname);
-  logger.info({ selfId, nickname: user.nickname }, "Bot 已连接并运行");
+    const user = await bot.getLoginInfo();
+    selfId = String(user.user_id);
+    ensureUserAlias("onebot", selfId, user.nickname);
+    if (config.napcat.qq_id) {
+      oneBotReady = true;
+      channelController.updateNapcat({
+        status: qqIsOnline ? "ready" : "offline",
+        qrcode_content: undefined,
+        login_error: undefined,
+        error: undefined,
+      });
+    }
+    logger.info({ selfId, nickname: user.nickname }, "Bot 已连接并运行");
+  } catch (error) {
+    if (config.napcat.qq_id) {
+      channelController.updateNapcat({
+        status: "failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    throw error;
+  }
 
   bot.onMessage(async (event, ctx) => {
     const segments = event.message;

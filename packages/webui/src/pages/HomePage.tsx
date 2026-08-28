@@ -11,6 +11,7 @@ type ChannelStatus =
   | "connecting"
   | "starting"
   | "ready"
+  | "offline"
   | "external"
   | "failed";
 
@@ -36,6 +37,7 @@ const statusLabels: Record<ChannelStatus, string> = {
   connecting: "正在连接",
   starting: "正在启动",
   ready: "已连接",
+  offline: "QQ 已下线",
   external: "外部连接",
   failed: "连接失败",
 };
@@ -202,7 +204,7 @@ function StatusBadge({ status }: { status: ChannelStatus | undefined }) {
           status === "scanned" ||
           status === "waiting_verify_code"
         ? "border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-300"
-        : status === "failed"
+        : status === "offline" || status === "failed"
           ? "border-transparent bg-destructive/15 text-destructive"
           : "border-transparent bg-muted text-muted-foreground";
 

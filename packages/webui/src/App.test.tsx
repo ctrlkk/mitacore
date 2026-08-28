@@ -99,6 +99,93 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "OneBot" })).toBeInTheDocument();
   });
 
+  it("显示内置 NapCat 的登录二维码", async () => {
+    const listeners = new Map<string, EventListener>();
+    class MockEventSource {
+      addEventListener(type: string, listener: EventListener) {
+        listeners.set(type, listener);
+      }
+
+      close = vi.fn();
+    }
+    vi.stubGlobal("EventSource", MockEventSource);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            napcat: {
+              enabled: true,
+              qq_id: "123456",
+              wake_keywords: [],
+              groups: { mode: "blacklist", ids: [] },
+              private_chats: { mode: "blacklist", ids: [] },
+              group_members: { mode: "blacklist", ids: [] },
+              admins: [],
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    renderApp("/channels/onebot");
+
+    await screen.findByRole("heading", { name: "OneBot" });
+    await waitFor(() => expect(listeners.get("runtime")).toBeDefined());
+    listeners.get("runtime")!(
+      new MessageEvent("runtime", {
+        data: JSON.stringify({
+          napcat: {
+            status: "waiting_qr",
+            qrcode_content: "https://qrcode.example.test/login",
+          },
+        }),
+      }),
+    );
+
+    expect(await screen.findByRole("heading", { name: "使用 QQ 扫码登录" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "在新窗口打开登录页" })).not.toBeInTheDocument();
+  });
+
+  it("显示 NapCat QQ 账号已下线状态", async () => {
+    const listeners = new Map<string, EventListener>();
+    class MockEventSource {
+      addEventListener(type: string, listener: EventListener) {
+        listeners.set(type, listener);
+      }
+
+      close = vi.fn();
+    }
+    vi.stubGlobal("EventSource", MockEventSource);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            napcat: {
+              enabled: true,
+              qq_id: "123456",
+              wake_keywords: [],
+              groups: { mode: "blacklist", ids: [] },
+              private_chats: { mode: "blacklist", ids: [] },
+              group_members: { mode: "blacklist", ids: [] },
+              admins: [],
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    renderApp("/channels/onebot");
+
+    await screen.findByRole("heading", { name: "OneBot" });
+    await waitFor(() => expect(listeners.get("runtime")).toBeDefined());
+    listeners.get("runtime")!(new MessageEvent("runtime", { data: JSON.stringify({ napcat: { status: "offline" } }) }));
+
+    expect(await screen.findByText("QQ 账号已下线，请在 QQ 中重新登录或重新扫码。")).toBeInTheDocument();
+    expect(screen.getByText("QQ 已下线")).toBeInTheDocument();
+  });
+
   it("显示微信配置路由", async () => {
     vi.stubGlobal(
       "fetch",

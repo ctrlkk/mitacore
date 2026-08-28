@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { CircleAlertIcon, LoaderCircleIcon, RefreshCwIcon, SaveIcon, XIcon } from "lucide-react";
+import { CircleAlertIcon, ExternalLinkIcon, LoaderCircleIcon, RefreshCwIcon, SaveIcon, XIcon } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,10 +27,16 @@ type BotConfig = Record<string, unknown> & {
   napcat: OneBotConfig;
 };
 
-type NapCatStatus = "idle" | "starting" | "ready" | "external" | "failed";
+type NapCatStatus = "idle" | "starting" | "waiting_qr" | "connecting" | "ready" | "offline" | "external" | "failed";
 
 type RuntimeSnapshot = {
-  napcat: { status: NapCatStatus; embed_url?: string; error?: string };
+  napcat: {
+    status: NapCatStatus;
+    qrcode_content?: string;
+    embed_url?: string;
+    login_error?: string;
+    error?: string;
+  };
 };
 
 type ConnectionMode = "builtin" | "external";
@@ -48,7 +55,10 @@ const emptyOneBotConfig: OneBotConfig = {
 const statusLabels: Record<NapCatStatus, string> = {
   idle: "等待启动",
   starting: "正在启动",
+  waiting_qr: "等待扫码",
+  connecting: "正在连接",
   ready: "已连接",
+  offline: "QQ 已下线",
   external: "外部连接",
   failed: "连接失败",
 };
@@ -208,20 +218,30 @@ export function OneBotChannelPage() {
               {mode === "builtin" ? "内置 NapCat" : `外部 WebSocket · ${getEndpoint(onebot?.ws_url)}`}
             </p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-label="启用 OneBot 渠道"
-            aria-checked={isEnabled}
-            disabled={!onebot}
-            className="group flex h-8 items-center gap-2 px-1 text-sm text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            onClick={() => updateOneBot((current) => ({ ...current, enabled: !current.enabled }))}
-          >
-            <span>{isEnabled ? "已启用" : "未启用"}</span>
-            <span className="flex h-5 w-9 items-center rounded-full bg-muted p-0.5 transition-colors group-aria-checked:bg-primary">
-              <span className="size-4 rounded-full bg-background shadow-sm transition-transform group-aria-checked:translate-x-4" />
-            </span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {runtime?.napcat.embed_url ? (
+              <Button asChild variant="outline" size="sm">
+                <a href={runtime.napcat.embed_url} target="_blank" rel="noreferrer">
+                  <ExternalLinkIcon data-icon="inline-start" />
+                  猫猫后台
+                </a>
+              </Button>
+            ) : null}
+            <button
+              type="button"
+              role="switch"
+              aria-label="启用 OneBot 渠道"
+              aria-checked={isEnabled}
+              disabled={!onebot}
+              className="group flex h-8 items-center gap-2 px-1 text-sm text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => updateOneBot((current) => ({ ...current, enabled: !current.enabled }))}
+            >
+              <span>{isEnabled ? "已启用" : "未启用"}</span>
+              <span className="flex h-5 w-9 items-center rounded-full bg-muted p-0.5 transition-colors group-aria-checked:bg-primary">
+                <span className="size-4 rounded-full bg-background shadow-sm transition-transform group-aria-checked:translate-x-4" />
+              </span>
+            </button>
+          </div>
         </div>
 
         {runtime?.napcat.error ? (
@@ -242,6 +262,8 @@ export function OneBotChannelPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-6 p-4 sm:p-5">
+            <NapCatLoginPanel enabled={isEnabled} mode={mode} runtime={runtime?.napcat} />
+
             <section className="grid gap-3" aria-labelledby="connection-settings-title">
               <div className="flex flex-col gap-1">
                 <h3 id="connection-settings-title" className="text-sm font-medium">
@@ -359,9 +381,9 @@ function StatusBadge({ status, enabled }: { status: NapCatStatus; enabled: boole
   const className =
     status === "ready" || status === "external"
       ? "border-transparent bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-      : status === "starting"
+      : status === "starting" || status === "waiting_qr" || status === "connecting"
         ? "border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-300"
-        : status === "failed"
+        : status === "offline" || status === "failed"
           ? "border-transparent bg-destructive/15 text-destructive"
           : "border-transparent bg-muted text-muted-foreground";
 
@@ -370,6 +392,81 @@ function StatusBadge({ status, enabled }: { status: NapCatStatus; enabled: boole
       {isInactive ? "未启用" : statusLabels[status]}
     </Badge>
   );
+}
+
+function NapCatLoginPanel({
+  enabled,
+  mode,
+  runtime,
+}: {
+  enabled: boolean;
+  mode: ConnectionMode;
+  runtime: RuntimeSnapshot["napcat"] | undefined;
+}) {
+  if (mode !== "builtin") return null;
+
+  const status = runtime?.status ?? "idle";
+  if (!enabled && status === "idle") {
+    return (
+      <p className="rounded-lg bg-muted/60 px-3 py-2.5 text-sm text-muted-foreground">
+        启用渠道并保存重启后，可在此处使用 QQ 扫码登录。
+      </p>
+    );
+  }
+
+  if (status === "waiting_qr" && runtime?.qrcode_content) {
+    return (
+      <section
+        className="grid gap-4 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+        aria-labelledby="napcat-login-title"
+      >
+        <div className="flex flex-col gap-1">
+          <h3 id="napcat-login-title" className="text-sm font-medium">
+            使用 QQ 扫码登录
+          </h3>
+          <p className="text-xs leading-5 text-muted-foreground">登录成功后，OneBot 会自动连接。</p>
+          {runtime.login_error ? <p className="text-xs text-destructive">{runtime.login_error}</p> : null}
+        </div>
+        <div className="justify-self-center rounded-lg bg-white p-3">
+          <QRCodeSVG value={runtime.qrcode_content} size={164} level="M" />
+        </div>
+      </section>
+    );
+  }
+
+  if (status === "waiting_qr") {
+    return (
+      <p className="rounded-lg bg-muted/60 px-3 py-2.5 text-sm text-muted-foreground">
+        {runtime?.login_error ?? "正在获取 QQ 登录二维码。"}
+      </p>
+    );
+  }
+
+  if (status === "connecting") {
+    return (
+      <p className="rounded-lg bg-amber-500/10 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-200">
+        已检测到 QQ 登录，OneBot 正在连接。
+      </p>
+    );
+  }
+
+  if (status === "ready") {
+    return (
+      <p className="rounded-lg bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-800 dark:text-emerald-200">
+        QQ 已登录，OneBot 已连接。
+      </p>
+    );
+  }
+
+  if (status === "offline") {
+    return (
+      <p className="rounded-lg bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+        QQ 账号已下线，请在 QQ 中重新登录或重新扫码。
+      </p>
+    );
+  }
+
+  return null;
 }
 
 function TagInput({
