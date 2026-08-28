@@ -43,16 +43,16 @@ const defaultModelConfig = {
 const defaultModelSchedule = { rules: [] };
 const defaultProviders = [
   {
-    name: "deepseek",
-    type: "anthropic" as const,
-    options: { base_url: "https://api.deepseek.com/anthropic", api_key: "sk-xxxx" },
+    name: "deepseek官网",
+    type: "deepseek" as const,
+    options: { base_url: "https://api.deepseek.com/v1", api_key: "sk-xxxx" },
     models: [
       { id: "deepseek-v4-flash", alias: "deepseek-v4-flash" },
       { id: "deepseek-v4-pro", alias: "deepseek-v4-pro" },
     ],
   },
   {
-    name: "openai-compatible",
+    name: "小米Mimo",
     type: "openai-compatible" as const,
     options: { base_url: "https://api.xiaomimimo.com/v1", api_key: "sk-xxxx" },
     models: [{ id: "mimo-v2.5", alias: "mimo-v2.5" }],
