@@ -375,7 +375,7 @@ function MediaPreview({ media, controls = false }: { media: CachedMedia; control
   if (media.kind === "image") {
     return (
       <img
-        className="aspect-video w-full object-cover"
+        className={`aspect-video w-full ${controls ? "bg-muted object-contain" : "object-cover"}`}
         src={media.url}
         alt={media.description || media.filename}
         loading="lazy"

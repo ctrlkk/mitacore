@@ -408,7 +408,7 @@ export function ModelConfigPage() {
                   </Badge>
                 ) : null}
               </CardContent>
-              <CardFooter className="justify-end gap-2">
+              <CardFooter className="mt-auto justify-end gap-2">
                 <Button
                   variant="outline"
                   size="icon-sm"

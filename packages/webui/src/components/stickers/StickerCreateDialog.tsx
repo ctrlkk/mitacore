@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type SubmitEvent, useEffect, useRef, useState } from "react";
 import { ImagePlusIcon, LoaderCircleIcon, SparklesIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -125,7 +125,7 @@ export function StickerCreateDialog({
     resetSuggestion();
   }
 
-  async function createSticker(event: FormEvent<HTMLFormElement>) {
+  async function createSticker(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!file || !canSubmit) return;
 
@@ -210,7 +210,7 @@ export function StickerCreateDialog({
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>添加贴纸</DialogTitle>
-          <DialogDescription>支持 webp、png、jpg、jpeg 和 gif 格式，单个文件不超过 10 MB。</DialogDescription>
+          <DialogDescription>支持 webp、png、jpg、jpeg 和 gif 格式。</DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-5" onSubmit={(event) => void createSticker(event)}>
           <div className="grid gap-5 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
@@ -246,7 +246,6 @@ export function StickerCreateDialog({
                         <SparklesIcon className="size-4 text-muted-foreground" />
                         AI 辅助填写
                       </h2>
-                      <p className="text-xs text-muted-foreground">根据图片生成名称和描述，生成后仍可手动修改。</p>
                     </div>
                     <Button
                       type="button"
@@ -275,7 +274,6 @@ export function StickerCreateDialog({
                   ) : null}
                   {suggestionReasoning ? (
                     <div className="mt-3 rounded-lg border bg-background/50 px-3 py-2.5">
-                      <p className="text-xs font-medium">分析过程</p>
                       <p
                         ref={reasoningRef}
                         className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap font-mono text-xs leading-5 text-muted-foreground"
@@ -342,7 +340,7 @@ export function StickerCreateDialog({
                   id="sticker-description"
                   value={description}
                   placeholder="描述画面、情绪、语气与适用场景，帮助代理准确调用。"
-                  className="min-h-24 resize-y text-sm"
+                  className="min-h-24 max-h-32 resize-y text-sm"
                   disabled={isCreating || isSuggesting}
                   onChange={(event) => setDescription(event.target.value)}
                 />

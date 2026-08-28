@@ -251,7 +251,7 @@ export function KnowledgeGraphPage() {
 
       <section
         aria-label="知识图谱画布"
-        className="relative flex min-h-[360px] flex-1 overflow-hidden rounded-xl border bg-card max-lg:min-h-[440px] max-lg:flex-none"
+        className="relative flex min-h-90 flex-1 overflow-hidden rounded-xl border bg-card max-lg:min-h-110 max-lg:flex-none"
       >
         <div
           ref={graphContainerRef}

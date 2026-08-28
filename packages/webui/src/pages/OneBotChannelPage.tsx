@@ -347,10 +347,6 @@ export function OneBotChannelPage() {
                 />
               </div>
             </section>
-
-            <p className="text-xs leading-5 text-muted-foreground">
-              启用、停用或切换接入方式后，需要保存并重启服务才会生效。
-            </p>
           </div>
         )}
       </section>
