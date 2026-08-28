@@ -4,10 +4,14 @@ packages:
   - "!mitacore-mobile/**"
 confirmModulesPurge: false
 allowBuilds:
+  "@ffmpeg-installer/linux-x64": true
+  "@ffprobe-installer/linux-x64": true
   esbuild: true
   protobufjs: true
 minimumReleaseAgeExclude:
   - "@hono/node-server@2.1.1"
 onlyBuiltDependencies:
+  - "@ffmpeg-installer/linux-x64"
+  - "@ffprobe-installer/linux-x64"
   - esbuild
   - protobufjs

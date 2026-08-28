@@ -88,7 +88,7 @@ mod platform {
         let monitor_shutting_down = Arc::clone(&shutting_down);
         let monitor_cancel_delayed_kill = Arc::clone(&cancel_delayed_kill);
 
-        let monitor = thread::spawn(move || {
+        thread::spawn(move || {
             let mut buffer = [0_u8; 64];
             while let Ok(read) = io::stdin().read(&mut buffer) {
                 if read == 0 {
