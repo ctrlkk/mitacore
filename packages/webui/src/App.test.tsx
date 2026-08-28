@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HashRouter } from "react-router";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -43,6 +43,36 @@ describe("App", () => {
     renderApp();
 
     expect(await screen.findByRole("heading", { name: "渠道管理" })).toBeInTheDocument();
+  });
+
+  it("确认后重启服务", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input) === "/api/runtime/restart") {
+        return Promise.resolve(new Response(JSON.stringify({ accepted: true }), { status: 202 }));
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            napcat: { enabled: false },
+            weixin: { enabled: false },
+            qqbot: { enabled: false },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderApp();
+
+    fireEvent.click(await screen.findByRole("button", { name: "重启服务" }));
+    expect(await screen.findByRole("heading", { name: "重启服务？" })).toBeInTheDocument();
+    expect(screen.getByText("重启期间，正在处理的消息可能中断。")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "确认重启" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/runtime/restart", { method: "POST" });
+    });
   });
 
   it("显示 OneBot 配置路由", async () => {

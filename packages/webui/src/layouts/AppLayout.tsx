@@ -1,8 +1,19 @@
 import { Fragment, Suspense, useEffect, useState } from "react";
-import { MoreHorizontalIcon } from "lucide-react";
+import { LoaderCircleIcon, MoreHorizontalIcon, RefreshCwIcon } from "lucide-react";
 import { Link, Outlet, useLocation } from "react-router";
+import { toast } from "sonner";
 import { AppSidebar, AppSidebarContent } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -128,6 +139,38 @@ function AppContent() {
   const { pathname } = useLocation();
   const breadcrumbItems = getBreadcrumbItems(pathname);
   const shouldCollapseBreadcrumb = breadcrumbItems.length > 3;
+  const [isRestartDialogOpen, setIsRestartDialogOpen] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
+
+  async function restartService() {
+    if (isRestarting) return;
+
+    setIsRestarting(true);
+    try {
+      const response = await fetch("/api/runtime/restart", { method: "POST" });
+      const data = await response.json().catch(() => undefined);
+      if (!response.ok) {
+        const message =
+          data &&
+          typeof data === "object" &&
+          "error" in data &&
+          data.error &&
+          typeof data.error === "object" &&
+          "message" in data.error &&
+          typeof data.error.message === "string"
+            ? data.error.message
+            : "重启服务失败";
+        throw new Error(message);
+      }
+
+      setIsRestartDialogOpen(false);
+      toast.success("服务正在重启");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "重启服务失败");
+    } finally {
+      setIsRestarting(false);
+    }
+  }
 
   return (
     <>
@@ -181,7 +224,43 @@ function AppContent() {
             })}
           </BreadcrumbList>
         </Breadcrumb>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
+          <AlertDialog
+            open={isRestartDialogOpen}
+            onOpenChange={(open) => {
+              if (!isRestarting) setIsRestartDialogOpen(open);
+            }}
+          >
+            <AlertDialogTrigger asChild>
+              <Button
+                aria-label="重启服务"
+                variant="ghost"
+                size="sm"
+                className="w-7 px-0 sm:w-auto sm:px-2.5"
+                disabled={isRestarting}
+              >
+                {isRestarting ? (
+                  <LoaderCircleIcon className="animate-spin" />
+                ) : (
+                  <RefreshCwIcon />
+                )}
+                <span className="hidden sm:inline">{isRestarting ? "正在重启" : "重启服务"}</span>
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>重启服务？</AlertDialogTitle>
+                <AlertDialogDescription>重启期间，正在处理的消息可能中断。</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isRestarting}>取消</AlertDialogCancel>
+                <Button type="button" disabled={isRestarting} onClick={() => void restartService()}>
+                  {isRestarting ? <LoaderCircleIcon data-icon="inline-start" className="animate-spin" /> : null}
+                  {isRestarting ? "正在重启" : "确认重启"}
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <ThemeToggle />
         </div>
       </header>
