@@ -6,5 +6,6 @@
       "args": ["-NoLogo", "-NoExit", "-Command", "chcp 65001 > $null"]
     }
   },
-  "terminal.integrated.defaultProfile.windows": "PowerShell UTF-8"
+  "terminal.integrated.defaultProfile.windows": "PowerShell UTF-8",
+  "rust-analyzer.linkedProjects": ["native/app-launcher/Cargo.toml", "native/napcat-supervisor/Cargo.toml"]
 }

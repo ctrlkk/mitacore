@@ -87,6 +87,6 @@ run()
     process.exitCode = code;
   })
   .catch((error) => {
-    console.error("supervisor 异常退出", error);
+    console.error("main 异常退出", error);
     process.exitCode = 1;
   });

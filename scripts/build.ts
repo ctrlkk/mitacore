@@ -66,15 +66,18 @@ async function buildApp() {
 
   // 清理旧产物 (force: true 确保路径不存在时不报错，省去 existsSync 判断)
   await rm(join(outDir, appBundle), { force: true });
+  await rm(join(outDir, "main.cjs"), { force: true });
+  await rm(join(outDir, "main.mjs"), { force: true });
   await rm(join(outDir, "supervisor.cjs"), { force: true });
   await rm(join(outDir, "supervisor.mjs"), { force: true });
+  await rm(join(outDir, "sidecar"), { recursive: true, force: true });
   await rm(join(outDir, "app-chunks"), { recursive: true, force: true });
   await rm(join(outDir, "app.cjs"), { force: true });
   await rm(join(root, "build"), { recursive: true, force: true });
   await rm(join(root, "pyrpc.spec"), { force: true });
 
   await runCmd([packageManager, "--dir", botDir, "run", "build"], root);
-  await copyFile(join(botDir, "supervisor.mjs"), join(outDir, "supervisor.mjs"));
+  await copyFile(join(botDir, "main.mjs"), join(outDir, "main.mjs"));
 }
 
 /** 构建负责约束 NapCat 进程树生命周期的原生 supervisor。 */
@@ -109,34 +112,6 @@ async function buildWebUi() {
   await runCmd([packageManager, "run", "build"], webUiDir);
   await rm(outputDir, { recursive: true, force: true });
   await cp(join(webUiDir, "dist"), outputDir, { recursive: true });
-}
-
-/**
- * 构建 Node sidecar：调用 packages/playwright 的 Vite 多入口 ESM 构建，
- * 产物目录已包含外置运行时依赖，根构建只负责完整复制。
- */
-async function buildSidecar() {
-  const sidecarDir = join(outDir, "sidecar");
-  const pkgDir = join(root, "packages", "playwright");
-
-  // 清理旧产物，避免残留已废弃的 CJS 文件
-  await rm(sidecarDir, { recursive: true, force: true });
-  await mkdir(sidecarDir, { recursive: true });
-
-  // 子包自管多入口打包
-  await runCmd([packageManager, "run", "build"], pkgDir);
-
-  const sidecarEntries = ["entries/image-gen.js", "entries/html-renderer.js"];
-  for (const entry of sidecarEntries) {
-    const bundleSrc = join(pkgDir, "dist", entry);
-    try {
-      await access(bundleSrc);
-    } catch {
-      throw new Error(`找不到子包 build 产物：${bundleSrc}`);
-    }
-  }
-  // 子包的 dist 包含 entries/、chunks/ 和 node_modules/，需完整复制。
-  await cp(join(pkgDir, "dist"), sidecarDir, { recursive: true });
 }
 
 /**
@@ -209,15 +184,7 @@ async function copyAssets() {
 console.log("==> 开始并行构建...\n");
 await mkdir(outDir, { recursive: true });
 
-await Promise.all([
-  buildApp(),
-  buildSupervisor(),
-  buildLauncher(),
-  buildWebUi(),
-  buildSidecar(),
-  copyBin(),
-  copyAssets(),
-]);
+await Promise.all([buildApp(), buildSupervisor(), buildLauncher(), buildWebUi(), copyBin(), copyAssets()]);
 
 console.log("\n==> 构建完成：");
 const files = await readdir(outDir);
