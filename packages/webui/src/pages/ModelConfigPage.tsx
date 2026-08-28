@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import anthropicIcon from "@/assets/provider-icons/anthropic.png";
-import deepseekIcon from "@/assets/provider-icons/deepseek.png";
-import openaiIcon from "@/assets/provider-icons/openai.png";
+import anthropicIcon from "@/assets/provider-icons/anthropic.svg";
+import bailianIcon from "@/assets/provider-icons/bailian.svg";
+import deepseekIcon from "@/assets/provider-icons/deepseek.svg";
+import mimoIcon from "@/assets/provider-icons/mimo.svg";
+import minimaxIcon from "@/assets/provider-icons/minimax.svg";
+import openaiIcon from "@/assets/provider-icons/openai.svg";
+import zhipuIcon from "@/assets/provider-icons/zhipu.svg";
 import {
   BrainCircuitIcon,
   Clock3Icon,
@@ -10,6 +14,7 @@ import {
   PlusIcon,
   RefreshCwIcon,
   SaveIcon,
+  Settings2Icon,
   Trash2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -102,12 +107,96 @@ const providerTypes: Array<{ value: ProviderType; label: string }> = [
   { value: "deepseek", label: "DeepSeek" },
 ];
 
-const providerIconPaths: Record<ProviderType, string> = {
+const providerIconPaths: Record<Exclude<ProviderType, "openai-responses" | "openai-compatible">, string> = {
   anthropic: anthropicIcon,
-  "openai-responses": openaiIcon,
-  "openai-compatible": openaiIcon,
   deepseek: deepseekIcon,
 };
+
+const providerPresets: Array<{
+  value: string;
+  label: string;
+  description: string;
+  logo: string;
+  provider: ModelProvider;
+}> = [
+  {
+    value: "mimo",
+    label: "小米 MiMo",
+    description: "OpenAI 兼容接口，包含通用与多模态模型。",
+    logo: mimoIcon,
+    provider: {
+      name: "小米 MiMo",
+      type: "openai-compatible",
+      options: { base_url: "https://api.xiaomimimo.com/v1", api_key: "" },
+      models: [
+        { id: "mimo-v2.5-pro", alias: "mimo-v2.5-pro" },
+        { id: "mimo-v2.5", alias: "mimo-v2.5" },
+      ],
+    },
+  },
+  {
+    value: "aliyun-bailian",
+    label: "阿里云百炼",
+    description: "OpenAI Responses 兼容接口，使用北京地域通用地址。",
+    logo: bailianIcon,
+    provider: {
+      name: "阿里云百炼",
+      type: "openai-responses",
+      options: {
+        base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        api_key: "",
+      },
+      models: [
+        { id: "qwen3.7-plus", alias: "qwen3.7-plus" },
+        { id: "qwen3.8-max", alias: "qwen3.8-max" },
+        { id: "qwen3.7-flash", alias: "qwen3.7-flash" },
+      ],
+    },
+  },
+  {
+    value: "deepseek",
+    label: "DeepSeek",
+    description: "DeepSeek 官方接口。",
+    logo: deepseekIcon,
+    provider: {
+      name: "DeepSeek",
+      type: "deepseek",
+      options: { base_url: "https://api.deepseek.com", api_key: "" },
+      models: [
+        { id: "deepseek-v4-flash", alias: "deepseek-v4-flash" },
+        { id: "deepseek-v4-pro", alias: "deepseek-v4-pro" },
+        { id: "deepseek-v4-flash-vision-exp", alias: "deepseek-v4-flash-vision-exp" },
+      ],
+    },
+  },
+  {
+    value: "zhipu",
+    label: "智谱 AI",
+    description: "OpenAI 兼容接口。",
+    logo: zhipuIcon,
+    provider: {
+      name: "智谱 AI",
+      type: "openai-compatible",
+      options: { base_url: "https://open.bigmodel.cn/api/paas/v4", api_key: "" },
+      models: [
+        { id: "glm-5.3", alias: "glm-5.3" },
+        { id: "glm-5.3-flash", alias: "glm-5.3-flash" },
+      ],
+    },
+  },
+  {
+    value: "minimax",
+    label: "MiniMax",
+    description: "Anthropic Messages 兼容接口。",
+    logo: minimaxIcon,
+    provider: {
+      name: "MiniMax",
+      type: "anthropic",
+      options: { base_url: "https://api.minimaxi.com/anthropic", api_key: "" },
+      models: [{ id: "MiniMax-M3", alias: "MiniMax-M3" }],
+    },
+  },
+];
 
 function getErrorMessage(data: unknown, fallback: string) {
   if (!data || typeof data !== "object" || !("error" in data)) return fallback;
@@ -130,6 +219,14 @@ function createProvider(): ModelProvider {
   };
 }
 
+function createProviderFromPreset(provider: ModelProvider): ModelProvider {
+  return {
+    ...provider,
+    options: { ...provider.options },
+    models: provider.models.map((model) => ({ ...model })),
+  };
+}
+
 function getProviderEndpoint(baseUrl: string) {
   try {
     const url = new URL(baseUrl);
@@ -144,6 +241,7 @@ export function ModelConfigPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [editor, setEditor] = useState<{ index: number | null; provider: ModelProvider }>();
+  const [isPresetPickerOpen, setIsPresetPickerOpen] = useState(false);
   const [providerToDelete, setProviderToDelete] = useState<{ index: number; name: string }>();
 
   useEffect(() => {
@@ -379,7 +477,7 @@ export function ModelConfigPage() {
             </h2>
             <p className="text-sm text-muted-foreground">模型别名在分工和时段配置中作为稳定引用使用。</p>
           </div>
-          <Button variant="outline" onClick={() => setEditor({ index: null, provider: createProvider() })}>
+          <Button variant="outline" onClick={() => setIsPresetPickerOpen(true)}>
             <PlusIcon data-icon="inline-start" />
             添加供应商
           </Button>
@@ -435,6 +533,14 @@ export function ModelConfigPage() {
           ) : null}
         </div>
       </section>
+      <ProviderPresetPicker
+        open={isPresetPickerOpen}
+        onClose={() => setIsPresetPickerOpen(false)}
+        onSelect={(provider) => {
+          setEditor({ index: null, provider });
+          setIsPresetPickerOpen(false);
+        }}
+      />
       {editor ? (
         <ProviderEditor
           provider={editor.provider}
@@ -483,6 +589,60 @@ export function ModelConfigPage() {
         </AlertDialogContent>
       </AlertDialog>
     </section>
+  );
+}
+
+function ProviderPresetPicker({
+  open,
+  onClose,
+  onSelect,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSelect: (provider: ModelProvider) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <DialogContent className="max-h-[calc(100svh-2rem)] max-w-3xl gap-0 overflow-y-auto p-0 sm:max-w-3xl">
+        <DialogHeader className="border-b px-4 py-4 sm:px-5">
+          <DialogTitle>选择供应商</DialogTitle>
+          <DialogDescription>选择预设后将填充接口和推荐模型，API Key 需要自行填写。</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
+          {providerPresets.map((preset) => (
+            <Button
+              key={preset.value}
+              variant="outline"
+              className="h-auto flex-col items-start justify-start whitespace-normal rounded-xl bg-card p-4 text-left hover:border-primary/50 hover:bg-accent/50 dark:bg-card dark:hover:bg-accent/80"
+              onClick={() => onSelect(createProviderFromPreset(preset.provider))}
+            >
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-white p-2 ring-1 ring-black/5">
+                <img aria-hidden src={preset.logo} alt="" className="size-full object-contain" />
+              </span>
+              <span className="flex min-w-0 flex-col gap-1.5">
+                <span className="font-medium text-foreground">{preset.label}</span>
+                <span className="text-xs leading-5 text-muted-foreground">{preset.description}</span>
+              </span>
+            </Button>
+          ))}
+          <Button
+            variant="outline"
+            className="h-auto flex-col items-start justify-start whitespace-normal rounded-xl border-dashed bg-card p-4 text-left hover:border-primary/50 hover:bg-accent/50 dark:bg-card dark:hover:bg-accent/80"
+            onClick={() => onSelect(createProvider())}
+          >
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted">
+              <Settings2Icon className="size-5 text-muted-foreground" />
+            </span>
+            <span className="flex min-w-0 flex-col gap-1.5">
+              <span className="font-medium text-foreground">自定义配置</span>
+              <span className="text-xs leading-5 text-muted-foreground">
+                手动填写供应商名称、接口类型、地址和模型。
+              </span>
+            </span>
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -751,6 +911,20 @@ function ProviderTypeBadge({ type }: { type: ProviderType }) {
 }
 
 function EndpointTypeIcon({ type }: { type: ProviderType }) {
+  if (type === "openai-responses" || type === "openai-compatible") {
+    return (
+      <span
+        data-icon="inline-start"
+        aria-hidden
+        className="size-3 bg-current"
+        style={{
+          mask: `url(${openaiIcon}) center / contain no-repeat`,
+          WebkitMask: `url(${openaiIcon}) center / contain no-repeat`,
+        }}
+      />
+    );
+  }
+
   return (
     <img
       data-icon="inline-start"
