@@ -68,6 +68,7 @@ async function buildApp() {
   await rm(join(outDir, appBundle), { force: true });
   await rm(join(outDir, "main.cjs"), { force: true });
   await rm(join(outDir, "main.mjs"), { force: true });
+  await rm(join(outDir, "cleanup.mjs"), { force: true });
   await rm(join(outDir, "supervisor.cjs"), { force: true });
   await rm(join(outDir, "supervisor.mjs"), { force: true });
   await rm(join(outDir, "sidecar"), { recursive: true, force: true });
@@ -77,7 +78,7 @@ async function buildApp() {
   await rm(join(root, "pyrpc.spec"), { force: true });
 
   await runCmd([packageManager, "--dir", botDir, "run", "build"], root);
-  await copyFile(join(botDir, "main.mjs"), join(outDir, "main.mjs"));
+  await copyFile(join(root, "scripts", "main.mjs"), join(outDir, "main.mjs"));
 }
 
 /** 构建负责约束 NapCat 进程树生命周期的原生 supervisor。 */
@@ -164,7 +165,6 @@ async function copyAssets() {
   const targets: Array<{ src: string; dest: string; label: string }> = [
     { src: join(root, "prompts"), dest: join(outDir, "prompts"), label: "prompts/" },
     { src: join(root, "config.example.toml"), dest: join(outDir, "config.example.toml"), label: "config.example.toml" },
-    { src: join(root, "config.example.toml"), dest: join(outDir, "config.toml"), label: "config.toml" },
   ];
 
   for (const { src, dest, label } of targets) {

@@ -1,6 +1,7 @@
 import { fork } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readdir, rm } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const RESTART_EXIT_CODE = 75;
@@ -10,6 +11,14 @@ const configPath = resolve(installRoot, ".env");
 const appPath = resolve(installRoot, "app.mjs");
 
 if (existsSync(configPath)) process.loadEnvFile(configPath);
+
+async function cleanupObsoleteFiles() {
+  const binDir = join(installRoot, "bin");
+  const obsoleteDlls = (await readdir(binDir).catch(() => [])).filter((file) => file.toLowerCase().endsWith(".dll"));
+  const obsoletePaths = [join(installRoot, "sidecar"), ...obsoleteDlls.map((file) => join(binDir, file))];
+
+  await Promise.all(obsoletePaths.map((path) => rm(path, { recursive: true, force: true })));
+}
 
 async function waitForExit(child) {
   return await new Promise((resolveExit) => {
@@ -28,6 +37,9 @@ async function waitForExit(child) {
 }
 
 async function run() {
+  // 清理旧版残留文件
+  await cleanupObsoleteFiles();
+
   let stopping = false;
   let terminate;
   let webUiPort;
