@@ -1,11 +1,11 @@
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { zip } from "fflate";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const sourceDir = resolve(projectRoot, "default-data");
-const outputPath = resolve(process.argv[2] ?? resolve(projectRoot, "default-data.zip"));
+const sourceDir = resolve(projectRoot, "references", "default-data");
+const outputPath = resolve(process.argv[2] ?? resolve(projectRoot, "references", "default-data.zip"));
 
 async function collectFiles(directory: string, files: Record<string, Uint8Array> = {}) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -31,5 +31,6 @@ const archive = await new Promise<Uint8Array>((resolveArchive, rejectArchive) =>
     else resolveArchive(data);
   });
 });
+await mkdir(dirname(outputPath), { recursive: true });
 await writeFile(outputPath, archive);
 console.info(`已打包默认数据: ${outputPath}`);

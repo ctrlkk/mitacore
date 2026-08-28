@@ -7,11 +7,11 @@ import { dataPath, projectPath } from "@/utils/path";
 const VERSION_MARKER = ".default-data-version";
 
 function getArchivePath() {
-  return projectPath("default-data.zip");
+  return projectPath("references", "default-data.zip");
 }
 
 function getManifestPath() {
-  return projectPath("default-data.manifest.json");
+  return projectPath("references", "default-data", "manifest.json");
 }
 
 async function readDefaultDataVersion() {

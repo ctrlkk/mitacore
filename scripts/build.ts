@@ -71,6 +71,8 @@ async function buildApp() {
   await rm(join(outDir, "cleanup.mjs"), { force: true });
   await rm(join(outDir, "supervisor.cjs"), { force: true });
   await rm(join(outDir, "supervisor.mjs"), { force: true });
+  await rm(join(outDir, "default-data.zip"), { force: true });
+  await rm(join(outDir, "default-data.manifest.json"), { force: true });
   await rm(join(outDir, "sidecar"), { recursive: true, force: true });
   await rm(join(outDir, "app-chunks"), { recursive: true, force: true });
   await rm(join(outDir, "app.cjs"), { force: true });
@@ -78,8 +80,10 @@ async function buildApp() {
   await rm(join(root, "pyrpc.spec"), { force: true });
 
   await runCmd([packageManager, "--dir", botDir, "run", "build"], root);
-  await runCmd([packageManager, "run", "package:default-data", join(outDir, "default-data.zip")], root);
-  await copyFile(join(root, "default-data", "manifest.json"), join(outDir, "default-data.manifest.json"));
+  await runCmd([packageManager, "run", "package:default-data", join(outDir, "references", "default-data.zip")], root);
+  const manifestOutputDir = join(outDir, "references", "default-data");
+  await mkdir(manifestOutputDir, { recursive: true });
+  await copyFile(join(root, "references", "default-data", "manifest.json"), join(manifestOutputDir, "manifest.json"));
   await copyFile(join(root, "scripts", "main.mjs"), join(outDir, "main.mjs"));
 }
 
