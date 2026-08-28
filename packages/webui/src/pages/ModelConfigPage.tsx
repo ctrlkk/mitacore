@@ -90,14 +90,14 @@ type BotConfig = Record<string, unknown> & {
 };
 
 const roleDefinitions: Array<{ key: ModelRole; label: string; description: string }> = [
-  { key: "plan", label: "规划", description: "拆解目标、规划执行步骤" },
-  { key: "reply", label: "执行", description: "处理工具调用与任务执行" },
-  { key: "main", label: "主代理", description: "单代理模式下的主模型" },
-  { key: "task_explore", label: "探索子代理", description: "检索与快速代码探索" },
-  { key: "task_general", label: "通用子代理", description: "处理多步骤通用任务" },
-  { key: "multimodal_image", label: "图像理解", description: "分析图片与视觉内容" },
-  { key: "multimodal_video", label: "视频理解", description: "分析视频内容" },
-  { key: "multimodal_audio", label: "音频处理", description: "处理音频内容" },
+  { key: "plan", label: "规划", description: "调用工具并制定回复策略" },
+  { key: "reply", label: "回复", description: "根据规划生成并发送回复" },
+  { key: "main", label: "主代理", description: "单代理模式下执行并直接回复" },
+  { key: "task_explore", label: "探索子代理", description: "只读检索与信息探索" },
+  { key: "task_general", label: "通用子代理", description: "处理可读写的多步骤任务" },
+  { key: "multimodal_image", label: "图像理解", description: "将图片转为文字描述" },
+  { key: "multimodal_video", label: "视频理解", description: "将视频转为文字描述" },
+  { key: "multimodal_audio", label: "音频理解", description: "转写并理解音频内容" },
 ];
 
 const providerTypes: Array<{ value: ProviderType; label: string }> = [
