@@ -1,8 +1,10 @@
+import { initializeDefaultData } from "@/default-data";
 import { logger } from "@/logger";
 import { loadConfig } from "@/config";
 import { startWebUi } from "@/webui";
 
 if (import.meta.main) {
+  await initializeDefaultData();
   await loadConfig();
   const webUiPort = await startWebUi();
   if (typeof process.send === "function") {

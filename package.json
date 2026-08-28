@@ -19,6 +19,7 @@
     "db": "node scripts/run.mjs --filter bot exec drizzle-kit",
     "migration": "node scripts/run.mjs --filter bot migration",
     "migration:check": "node scripts/run.mjs --filter bot migration:check",
+    "package:default-data": "tsx scripts/default-data.ts",
     "build": "tsx scripts/build.ts",
     "test": "pnpm --filter bot test && pnpm --filter channels test"
   },
@@ -26,6 +27,7 @@
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@types/node": "^24.0.0",
+    "fflate": "^0.8.3",
     "prettier": "3.8.4",
     "tsx": "^4.20.3"
   },

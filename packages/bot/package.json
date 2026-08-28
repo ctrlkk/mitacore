@@ -6,8 +6,8 @@
   "module": "src/index.ts",
   "scripts": {
     "supervisor:build": "pnpm --workspace-root run supervisor:build",
-    "dev": "pnpm run supervisor:build && vite-node --config vite.config.cjs --watch src/index.ts",
-    "start": "pnpm run supervisor:build && vite-node --config vite.config.cjs src/index.ts",
+    "dev": "pnpm --workspace-root run package:default-data && pnpm run supervisor:build && vite-node --config vite.config.cjs --watch src/index.ts",
+    "start": "pnpm --workspace-root run package:default-data && pnpm run supervisor:build && vite-node --config vite.config.cjs src/index.ts",
     "build": "vite build",
     "db": "drizzle-kit",
     "migration": "tsx scripts/migration.ts",

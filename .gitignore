@@ -34,6 +34,7 @@ __pycache__
 *.tsbuildinfo
 .tsbuild/
 /data
+/default-data.zip
 .playwright-cli
 
 # IDE
