@@ -222,14 +222,19 @@ export function OneBotChannelPage() {
               </h2>
               <StatusBadge status={status} enabled={isEnabled} />
             </div>
-            <p className="text-sm text-muted-foreground">
-              {mode === "builtin" ? "内置 NapCat" : `外部 WebSocket · ${getEndpoint(onebot?.ws_url)}`}
-            </p>
             {mode === "builtin" ? (
-              <p className="text-xs text-muted-foreground">
-                NTQQ {runtime?.napcat.qq_version ?? "未知"} · NapCat {runtime?.napcat.napcat_version ?? "未知"}
-              </p>
-            ) : null}
+              <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground" aria-label="NapCat 运行版本">
+                <span>
+                  NTQQ <span className="font-medium text-foreground">{runtime?.napcat.qq_version ?? "未知"}</span>
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>
+                  NapCat <span className="font-medium text-foreground">{runtime?.napcat.napcat_version ?? "未知"}</span>
+                </span>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">外部 WebSocket · {getEndpoint(onebot?.ws_url)}</p>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {runtime?.napcat.embed_url ? (
@@ -276,6 +281,7 @@ export function OneBotChannelPage() {
         ) : (
           <div className="flex flex-col gap-6 p-4 sm:p-5">
             <NapCatLoginPanel enabled={isEnabled} mode={mode} runtime={runtime?.napcat} />
+            {mode === "builtin" ? <NapCatSafetyTip /> : null}
 
             <section className="grid gap-3" aria-labelledby="connection-settings-title">
               <div className="flex flex-col gap-1">
@@ -516,6 +522,18 @@ function NapCatLoginPanel({
   }
 
   return null;
+}
+
+function NapCatSafetyTip() {
+  return (
+    <div className="flex gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+      <CircleAlertIcon className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-300" />
+      <div>
+        <p>建议将机器人 QQ 账号完成实名认证，以降低被腾讯风控踢下线的概率。</p>
+        <p>推荐使用 QQ 40768+ 版本，最低使用 40768；不同 QQ 版本之间的私有通信格式亦有变化，通常虽可登录和接收消息，但可能不支持部分消息格式，导致图片等消息无法接收。</p>
+      </div>
+    </div>
+  );
 }
 
 function TagInput({
