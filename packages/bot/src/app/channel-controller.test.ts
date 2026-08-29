@@ -67,3 +67,15 @@ test("NapCat 可发布 QQ 账号下线状态", () => {
     error: undefined,
   });
 });
+
+test("NapCat 可发布 NTQQ 与 NapCat 版本", () => {
+  const controller = new ChannelController();
+
+  controller.updateNapcat({ qq_version: "9.9.27-45758", napcat_version: "4.18.19" });
+
+  expect(controller.getSnapshot().napcat).toEqual({
+    status: "idle",
+    qq_version: "9.9.27-45758",
+    napcat_version: "4.18.19",
+  });
+});

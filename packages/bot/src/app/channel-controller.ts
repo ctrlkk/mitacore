@@ -17,6 +17,8 @@ export type ChannelSnapshot = {
     status: NapCatStatus;
     qrcode_content?: string;
     embed_url?: string;
+    qq_version?: string;
+    napcat_version?: string;
     login_error?: string;
     error?: string;
   };

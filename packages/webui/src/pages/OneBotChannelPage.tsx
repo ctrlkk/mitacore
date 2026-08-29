@@ -34,6 +34,8 @@ type RuntimeSnapshot = {
     status: NapCatStatus;
     qrcode_content?: string;
     embed_url?: string;
+    qq_version?: string;
+    napcat_version?: string;
     login_error?: string;
     error?: string;
   };
@@ -217,6 +219,11 @@ export function OneBotChannelPage() {
             <p className="text-sm text-muted-foreground">
               {mode === "builtin" ? "内置 NapCat" : `外部 WebSocket · ${getEndpoint(onebot?.ws_url)}`}
             </p>
+            {mode === "builtin" ? (
+              <p className="text-xs text-muted-foreground">
+                NTQQ {runtime?.napcat.qq_version ?? "未知"} · NapCat {runtime?.napcat.napcat_version ?? "未知"}
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {runtime?.napcat.embed_url ? (

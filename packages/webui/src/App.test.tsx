@@ -138,12 +138,15 @@ describe("App", () => {
           napcat: {
             status: "waiting_qr",
             qrcode_content: "https://qrcode.example.test/login",
+            qq_version: "9.9.27-45758",
+            napcat_version: "4.18.19",
           },
         }),
       }),
     );
 
     expect(await screen.findByRole("heading", { name: "使用 QQ 扫码登录" })).toBeInTheDocument();
+    expect(screen.getByText("NTQQ 9.9.27-45758 · NapCat 4.18.19")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "在新窗口打开登录页" })).not.toBeInTheDocument();
   });
 

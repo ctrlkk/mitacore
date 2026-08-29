@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createNapCatApi, type NapCatLoginStatus } from "./client.ts";
 import { resolve, dirname } from "node:path";
 import { spawn, execSync, ChildProcess } from "node:child_process";
@@ -32,6 +32,19 @@ function formatBytes(bytes: number): string {
   const units = ["B", "KB", "MB", "GB"];
   const unitIndex = Math.floor(Math.log(bytes) / Math.log(1024));
   return `${(bytes / Math.pow(1024, unitIndex)).toFixed(unitIndex > 0 ? 1 : 0)} ${units[unitIndex]}`;
+}
+
+/** 从 QQ 安装目录读取当前 NTQQ 版本；版本信息不可用时不影响启动。 */
+function getQQVersion(qqExe: string): string | undefined {
+  try {
+    const content = readFileSync(resolve(dirname(qqExe), "versions", "config.json"), "utf8");
+    const config: unknown = JSON.parse(content);
+    if (!config || typeof config !== "object" || !("curVersion" in config)) return undefined;
+    const version = config.curVersion;
+    return typeof version === "string" && version.trim() ? version.trim() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** 检查进程是否存活 */
@@ -538,6 +551,7 @@ export async function launchNapCat(config: NapCatConfig) {
 
     return {
       qqId: config.qqId,
+      qqVersion: getQQVersion(qqExe),
       get webuiPort() {
         return handle.webuiPort;
       },
@@ -605,6 +619,7 @@ function oneBotConfigWithPort(config: Record<string, unknown>, wsPort: number) {
 
 export interface StartBuiltinNapCatOptions extends NapCatConfig {
   onWebUiReady?: (url: string) => void;
+  onVersion?: (versions: { qqVersion?: string; napcatVersion?: string }) => void;
 }
 
 /**
@@ -627,19 +642,28 @@ export async function startBuiltinNapCat(options: StartBuiltinNapCatOptions) {
     const startedNapcat = napcat;
     const webuiUrl = `http://localhost:${startedNapcat.webuiPort}/webui?token=${startedNapcat.webuiToken}`;
 
+    options.onVersion?.({ qqVersion: startedNapcat.qqVersion });
+    startedNapcat.startWebUiConnection();
+    const apiPromise = startedNapcat.waitForWebUI();
+    const napcatVersionPromise = apiPromise.then(async (api) => {
+      const napcatVersion = await api.getNapCatVersion();
+      logger.info({ version: napcatVersion }, `NapCat 版本: ${napcatVersion}`);
+      options.onVersion?.({ qqVersion: startedNapcat.qqVersion, napcatVersion });
+      return napcatVersion;
+    });
+    void napcatVersionPromise.catch(() => {});
+
     await startedNapcat.waitForReady();
     logger.info("NapCat 协议适配器已就绪，QQ 已登录");
 
     // QQ 登录完成后通过专有 API 更新账号配置，NapCat 会同步重载 OneBot 网络适配器。
-    startedNapcat.startWebUiConnection();
-    const api = await startedNapcat.waitForWebUI();
+    const api = await apiPromise;
     logger.info({ port: startedNapcat.webuiPort }, "NapCat WebUI 就绪");
     const currentConfig = await api.getOB11Config();
     await api.setOB11Config(oneBotConfigWithPort(currentConfig, wsPort));
     logger.info({ port: wsPort }, "OneBot WebSocket 配置已更新");
     options.onWebUiReady?.(webuiUrl);
-    const version = await api.getNapCatVersion();
-    logger.info({ version }, `NapCat 版本: ${version}`);
+    const napcatVersion = await napcatVersionPromise;
 
     const reportLoginStatus = async () => {
       try {
@@ -657,6 +681,8 @@ export async function startBuiltinNapCat(options: StartBuiltinNapCatOptions) {
       wsUrl: `ws://127.0.0.1:${wsPort}`,
       accessToken: "",
       webuiUrl,
+      qqVersion: startedNapcat.qqVersion,
+      napcatVersion,
     };
   } catch (error) {
     await napcat?.stop();

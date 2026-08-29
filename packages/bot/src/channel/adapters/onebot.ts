@@ -129,6 +129,8 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
         logger,
         onWebUiReady: (embed_url) =>
           channelController.updateNapcat({ status: "starting", embed_url, login_error: undefined, error: undefined }),
+        onVersion: ({ qqVersion, napcatVersion }) =>
+          channelController.updateNapcat({ qq_version: qqVersion, napcat_version: napcatVersion }),
         onLoginStatus: ({ isLoggedIn, isOffline, qrcodeContent, loginError }) => {
           if (isLoggedIn && !isOffline) {
             qqIsOnline = true;
@@ -168,6 +170,8 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
         qrcode_content: undefined,
         login_error: undefined,
         embed_url: result.webuiUrl,
+        qq_version: result.qqVersion,
+        napcat_version: result.napcatVersion,
       });
     } catch (error) {
       channelController.updateNapcat({
@@ -186,6 +190,8 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
       status: "external",
       qrcode_content: undefined,
       embed_url: undefined,
+      qq_version: undefined,
+      napcat_version: undefined,
       login_error: undefined,
       error: undefined,
     });
