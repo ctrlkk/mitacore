@@ -1,10 +1,11 @@
-const { resolve } = require("node:path");
-const { defineConfig } = require("vite");
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vite";
 
-const packageDir = __dirname;
+const packageDir = fileURLToPath(new URL(".", import.meta.url));
 const rootDir = resolve(packageDir, "../..");
 
-module.exports = defineConfig(({ command }) => ({
+export default defineConfig(({ command }) => ({
   resolve: {
     alias: {
       "@": resolve(packageDir, "src"),
@@ -12,7 +13,8 @@ module.exports = defineConfig(({ command }) => ({
     },
   },
   ssr: {
-    noExternal: true,
+    // 开发运行器应交由 Node 加载 CommonJS 依赖；构建产物仍保持完整打包。
+    noExternal: command === "build" ? true : undefined,
   },
   build: {
     ssr: true,
