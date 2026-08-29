@@ -22,7 +22,7 @@ const defaultScopeConfig = { mode: "whitelist" as const, ids: [] as string[] };
 const defaultNapcatConfig = {
   enabled: false,
   qq_id: "",
-  wake_keywords: ["米塔", "mita"],
+  wake_keywords: ["aliya", "阿丽亚", "阿丽娅", "Aliya"],
   groups: defaultScopeConfig,
   private_chats: defaultScopeConfig,
   group_members: { mode: "blacklist" as const, ids: [] as string[] },
