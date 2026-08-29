@@ -350,11 +350,13 @@ export function OneBotChannelPage() {
               <div className="grid gap-3 xl:grid-cols-3">
                 <ScopeEditor
                   label="群聊范围"
+                  idLabel="群号"
                   scope={onebot.groups}
                   onChange={(update) => updateOneBot((current) => ({ ...current, groups: update(current.groups) }))}
                 />
                 <ScopeEditor
                   label="私聊范围"
+                  idLabel="QQ 号"
                   scope={onebot.private_chats}
                   onChange={(update) =>
                     updateOneBot((current) => ({ ...current, private_chats: update(current.private_chats) }))
@@ -362,6 +364,7 @@ export function OneBotChannelPage() {
                 />
                 <ScopeEditor
                   label="群成员范围"
+                  idLabel="QQ 号"
                   scope={onebot.group_members}
                   onChange={(update) =>
                     updateOneBot((current) => ({ ...current, group_members: update(current.group_members) }))
@@ -533,10 +536,12 @@ function TagInput({
 
 function ScopeEditor({
   label,
+  idLabel,
   scope,
   onChange,
 }: {
   label: string;
+  idLabel: string;
   scope: Scope;
   onChange: (update: (scope: Scope) => Scope) => void;
 }) {
@@ -563,8 +568,8 @@ function ScopeEditor({
         </div>
       </div>
       <TagInput
-        ariaLabel={`${label} ID 列表`}
-        placeholder={`输入 ${label} ID 后按回车`}
+        ariaLabel={`${label}${idLabel}列表`}
+        placeholder={`输入${idLabel}后按回车`}
         value={scope.ids}
         onChange={(update) => onChange((current) => ({ ...current, ids: update(current.ids) }))}
       />
