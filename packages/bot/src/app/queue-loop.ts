@@ -124,7 +124,10 @@ function createMediaProcessor() {
 
             return result;
           } catch (error) {
-            logger.error({ path: item.virtualPath, kind: item.kind, error }, "转述失败");
+            logger.error(
+              { path: item.virtualPath, kind: item.kind, error: withoutRequestBodyValues(error) },
+              "转述失败",
+            );
             if (item.kind === "image") return "图片转述失败";
             if (item.kind === "video") return "视频转述失败";
             return "音频转述失败";
