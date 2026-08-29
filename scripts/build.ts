@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const { path: ffmpegPath } = require("@ffmpeg-installer/ffmpeg") as typeof import("@ffmpeg-installer/ffmpeg");
 const { path: ffprobePath } = require("@ffprobe-installer/ffprobe") as typeof import("@ffprobe-installer/ffprobe");
+const { default: gifsiclePath } = await import("gifsicle");
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = join(root, "dist");
@@ -130,8 +131,9 @@ async function copyBin() {
   const staticBins = [
     { name: "ffmpeg", sourcePath: ffmpegPath },
     { name: "ffprobe", sourcePath: ffprobePath },
+    { name: "gifsicle", sourcePath: gifsiclePath },
   ];
-  const systemBins = ["node", "gifsicle"];
+  const systemBins = ["node"];
 
   await mkdir(outBinDir, { recursive: true });
 

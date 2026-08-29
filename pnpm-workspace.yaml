@@ -1,12 +1,10 @@
 packages:
   - "packages/*"
-  # mitacore-mobile 是独立的 npm 项目，不参与根目录 pnpm 工作区。
-  - "!mitacore-mobile/**"
-confirmModulesPurge: false
 allowBuilds:
   "@ffmpeg-installer/linux-x64": true
   "@ffprobe-installer/linux-x64": true
   esbuild: true
+  gifsicle: true
   protobufjs: true
 minimumReleaseAgeExclude:
   - "@hono/node-server@2.1.1"
@@ -14,4 +12,5 @@ onlyBuiltDependencies:
   - "@ffmpeg-installer/linux-x64"
   - "@ffprobe-installer/linux-x64"
   - esbuild
+  - gifsicle
   - protobufjs
