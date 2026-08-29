@@ -99,6 +99,43 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "OneBot" })).toBeInTheDocument();
   });
 
+  it("保存 OneBot 媒体消息接收设置", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/config" && init?.method === "PUT") {
+        return Promise.resolve(new Response(JSON.stringify({}), { headers: { "content-type": "application/json" } }));
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            napcat: {
+              enabled: false,
+              wake_keywords: [],
+              groups: { mode: "blacklist", ids: [] },
+              private_chats: { mode: "blacklist", ids: [] },
+              group_members: { mode: "blacklist", ids: [] },
+              admins: [],
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderApp("/channels/onebot");
+
+    fireEvent.click(await screen.findByRole("switch", { name: "接收音频" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+
+    await waitFor(() => {
+      const [, init] = fetchMock.mock.calls.find(([, requestInit]) => requestInit?.method === "PUT")!;
+      expect(JSON.parse(init!.body as string).napcat).toMatchObject({
+        receive_image: true,
+        receive_video: false,
+        receive_audio: true,
+      });
+    });
+  });
+
   it("显示内置 NapCat 的登录二维码", async () => {
     const listeners = new Map<string, EventListener>();
     class MockEventSource {

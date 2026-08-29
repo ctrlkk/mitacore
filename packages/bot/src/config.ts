@@ -27,6 +27,9 @@ const defaultNapcatConfig = {
   private_chats: defaultScopeConfig,
   group_members: { mode: "blacklist" as const, ids: [] as string[] },
   admins: [] as string[],
+  receive_image: true,
+  receive_video: false,
+  receive_audio: false,
 };
 const defaultWeixinConfig = { enabled: false, account_id: "", token: "" };
 const defaultQQBotConfig = { enabled: false, app_id: "", app_secret: "", admins: [] as string[] };
@@ -77,6 +80,9 @@ const napcatSchema = z.object({
   private_chats: scopeSchema.default(defaultScopeConfig).describe("私聊范围控制"),
   group_members: scopeSchema.default({ mode: "blacklist", ids: [] }).describe("群内用户范围控制"),
   admins: z.array(z.string()).default([]).describe("管理员 QQ 号列表"),
+  receive_image: z.boolean().default(true).describe("是否接收图片消息"),
+  receive_video: z.boolean().default(false).describe("是否接收视频消息"),
+  receive_audio: z.boolean().default(false).describe("是否接收音频消息"),
 });
 
 const weixinSchema = z.object({

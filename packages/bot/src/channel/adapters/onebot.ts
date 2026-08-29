@@ -3,7 +3,7 @@ import type { PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import type { ChannelReplyContext } from "@/channel/types";
 import { createBot } from "@/app/queue-loop";
 import { handleCommand } from "@/app/command";
-import { config, type Config } from "@/config";
+import { config } from "@/config";
 import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
 import { OneBotClient } from "channels/onebot";
 import { resolveMentions } from "@/message/mention";
@@ -12,14 +12,15 @@ import { logger } from "@/logger";
 import { channelController } from "@/app/channel-controller";
 import { binPath, dataPath, projectPath } from "@/utils/path";
 
-const ENABLE_VIDEO_PROCESSING = true;
+type Scope = { mode: "whitelist" | "blacklist"; ids: string[] };
+type MediaSettings = { receive_image: boolean; receive_video: boolean; receive_audio: boolean };
 
 function exceedsSize(fileSize: number | string | undefined, limit: number): boolean {
   const size = Number(fileSize);
   return Number.isFinite(size) && size > limit;
 }
 
-function isIdInScope(id: string, scope: Config["napcat"]["groups"]): boolean {
+function isIdInScope(id: string, scope: Scope): boolean {
   const isInList = scope.ids.includes(id);
   if (scope.mode === "whitelist") return isInList;
   return !isInList;
@@ -31,6 +32,7 @@ async function parseOneBotMessage(
   getMessage: (id: number) => Promise<{ userId: number; message: OneBotIncomingMessageSegment[] } | null>,
   getRecordDataUrl: (file: string) => Promise<string | undefined>,
   allowVideo: boolean,
+  media: MediaSettings,
 ) {
   const messages: UnifiedInboundMessage[] = [];
   for (const seg of segments) {
@@ -41,6 +43,7 @@ async function parseOneBotMessage(
       const alias = ensureUserAlias("onebot", seg.data.qq, nickname);
       messages.push({ type: "at", data: { userId: shortIdFor(alias.id), nickname: nickname ?? " " } });
     } else if (seg.type === "image") {
+      if (!media.receive_image) continue;
       const url = seg.data.url!;
       if (exceedsSize(seg.data.file_size, 5 * 1024 * 1024)) {
         logger.info({ url: seg.data.url }, "忽略图片，大小超过5MB");
@@ -48,7 +51,7 @@ async function parseOneBotMessage(
         messages.push({ type: "image", data: { url } });
       }
     } else if (seg.type === "video") {
-      if (!ENABLE_VIDEO_PROCESSING || !allowVideo) continue;
+      if (!media.receive_video || !allowVideo) continue;
       const url = seg.data.url!;
       if (exceedsSize(seg.data.file_size, 20 * 1024 * 1024)) {
         logger.info({ url }, "忽略视频，大小超过20MB");
@@ -56,6 +59,7 @@ async function parseOneBotMessage(
         messages.push({ type: "video", data: { url } });
       }
     } else if (seg.type === "record") {
+      if (!media.receive_audio) continue;
       const url = await getRecordDataUrl(seg.data.file);
       if (!url) {
         logger.warn({ file: seg.data.file }, "语音消息缺少可用音频内容，跳过处理");
@@ -65,7 +69,7 @@ async function parseOneBotMessage(
         messages.push({ type: "audio", data: { url } });
       }
     } else if (seg.type === "file") {
-      if (guessFileType(seg.data.file) !== "audio") continue;
+      if (!media.receive_audio || guessFileType(seg.data.file) !== "audio") continue;
 
       const url = seg.data.url!;
       if (exceedsSize(seg.data.file_size, 5 * 1024 * 1024)) {
@@ -82,6 +86,7 @@ async function parseOneBotMessage(
         () => Promise.resolve(null),
         getRecordDataUrl,
         allowVideo,
+        media,
       );
       if (inner.length === 0) continue;
       const nickname = await getNickname(result.userId);
@@ -304,7 +309,12 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
       const seg = segments[i]!;
       if (seg.type !== "file") continue;
       const fileType = guessFileType(seg.data.file);
-      if (fileType !== "image" && !(ENABLE_VIDEO_PROCESSING && isAt && fileType === "video")) continue;
+      if (
+        (fileType !== "image" || !config.napcat.receive_image) &&
+        (fileType !== "video" || !config.napcat.receive_video || !isAt)
+      ) {
+        continue;
+      }
       const url = await (async () => {
         if (seg.data.url) return seg.data.url;
         return await (
@@ -341,6 +351,7 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
           return info.base64.startsWith("data:") ? info.base64 : `data:audio/mpeg;base64,${info.base64}`;
         },
         isAt,
+        config.napcat,
       );
 
       if (unified.length === 0) {

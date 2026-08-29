@@ -21,6 +21,9 @@ type OneBotConfig = {
   private_chats: Scope;
   group_members: Scope;
   admins: string[];
+  receive_image: boolean;
+  receive_video: boolean;
+  receive_audio: boolean;
 };
 
 type BotConfig = Record<string, unknown> & {
@@ -52,6 +55,9 @@ const emptyOneBotConfig: OneBotConfig = {
   private_chats: emptyScope,
   group_members: emptyScope,
   admins: [],
+  receive_image: true,
+  receive_video: false,
+  receive_audio: false,
 };
 
 const statusLabels: Record<NapCatStatus, string> = {
@@ -377,6 +383,39 @@ export function OneBotChannelPage() {
                     updateOneBot((current) => ({ ...current, group_members: update(current.group_members) }))
                   }
                 />
+              </div>
+            </section>
+
+            <section className="grid gap-3 border-t pt-5" aria-labelledby="media-settings-title">
+              <div className="flex flex-col gap-1">
+                <h3 id="media-settings-title" className="text-sm font-medium">
+                  媒体消息
+                </h3>
+                <p className="text-xs leading-5 text-muted-foreground">关闭后会忽略对应类型的消息。</p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(
+                  [
+                    ["receive_image", "接收图片"],
+                    ["receive_video", "接收视频"],
+                    ["receive_audio", "接收音频"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="switch"
+                    aria-label={label}
+                    aria-checked={onebot[key]}
+                    className="group flex items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors hover:bg-muted/50 aria-checked:border-primary/40 aria-checked:bg-primary/5"
+                    onClick={() => updateOneBot((current) => ({ ...current, [key]: !current[key] }))}
+                  >
+                    <span>{label}</span>
+                    <span className="flex h-5 w-9 items-center rounded-full bg-muted p-0.5 transition-colors group-aria-checked:bg-primary">
+                      <span className="size-4 rounded-full bg-background shadow-sm transition-transform group-aria-checked:translate-x-4" />
+                    </span>
+                  </button>
+                ))}
               </div>
             </section>
           </div>
