@@ -432,7 +432,7 @@ describe("App", () => {
 
     expect(await screen.findByDisplayValue("开心")).toBeInTheDocument();
     expect(screen.getByDisplayValue("表达开心和庆祝的场景。")).toBeInTheDocument();
-    expect(screen.getByText("分析过程")).toBeInTheDocument();
+    expect(await screen.findByText("识别到开心表情。")).toBeInTheDocument();
   });
 
   it("移动端可打开抽屉并通过内容层关闭", async () => {
