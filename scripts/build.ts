@@ -191,6 +191,7 @@ console.log("==> 开始并行构建...\n");
 await mkdir(outDir, { recursive: true });
 
 await Promise.all([buildApp(), buildSupervisor(), buildLauncher(), buildWebUi(), copyBin(), copyAssets()]);
+// await runCmd([packageManager, "run", "obfuscate"], root);
 
 console.log("\n==> 构建完成：");
 const files = await readdir(outDir);

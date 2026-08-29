@@ -20,6 +20,7 @@
     "migration": "node scripts/run.mjs --filter bot migration",
     "migration:check": "node scripts/run.mjs --filter bot migration:check",
     "package:default-data": "tsx scripts/default-data.ts",
+    "obfuscate": "node scripts/obfuscate.mjs",
     "build": "tsx scripts/build.ts",
     "test": "pnpm --filter bot test && pnpm --filter channels test"
   },
@@ -28,6 +29,7 @@
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@types/node": "^24.0.0",
     "fflate": "^0.8.3",
+    "javascript-obfuscator": "^5.6.0",
     "prettier": "3.8.4",
     "tsx": "^4.20.3"
   },
