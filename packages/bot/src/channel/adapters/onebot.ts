@@ -1,20 +1,26 @@
-import type { OneBotIncomingMessageSegment, OneBotMessageEvent } from "channels/onebot";
+import type { OneBotIncomingMessageSegment } from "channels/onebot";
 import type { PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import type { ChannelReplyContext } from "@/channel/types";
 import { createBot } from "@/app/queue-loop";
 import { handleCommand } from "@/app/command";
-import { config, type Config } from "@/config";
+import { config } from "@/config";
 import { ensureUserAlias, shortIdFor } from "@/database/user-alias";
-import { OneBotClient, type OneBotEventContext } from "channels/onebot";
+import { OneBotClient } from "channels/onebot";
 import { resolveMentions } from "@/message/mention";
 import { startBuiltinNapCat } from "napcat";
 import { logger } from "@/logger";
 import { channelController } from "@/app/channel-controller";
 import { binPath, dataPath, projectPath } from "@/utils/path";
 
-const ENABLE_VIDEO_PROCESSING = false;
+type Scope = { mode: "whitelist" | "blacklist"; ids: string[] };
+type MediaSettings = { receive_image: boolean; receive_video: boolean; receive_audio: boolean };
 
-function isIdInScope(id: string, scope: Config["napcat"]["groups"]): boolean {
+function exceedsSize(fileSize: number | string | undefined, limit: number): boolean {
+  const size = Number(fileSize);
+  return Number.isFinite(size) && size > limit;
+}
+
+function isIdInScope(id: string, scope: Scope): boolean {
   const isInList = scope.ids.includes(id);
   if (scope.mode === "whitelist") return isInList;
   return !isInList;
@@ -24,6 +30,9 @@ async function parseOneBotMessage(
   segments: OneBotIncomingMessageSegment[],
   getNickname: (qq: number) => Promise<string>,
   getMessage: (id: number) => Promise<{ userId: number; message: OneBotIncomingMessageSegment[] } | null>,
+  getRecordDataUrl: (file: string) => Promise<string | undefined>,
+  allowVideo: boolean,
+  media: MediaSettings,
 ) {
   const messages: UnifiedInboundMessage[] = [];
   for (const seg of segments) {
@@ -34,27 +43,51 @@ async function parseOneBotMessage(
       const alias = ensureUserAlias("onebot", seg.data.qq, nickname);
       messages.push({ type: "at", data: { userId: shortIdFor(alias.id), nickname: nickname ?? " " } });
     } else if (seg.type === "image") {
-      if (Number(seg.data.file_size) < 5 * 1024 * 1024) {
-        messages.push({ type: "image", data: { url: seg.data.url } });
-      } else {
+      if (!media.receive_image) continue;
+      const url = seg.data.url!;
+      if (exceedsSize(seg.data.file_size, 5 * 1024 * 1024)) {
         logger.info({ url: seg.data.url }, "忽略图片，大小超过5MB");
+      } else {
+        messages.push({ type: "image", data: { url } });
       }
     } else if (seg.type === "video") {
-      if (!ENABLE_VIDEO_PROCESSING) continue;
-      const url = seg.data.url;
-      if (!url) {
-        logger.warn("视频消息缺少 url，跳过处理");
-        continue;
-      }
-      if (Number(seg.data.file_size) < 20 * 1024 * 1024) {
-        messages.push({ type: "video", data: { url } });
-      } else {
+      if (!media.receive_video || !allowVideo) continue;
+      const url = seg.data.url!;
+      if (exceedsSize(seg.data.file_size, 20 * 1024 * 1024)) {
         logger.info({ url }, "忽略视频，大小超过20MB");
+      } else {
+        messages.push({ type: "video", data: { url } });
+      }
+    } else if (seg.type === "record") {
+      if (!media.receive_audio) continue;
+      const url = await getRecordDataUrl(seg.data.file);
+      if (!url) {
+        logger.warn({ file: seg.data.file }, "语音消息缺少可用音频内容，跳过处理");
+      } else if (exceedsSize(seg.data.file_size, 5 * 1024 * 1024)) {
+        logger.info({ file: seg.data.file }, "忽略语音，大小超过5MB");
+      } else {
+        messages.push({ type: "audio", data: { url } });
+      }
+    } else if (seg.type === "file") {
+      if (!media.receive_audio || guessFileType(seg.data.file) !== "audio") continue;
+
+      const url = seg.data.url!;
+      if (exceedsSize(seg.data.file_size, 5 * 1024 * 1024)) {
+        logger.info({ fileId: seg.data.file_id, fileName: seg.data.file }, "忽略音频文件，大小超过5MB");
+      } else {
+        messages.push({ type: "audio", data: { url } });
       }
     } else if (seg.type === "reply") {
       const result = await getMessage(Number(seg.data.id));
       if (!result) continue;
-      const inner = await parseOneBotMessage(result.message, getNickname, () => Promise.resolve(null));
+      const inner = await parseOneBotMessage(
+        result.message,
+        getNickname,
+        () => Promise.resolve(null),
+        getRecordDataUrl,
+        allowVideo,
+        media,
+      );
       if (inner.length === 0) continue;
       const nickname = await getNickname(result.userId);
       const alias = ensureUserAlias("onebot", String(result.userId), nickname);
@@ -75,9 +108,18 @@ function guessFileType(fileName: string): "image" | "video" | "audio" | "other" 
 async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<typeof createBot>) {
   let wsUrl: string;
   let accessToken: string;
+  let qqIsOnline = false;
+  let hasLoggedIn = false;
+  let oneBotConnected = false;
+  let oneBotReady = false;
 
   if (config.napcat.qq_id) {
-    channelController.updateNapcat({ status: "starting", error: undefined });
+    channelController.updateNapcat({
+      status: "starting",
+      qrcode_content: undefined,
+      login_error: undefined,
+      error: undefined,
+    });
     try {
       const supervisorName = `napcat-supervisor${process.platform === "win32" ? ".exe" : ""}`;
       const result = await startBuiltinNapCat({
@@ -87,19 +129,61 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
         qqPath: "",
         supervisorPaths: [
           binPath(supervisorName),
-          projectPath("packages", "napcat-supervisor", "target", "release", supervisorName),
+          projectPath("native", "napcat-supervisor", "target", "release", supervisorName),
         ],
         logger,
         onWebUiReady: (embed_url) =>
-          channelController.updateNapcat({ status: "starting", embed_url, error: undefined }),
+          channelController.updateNapcat({ status: "starting", embed_url, login_error: undefined, error: undefined }),
+        onVersion: ({ qqVersion, napcatVersion }) =>
+          channelController.updateNapcat({ qq_version: qqVersion, napcat_version: napcatVersion }),
+        onLoginStatus: ({ isLoggedIn, isOffline, qrcodeContent, loginError }) => {
+          if (isLoggedIn && !isOffline) {
+            qqIsOnline = true;
+            hasLoggedIn = true;
+            channelController.updateNapcat({
+              status: oneBotConnected && oneBotReady ? "ready" : "connecting",
+              qrcode_content: undefined,
+              login_error: undefined,
+              error: undefined,
+            });
+            return;
+          }
+
+          qqIsOnline = false;
+          if (hasLoggedIn) {
+            channelController.updateNapcat({
+              status: "offline",
+              qrcode_content: undefined,
+              login_error: loginError,
+              error: undefined,
+            });
+            return;
+          }
+
+          channelController.updateNapcat({
+            status: "waiting_qr",
+            qrcode_content: qrcodeContent,
+            login_error: loginError,
+            error: undefined,
+          });
+        },
       });
       wsUrl = result.wsUrl;
       accessToken = result.accessToken;
-      channelController.updateNapcat({ status: "ready", embed_url: result.webuiUrl });
+      channelController.updateNapcat({
+        status: "connecting",
+        qrcode_content: undefined,
+        login_error: undefined,
+        embed_url: result.webuiUrl,
+        qq_version: result.qqVersion,
+        napcat_version: result.napcatVersion,
+      });
     } catch (error) {
       channelController.updateNapcat({
         status: "failed",
+        qrcode_content: undefined,
         embed_url: undefined,
+        login_error: undefined,
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -107,22 +191,80 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
   } else if (config.napcat.ws_url && config.napcat.token) {
     wsUrl = config.napcat.ws_url;
     accessToken = config.napcat.token;
-    channelController.updateNapcat({ status: "external", embed_url: undefined, error: undefined });
+    channelController.updateNapcat({
+      status: "external",
+      qrcode_content: undefined,
+      embed_url: undefined,
+      qq_version: undefined,
+      napcat_version: undefined,
+      login_error: undefined,
+      error: undefined,
+    });
     logger.info({ wsUrl }, "使用外置 NapCat");
   } else {
     const message = "NapCat 必须配置 qq_id，或同时配置 ws_url 和 token；请完成配置后重启程序";
-    channelController.updateNapcat({ status: "failed", embed_url: undefined, error: message });
+    channelController.updateNapcat({
+      status: "failed",
+      qrcode_content: undefined,
+      embed_url: undefined,
+      login_error: undefined,
+      error: message,
+    });
     logger.warn(message);
     return;
   }
 
   const bot = new OneBotClient({ url: wsUrl, accessToken, reconnect: true });
-  await bot.connect();
+  bot.onOpen(() => {
+    oneBotConnected = true;
+    if (config.napcat.qq_id && qqIsOnline && oneBotReady) {
+      channelController.updateNapcat({ status: "ready", error: undefined });
+    }
+  });
+  bot.onClose(() => {
+    oneBotConnected = false;
+    if (config.napcat.qq_id && qqIsOnline && oneBotReady) {
+      channelController.updateNapcat({ status: "connecting" });
+    }
+  });
+  bot.onNotice("bot_offline", () => {
+    if (!config.napcat.qq_id) return;
+    qqIsOnline = false;
+    hasLoggedIn = true;
+    channelController.updateNapcat({
+      status: "offline",
+      qrcode_content: undefined,
+      login_error: undefined,
+      error: undefined,
+    });
+    logger.warn("NapCat QQ 账号已下线");
+  });
+  let selfId: string;
+  try {
+    await bot.connect();
 
-  const user = await bot.getLoginInfo();
-  const selfId = String(user.user_id);
-  ensureUserAlias("onebot", selfId, user.nickname);
-  logger.info({ selfId, nickname: user.nickname }, "Bot 已连接并运行");
+    const user = await bot.getLoginInfo();
+    selfId = String(user.user_id);
+    ensureUserAlias("onebot", selfId, user.nickname);
+    if (config.napcat.qq_id) {
+      oneBotReady = true;
+      channelController.updateNapcat({
+        status: qqIsOnline ? "ready" : "offline",
+        qrcode_content: undefined,
+        login_error: undefined,
+        error: undefined,
+      });
+    }
+    logger.info({ selfId, nickname: user.nickname }, "Bot 已连接并运行");
+  } catch (error) {
+    if (config.napcat.qq_id) {
+      channelController.updateNapcat({
+        status: "failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    throw error;
+  }
 
   bot.onMessage(async (event, ctx) => {
     const segments = event.message;
@@ -167,8 +309,12 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
       const seg = segments[i]!;
       if (seg.type !== "file") continue;
       const fileType = guessFileType(seg.data.file);
-      if (fileType !== "image" && !(ENABLE_VIDEO_PROCESSING && fileType === "video")) continue;
-
+      if (
+        (fileType !== "image" || !config.napcat.receive_image) &&
+        (fileType !== "video" || !config.napcat.receive_video || !isAt)
+      ) {
+        continue;
+      }
       const url = await (async () => {
         if (seg.data.url) return seg.data.url;
         return await (
@@ -178,11 +324,10 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
         ).then((res) => res.url);
       })();
       if (!url) {
-        logger.warn({ fileId: seg.data.file_id, fileName: seg.data.file }, "无法获取文件下载 URL，跳过映射");
+        logger.warn({ fileId: seg.data.file_id, fileName: seg.data.file }, "无法获取文件URL，跳过映射");
         continue;
       }
-
-      segments[i] = { type: fileType, data: { file: url, url, file_size: seg.data.file_size } };
+      segments[i] = { type: fileType, data: { file: seg.data.file_id, url, file_size: seg.data.file_size } };
     }
 
     try {
@@ -200,6 +345,13 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
           const { user_id, message } = await ctx.client.getMessage(Number(id));
           return { userId: user_id, message };
         },
+        async (file) => {
+          const info = await ctx.client.getRecordInfo(file);
+          if (!info.base64) return info.url;
+          return info.base64.startsWith("data:") ? info.base64 : `data:audio/mpeg;base64,${info.base64}`;
+        },
+        isAt,
+        config.napcat,
       );
 
       if (unified.length === 0) {

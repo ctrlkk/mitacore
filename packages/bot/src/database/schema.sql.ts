@@ -21,12 +21,12 @@ export const userAlias = sqliteTable(
   (t) => [unique("user_alias_platform_unique").on(t.platform, t.platformId)],
 );
 
-// 媒体转述缓存。虚拟路径由 `/images/`、`/videos/` 前缀区分，文件名由内容哈希生成。
+// 媒体转述缓存。当前所有媒体统一使用 `/images/` 虚拟路径，文件名由内容哈希生成。
 export const mediaCache = sqliteTable(
   "media_cache",
   {
     path: text("path").primaryKey(),
-    kind: text("kind", { enum: ["image", "video"] })
+    kind: text("kind", { enum: ["image", "video", "audio"] })
       .$type<MediaKind>()
       .notNull(),
     description: text("description").notNull(),

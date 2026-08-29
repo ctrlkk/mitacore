@@ -1,5 +1,5 @@
-import { existsSync, writeFileSync, mkdirSync } from "node:fs";
-import { createNapCatApi } from "./client.ts";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createNapCatApi, type NapCatLoginStatus } from "./client.ts";
 import { resolve, dirname } from "node:path";
 import { spawn, execSync, ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
@@ -14,15 +14,37 @@ const SUPERVISOR_NAME = `napcat-supervisor${process.platform === "win32" ? ".exe
 const SUPERVISOR_READY = "NAPCAT_SUPERVISOR_READY";
 const WEBUI_TOKEN_DEFAULT = Math.random().toString(36).substring(2, 15);
 const IS_WIN = process.platform === "win32";
+const WEBUI_CONNECT_TIMEOUT_MS = 30_000;
+const LOGIN_STATUS_POLL_INTERVAL_MS = 5_000;
 
-const WEBUI_URL_RE = /WebUi User Panel Url: http:\/\/127\.0\.0\.1:(\d+)\/webui\?token=(\S+)/;
 const MAIN_PID_RE = /Main Process ID:(\d+)/;
+const QR_CODE_URL_RE = /二维码解码URL:\s*(\S+)/;
+const LOGIN_ERROR_RE = /\[Core\]\s*\[Login\]\s*Login Error.*$/;
+
+function redactNapCatOutput(text: string): string {
+  return text
+    .replace(/([?&](?:token|credential|authorization|sig|password)=)[^&\s]+/gi, "$1***")
+    .replace(/(Bearer\s+)\S+/gi, "$1***");
+}
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   const units = ["B", "KB", "MB", "GB"];
   const unitIndex = Math.floor(Math.log(bytes) / Math.log(1024));
   return `${(bytes / Math.pow(1024, unitIndex)).toFixed(unitIndex > 0 ? 1 : 0)} ${units[unitIndex]}`;
+}
+
+/** 从 QQ 安装目录读取当前 NTQQ 版本；版本信息不可用时不影响启动。 */
+function getQQVersion(qqExe: string): string | undefined {
+  try {
+    const content = readFileSync(resolve(dirname(qqExe), "versions", "config.json"), "utf8");
+    const config: unknown = JSON.parse(content);
+    if (!config || typeof config !== "object" || !("curVersion" in config)) return undefined;
+    const version = config.curVersion;
+    return typeof version === "string" && version.trim() ? version.trim() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** 检查进程是否存活 */
@@ -72,6 +94,8 @@ export interface NapCatConfig {
   supervisorPaths: string[];
   /** 接入宿主应用的日志器 */
   logger?: NapCatLogger;
+  /** 向宿主报告来自 QQ 内核回调的登录状态 */
+  onLoginStatus?: (status: NapCatLoginStatus) => void;
 }
 
 /** 启动 NapCat 所需参数 */
@@ -423,12 +447,52 @@ export async function launchNapCat(config: NapCatConfig) {
       createdAt: Date.now(),
     });
 
-    // 内联 waitForWebUI 逻辑，启动即监听，移除缓冲区与超时设定
+    // WebUI 的端口和令牌由上方写入的 webui.json 决定，不能依赖可能变动的 stdout 文案。
+    handle.webuiPort = paths.webuiPort;
+    handle.webuiToken = paths.webuiToken;
     const { promise: apiPromise, resolve: resolveApi, reject: rejectApi } = Promise.withResolvers<NapCatApi>();
     const { promise: readyPromise, resolve: resolveReady, reject: rejectReady } = Promise.withResolvers<void>();
     void readyPromise.catch(() => {});
+    let webUiConnectStarted = false;
+    let webUiConnectTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const connectWebUi = () => {
+      if (webUiConnectStarted) return;
+      webUiConnectStarted = true;
+      webUiConnectTimer = setTimeout(() => {
+        const error = new Error(`等待 NapCat WebUI 连接超时（${WEBUI_CONNECT_TIMEOUT_MS / 1000} 秒）`);
+        rejectApi(error);
+      }, WEBUI_CONNECT_TIMEOUT_MS);
+      webUiConnectTimer.unref();
+      createNapCatApi(handle.webuiPort, handle.webuiToken, logger, WEBUI_CONNECT_TIMEOUT_MS - 1_000)
+        .then((api) => {
+          clearTimeout(webUiConnectTimer);
+          resolveApi(api);
+        })
+        .catch((error) => {
+          clearTimeout(webUiConnectTimer);
+          rejectApi(error);
+        });
+    };
 
     const ADAPTER_READY_RE = /\[AdapterManager\]\s*协议适配器初始化完成/;
+
+    const handleOutputLine = (line: string) => {
+      const qrcode = line.match(QR_CODE_URL_RE)?.[1];
+      if (qrcode) {
+        config.onLoginStatus?.({ isLoggedIn: false, qrcodeContent: qrcode });
+      }
+
+      const loginError = line.match(LOGIN_ERROR_RE)?.[0];
+      if (loginError) {
+        config.onLoginStatus?.({ isLoggedIn: false, loginError: redactNapCatOutput(loginError) });
+      }
+
+      if (ADAPTER_READY_RE.test(line)) {
+        config.onLoginStatus?.({ isLoggedIn: true });
+        resolveReady();
+      }
+    };
 
     const stdoutTee = new PassThrough();
     let stdoutBuffer = "";
@@ -439,7 +503,7 @@ export async function launchNapCat(config: NapCatConfig) {
       stdoutBuffer = lines.pop() ?? "";
       for (const line of lines) {
         if (!line) continue;
-        logger.trace({ line }, "napcat stdout");
+        logger.trace({ line: redactNapCatOutput(line) }, "napcat stdout");
 
         if (!handle.qqPid) {
           const m = line.match(MAIN_PID_RE);
@@ -450,28 +514,23 @@ export async function launchNapCat(config: NapCatConfig) {
           }
         }
 
-        if (!handle.webuiPort) {
-          const m = line.match(WEBUI_URL_RE);
-          if (m) {
-            handle.webuiPort = parseInt(m[1]!, 10);
-            handle.webuiToken = m[2]!;
-            createNapCatApi(handle.webuiPort, handle.webuiToken, logger).then(resolveApi).catch(rejectApi);
-          }
-        }
-
-        if (ADAPTER_READY_RE.test(line)) resolveReady();
+        handleOutputLine(line);
       }
     });
 
     handle.proc.stderr!.on("data", (d: Buffer) => {
       const text = d.toString();
       for (const line of text.split(/\r?\n/)) {
-        if (line) logger.error({ line }, "napcat stderr");
+        if (line) {
+          logger.error({ line: redactNapCatOutput(line) }, "napcat stderr");
+          handleOutputLine(line);
+        }
       }
     });
     handle.proc.stderr!.resume();
     handle.proc.on("error", (err) => {
       logger.error({ error: err }, "启动进程失败");
+      clearTimeout(webUiConnectTimer);
       rejectApi(err);
       rejectReady(err);
     });
@@ -482,6 +541,7 @@ export async function launchNapCat(config: NapCatConfig) {
         deletePidFile(config.runtimeDir, config.qqId);
       }
       const error = new Error(`NapCat supervisor 已退出 (code=${code})`);
+      clearTimeout(webUiConnectTimer);
       rejectApi(error);
       rejectReady(error);
     });
@@ -491,12 +551,14 @@ export async function launchNapCat(config: NapCatConfig) {
 
     return {
       qqId: config.qqId,
+      qqVersion: getQQVersion(qqExe),
       get webuiPort() {
         return handle.webuiPort;
       },
       get webuiToken() {
         return handle.webuiToken;
       },
+      startWebUiConnection: connectWebUi,
       waitForWebUI: () => apiPromise,
       waitForReady: () => readyPromise,
       stop: () =>
@@ -545,8 +607,19 @@ function oneBotConfig(wsPort: number) {
   return config;
 }
 
+function oneBotConfigWithPort(config: Record<string, unknown>, wsPort: number) {
+  const current = structuredClone(config) as {
+    network?: { websocketServers?: Array<{ name?: unknown; port?: unknown }> };
+  };
+  const server = current.network?.websocketServers?.find((item) => item.name === "websocket-server");
+  if (!server) return oneBotConfig(wsPort);
+  server.port = wsPort;
+  return current;
+}
+
 export interface StartBuiltinNapCatOptions extends NapCatConfig {
   onWebUiReady?: (url: string) => void;
+  onVersion?: (versions: { qqVersion?: string; napcatVersion?: string }) => void;
 }
 
 /**
@@ -560,36 +633,56 @@ export interface StartBuiltinNapCatOptions extends NapCatConfig {
 export async function startBuiltinNapCat(options: StartBuiltinNapCatOptions) {
   const logger = options.logger ?? noopLogger;
   logger.info("启动内置 NapCat");
+  const wsPort = await acquireEphemeralPort();
+  logger.info({ port: wsPort }, `预分配 OneBot WebSocket 端口: ${wsPort}`);
   let napcat: Awaited<ReturnType<typeof launchNapCat>> | undefined;
   try {
     napcat = await launchNapCat(options);
-    const api = await napcat.waitForWebUI();
-    const webuiUrl = `http://localhost:${napcat.webuiPort}/webui?token=${napcat.webuiToken}`;
-    logger.info({ port: napcat.webuiPort, url: webuiUrl }, "NapCat WebUI 就绪");
+    if (!napcat) throw new Error("NapCat 启动后未返回运行句柄");
+    const startedNapcat = napcat;
+    const webuiUrl = `http://localhost:${startedNapcat.webuiPort}/webui?token=${startedNapcat.webuiToken}`;
+
+    options.onVersion?.({ qqVersion: startedNapcat.qqVersion });
+    startedNapcat.startWebUiConnection();
+    const apiPromise = startedNapcat.waitForWebUI();
+    const napcatVersionPromise = apiPromise.then(async (api) => {
+      const napcatVersion = await api.getNapCatVersion();
+      logger.info({ version: napcatVersion }, `NapCat 版本: ${napcatVersion}`);
+      options.onVersion?.({ qqVersion: startedNapcat.qqVersion, napcatVersion });
+      return napcatVersion;
+    });
+    void napcatVersionPromise.catch(() => {});
+
+    await startedNapcat.waitForReady();
+    logger.info("NapCat 协议适配器已就绪，QQ 已登录");
+
+    // QQ 登录完成后通过专有 API 更新账号配置，NapCat 会同步重载 OneBot 网络适配器。
+    const api = await apiPromise;
+    logger.info({ port: startedNapcat.webuiPort }, "NapCat WebUI 就绪");
+    const currentConfig = await api.getOB11Config();
+    await api.setOB11Config(oneBotConfigWithPort(currentConfig, wsPort));
+    logger.info({ port: wsPort }, "OneBot WebSocket 配置已更新");
     options.onWebUiReady?.(webuiUrl);
+    const napcatVersion = await napcatVersionPromise;
 
-    const version = await api.getNapCatVersion();
-    logger.info({ version }, `NapCat 版本: ${version}`);
-
-    await napcat.waitForReady();
-    logger.info("NapCat 协议适配器已就绪");
-
-    const isLoggedIn = await api.checkLoginStatus();
-    logger.info({ loggedIn: isLoggedIn }, `QQ 登录状态: ${isLoggedIn ? "已登录" : "未登录"}`);
-    if (!isLoggedIn) {
-      logger.warn({ url: webuiUrl }, "尚未登录 QQ，请访问 NapCat WebUI 完成登录：");
-    }
-
-    const wsPort = await acquireEphemeralPort();
-    logger.info({ port: wsPort }, `临时 WebSocket 端口: ${wsPort}`);
-
-    await api.setOB11Config(oneBotConfig(wsPort));
-    logger.info("OneBot 配置已推送");
+    const reportLoginStatus = async () => {
+      try {
+        options.onLoginStatus?.(await api.getLoginStatus());
+      } catch (error) {
+        // WebUI 短暂不可用不能推断 QQ 已下线，等待下次轮询即可。
+        logger.debug({ err: error }, "获取 NapCat QQ 登录状态失败");
+      }
+    };
+    void reportLoginStatus();
+    const loginStatusTimer = setInterval(() => void reportLoginStatus(), LOGIN_STATUS_POLL_INTERVAL_MS);
+    loginStatusTimer.unref();
 
     return {
       wsUrl: `ws://127.0.0.1:${wsPort}`,
       accessToken: "",
       webuiUrl,
+      qqVersion: startedNapcat.qqVersion,
+      napcatVersion,
     };
   } catch (error) {
     await napcat?.stop();

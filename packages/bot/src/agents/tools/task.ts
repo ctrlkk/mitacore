@@ -1,10 +1,10 @@
 import { workspaceTools } from "@/workspace/tool";
-import { getModelForRole } from "@/ai/model";
+import { getModelForRole } from "@/agents/model";
 import { generateText, isStepCount, tool } from "ai";
 import { logger, type PinoLogger } from "@/logger";
 import { logUsage } from "@/utils/format";
 import { z } from "zod";
-import taskPrompt from "./task.txt";
+import taskPrompt from "./task.txt?raw";
 
 export function task(log: PinoLogger = logger) {
   return tool({
@@ -15,7 +15,7 @@ export function task(log: PinoLogger = logger) {
       subagent_type: z.enum(["explore", "general"]).describe("子代理类型"),
     }),
     async execute({ description, prompt, subagent_type }, { abortSignal }) {
-      const { default: workspacePrompt } = await import("@/workspace/memory.txt");
+      const { default: workspacePrompt } = await import("@/workspace/memory.txt?raw");
 
       if (subagent_type === "explore") {
         const { text, finishReason } = await generateText({

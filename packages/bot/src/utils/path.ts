@@ -1,11 +1,12 @@
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 declare const __STANDALONE__: boolean;
 
 const installRoot =
   typeof __STANDALONE__ !== "undefined" && __STANDALONE__
-    ? dirname(process.execPath)
-    : resolve(import.meta.dir, "../../../..");
+    ? dirname(fileURLToPath(import.meta.url))
+    : resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 /**
  * 获取数据目录下的路径

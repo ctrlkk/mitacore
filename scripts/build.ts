@@ -1,7 +1,15 @@
-import { dirname, join } from "node:path";
-import { rm, mkdir, copyFile, readFile, access, stat, chmod, readdir, cp } from "node:fs/promises";
+import { delimiter, dirname, join } from "node:path";
+import { spawn } from "node:child_process";
+import { constants } from "node:fs";
+import { rm, mkdir, copyFile, access, stat, chmod, readdir, cp } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
-const root = join(import.meta.dir, "..");
+const require = createRequire(import.meta.url);
+const { path: ffmpegPath } = require("@ffmpeg-installer/ffmpeg") as typeof import("@ffmpeg-installer/ffmpeg");
+const { path: ffprobePath } = require("@ffprobe-installer/ffprobe") as typeof import("@ffprobe-installer/ffprobe");
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = join(root, "dist");
 
 const exeExt = process.platform === "win32" ? ".exe" : "";
@@ -10,117 +18,132 @@ const exeExt = process.platform === "win32" ? ".exe" : "";
  * 执行子进程，如果退出码非 0 则抛出异常
  */
 async function runCmd(cmd: string[], cwd: string) {
-  const proc = Bun.spawn({
-    cmd,
-    cwd,
-    stdio: ["ignore", "inherit", "inherit"],
+  const [executable, ...args] = cmd;
+  if (!executable) throw new Error("命令不能为空");
+
+  const code = await new Promise<number>((resolve, reject) => {
+    const child = spawn(executable, args, {
+      cwd,
+      stdio: ["ignore", "inherit", "inherit"],
+      windowsHide: true,
+      shell: process.platform === "win32" && executable.endsWith(".cmd"),
+    });
+    child.once("error", reject);
+    child.once("exit", (exitCode, signal) => resolve(exitCode ?? (signal ? 1 : 0)));
   });
-  const code = await proc.exited;
   if (code !== 0) throw new Error(`命令执行失败: ${cmd.join(" ")} (退出码: ${code})`);
 }
 
+const packageManager = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+
+async function findExecutable(name: string) {
+  const pathEntries = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+  const candidates =
+    process.platform === "win32"
+      ? [name, ...(process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";").map((ext) => `${name}${ext.toLowerCase()}`)]
+      : [name];
+
+  for (const pathEntry of pathEntries) {
+    for (const candidate of candidates) {
+      const executablePath = join(pathEntry, candidate);
+      try {
+        await access(executablePath, constants.X_OK);
+        if ((await stat(executablePath)).isFile()) return executablePath;
+      } catch {
+        // 继续检查 PATH 中的下一个候选路径。
+      }
+    }
+  }
+  return undefined;
+}
+
 /**
- * 构建应用主程序：Bun 编译为单文件可执行程序
+ * 构建应用主程序
  */
 async function buildApp() {
-  const bunBin = `app${exeExt}`;
+  const appBundle = "app.mjs";
   const botDir = join(root, "packages", "bot");
 
-  // 从 package.json 读 main 入口
-  const pkgRaw = await readFile(join(botDir, "package.json"), "utf-8");
-  const pkg = JSON.parse(pkgRaw);
-  const bunEntry = join(botDir, pkg.module ?? "src/index.ts");
-
   // 清理旧产物 (force: true 确保路径不存在时不报错，省去 existsSync 判断)
-  await rm(join(outDir, bunBin), { force: true });
+  await rm(join(outDir, appBundle), { force: true });
+  await rm(join(outDir, "main.cjs"), { force: true });
+  await rm(join(outDir, "main.mjs"), { force: true });
+  await rm(join(outDir, "cleanup.mjs"), { force: true });
+  await rm(join(outDir, "supervisor.cjs"), { force: true });
+  await rm(join(outDir, "supervisor.mjs"), { force: true });
+  await rm(join(outDir, "default-data.zip"), { force: true });
+  await rm(join(outDir, "default-data.manifest.json"), { force: true });
+  await rm(join(outDir, "sidecar"), { recursive: true, force: true });
+  await rm(join(outDir, "app-chunks"), { recursive: true, force: true });
+  await rm(join(outDir, "app.cjs"), { force: true });
   await rm(join(root, "build"), { recursive: true, force: true });
   await rm(join(root, "pyrpc.spec"), { force: true });
 
-  // 执行 Bun 编译
-  await runCmd(
-    [
-      "bun",
-      "build",
-      "--compile",
-      "--minify",
-      "--define",
-      "__STANDALONE__=true",
-      "--outfile",
-      join(outDir, bunBin),
-      bunEntry,
-    ],
-    root,
-  );
+  await runCmd([packageManager, "--dir", botDir, "run", "build"], root);
+  await runCmd([packageManager, "run", "package:default-data", join(outDir, "references", "default-data.zip")], root);
+  const manifestOutputDir = join(outDir, "references", "default-data");
+  await mkdir(manifestOutputDir, { recursive: true });
+  await copyFile(join(root, "references", "default-data", "manifest.json"), join(manifestOutputDir, "manifest.json"));
+  await copyFile(join(root, "scripts", "main.mjs"), join(outDir, "main.mjs"));
 }
 
 /** 构建负责约束 NapCat 进程树生命周期的原生 supervisor。 */
 async function buildSupervisor() {
-  const manifest = join(root, "packages", "napcat-supervisor", "Cargo.toml");
+  const manifest = join(root, "native", "napcat-supervisor", "Cargo.toml");
   const binaryName = `napcat-supervisor${exeExt}`;
   const outputDir = join(outDir, "bin");
   await runCmd(["cargo", "build", "--release", "--manifest-path", manifest], root);
   await mkdir(outputDir, { recursive: true });
   await copyFile(
-    join(root, "packages", "napcat-supervisor", "target", "release", binaryName),
+    join(root, "native", "napcat-supervisor", "target", "release", binaryName),
     join(outputDir, binaryName),
   );
   if (process.platform !== "win32") await chmod(join(outputDir, binaryName), 0o755);
+}
+
+/** 构建兼容旧版 app.exe 使用方式的 Node 启动器。 */
+async function buildLauncher() {
+  const manifest = join(root, "native", "app-launcher", "Cargo.toml");
+  const binaryName = `app-launcher${exeExt}`;
+  const outputName = `app${exeExt}`;
+
+  await runCmd(["cargo", "build", "--release", "--manifest-path", manifest], root);
+  await copyFile(join(root, "native", "app-launcher", "target", "release", binaryName), join(outDir, outputName));
+  if (process.platform !== "win32") await chmod(join(outDir, outputName), 0o755);
 }
 
 /** 构建 WebUI 并复制到应用同目录，供 Hono 在生产环境托管。 */
 async function buildWebUi() {
   const webUiDir = join(root, "packages", "webui");
   const outputDir = join(outDir, "webui");
-  await runCmd(["bun", "run", "build"], webUiDir);
+  await runCmd([packageManager, "run", "build"], webUiDir);
   await rm(outputDir, { recursive: true, force: true });
   await cp(join(webUiDir, "dist"), outputDir, { recursive: true });
 }
 
-/** 构建 Electron 桌面程序的主进程、预加载脚本和渲染进程。 */
-async function buildDesktop() {
-  const desktopDir = join(root, "packages", "desktop");
-  await runCmd(["bun", "run", "build"], desktopDir);
-}
-
 /**
- * 构建 Node sidecar：调用 packages/playwright 的 Vite 多入口 ESM 构建，
- * 产物目录已包含外置运行时依赖，根构建只负责完整复制。
- */
-async function buildSidecar() {
-  const sidecarDir = join(outDir, "sidecar");
-  const pkgDir = join(root, "packages", "playwright");
-
-  // 清理旧产物，避免残留已废弃的 CJS 文件
-  await rm(sidecarDir, { recursive: true, force: true });
-  await mkdir(sidecarDir, { recursive: true });
-
-  // 子包自管多入口打包
-  await runCmd(["bun", "run", "build"], pkgDir);
-
-  const sidecarEntries = ["entries/server.js", "entries/html-renderer.js"];
-  for (const entry of sidecarEntries) {
-    const bundleSrc = join(pkgDir, "dist", entry);
-    try {
-      await access(bundleSrc);
-    } catch {
-      throw new Error(`找不到子包 build 产物：${bundleSrc}`);
-    }
-  }
-  // 子包的 dist 包含 entries/、chunks/ 和 node_modules/，需完整复制。
-  await cp(join(pkgDir, "dist"), sidecarDir, { recursive: true });
-}
-
-/**
- * 复制所需的外部二进制文件到输出目录的 bin 子目录
+ * 复制所需的外部二进制文件到输出目录的 bin 子目录。
+ * FFmpeg 使用 npm 包提供的静态二进制，不依赖构建机器上的安装或 DLL。
  */
 async function copyBin() {
   const outBinDir = join(outDir, "bin");
-  const bins = ["node", "ffmpeg", "ffprobe", "gifsicle"];
+  const staticBins = [
+    { name: "ffmpeg", sourcePath: ffmpegPath },
+    { name: "ffprobe", sourcePath: ffprobePath },
+  ];
+  const systemBins = ["node", "gifsicle"];
 
   await mkdir(outBinDir, { recursive: true });
 
-  for (const name of bins) {
-    const srcPath = Bun.which(name);
+  for (const { name, sourcePath } of staticBins) {
+    const targetPath = join(outBinDir, `${name}${exeExt}`);
+    console.log(`复制 ${sourcePath} → ${targetPath}`);
+    await copyFile(sourcePath, targetPath);
+    if (process.platform !== "win32") await chmod(targetPath, 0o755);
+  }
+
+  for (const name of systemBins) {
+    const srcPath = await findExecutable(name);
     if (!srcPath) {
       console.warn(`找不到系统 ${name}，跳过复制。请确保目标环境有 ${name}。`);
       continue;
@@ -135,16 +158,6 @@ async function copyBin() {
       if (process.platform !== "win32") {
         await chmod(targetPath, 0o755);
       }
-
-      // Windows 下 shared 版 ffmpeg/ffprobe 依赖同目录的 DLL（如 avcodec-63.dll），
-      // 只复制 exe 会导致打包后无法运行，故把同目录 DLL 一并复制保持自包含。
-      if (process.platform === "win32" && (name === "ffmpeg" || name === "ffprobe")) {
-        const srcDir = dirname(srcPath);
-        const dlls = (await readdir(srcDir)).filter((f) => f.toLowerCase().endsWith(".dll"));
-        for (const dll of dlls) {
-          await copyFile(join(srcDir, dll), join(outBinDir, dll));
-        }
-      }
     } catch (error) {
       console.warn(`复制 ${name} 失败:`, error);
     }
@@ -152,13 +165,12 @@ async function copyBin() {
 }
 
 /**
- * 复制运行时资源：prompts 目录、config.example.toml、config.toml
+ * 复制运行时资源：prompts 目录、config.example.toml
  */
 async function copyAssets() {
   const targets: Array<{ src: string; dest: string; label: string }> = [
     { src: join(root, "prompts"), dest: join(outDir, "prompts"), label: "prompts/" },
     { src: join(root, "config.example.toml"), dest: join(outDir, "config.example.toml"), label: "config.example.toml" },
-    { src: join(root, "config.example.toml"), dest: join(outDir, "config.toml"), label: "config.toml" },
   ];
 
   for (const { src, dest, label } of targets) {
@@ -178,15 +190,8 @@ async function copyAssets() {
 console.log("==> 开始并行构建...\n");
 await mkdir(outDir, { recursive: true });
 
-await Promise.all([
-  buildApp(),
-  buildSupervisor(),
-  buildWebUi(),
-  buildDesktop(),
-  buildSidecar(),
-  copyBin(),
-  copyAssets(),
-]);
+await Promise.all([buildApp(), buildSupervisor(), buildLauncher(), buildWebUi(), copyBin(), copyAssets()]);
+// await runCmd([packageManager, "run", "obfuscate"], root);
 
 console.log("\n==> 构建完成：");
 const files = await readdir(outDir);

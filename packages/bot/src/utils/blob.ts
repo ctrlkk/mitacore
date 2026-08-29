@@ -35,7 +35,7 @@ export function base64ToBlob(base64: string, mimeType: string = "application/oct
  */
 export async function blobToDataURL(blob: Blob): Promise<string> {
   const buffer = await blob.bytes();
-  return `data:${blob.type};base64,${buffer.toBase64()}`;
+  return `data:${blob.type};base64,${Buffer.from(buffer).toString("base64")}`;
 }
 
 /**
@@ -196,7 +196,11 @@ export async function downloadToCache(
   let isFileFinalized = false;
 
   try {
-    await pipeline(Readable.fromWeb(response.body), transform, createWriteStream(tempPath));
+    await pipeline(
+      Readable.fromWeb(response.body as unknown as import("node:stream/web").ReadableStream<any>),
+      transform,
+      createWriteStream(tempPath),
+    );
 
     const fileHandle = await open(tempPath, "r");
     const header = new Uint8Array(64);

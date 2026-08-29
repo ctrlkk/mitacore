@@ -1,48 +1,61 @@
-import { tool, ToolLoopAgent } from "ai";
-import { z } from "zod";
-import { getModel, getModelForRole } from "@/ai/model";
+import { streamText } from "ai";
+import { getModel, getModelForRole } from "@/agents/model";
 import { blobToDataURL } from "@/utils/blob";
-import { compressImage } from "@/utils/image-resize";
-import creationPrompt from "@/prompts/sticker-create.txt";
 
-const suggestionSchema = z.object({
-  name: z.string().min(2).max(32).describe("简短、直接表达聊天语义的贴纸名"),
-  description: z.string().min(1).max(500).describe("500 字以内的贴纸使用说明"),
-});
+const stickerSuggestionInstructions = `你是新增贴纸表单的填写助手。用户已经决定将当前图片加入贴纸图库；你的任务仅根据图片内容，为其生成一个贴纸名称和一份使用描述。
 
-export type StickerSuggestion = z.infer<typeof suggestionSchema>;
-export type StickerSuggestionEvent =
+把贴纸视为聊天中的非语言动作。优先判断它在上下文中替用户表达什么，而不是机械描述图片画面。不得仅根据原始文件名判断含义。
+
+命名要求：
+- 名称直接表达贴纸在聊天中传达的核心语气、动作或意图，例如“笑死”“错愕”“沉思”“晚安”“探头”。
+- 名称简短、自然、可区分，使用 2 至 12 个汉字；可包含字母、数字、下划线和连字符。
+- 不使用人物名、作品名、原始文件名、文件序号，或过度具体的画面描述。
+- 不要把相近但不同的情绪混为一谈。例如区分：轻度惊讶与突发错愕、沉思与犹豫、满足式得意与神气式邀功、困倦与晚安。
+
+描述要求：
+- 描述重点是：这张贴纸在聊天中替用户表达什么。
+- 必须包含：核心语气、适用场景、表达强度、不适用场景、口语关键词。
+- 仅在有助于辨别含义时补充简短画面信息。
+- 适用场景应使用真实聊天语境，而不是笼统地写“表达某种情绪”。
+- 明确易误用的边界。贴纸不应用于真实紧急求助、严肃冲突，或替代必要的信息表达。
+- 描述简洁、准确，不超过 500 字。
+
+分析完成后，通过标准的XML格式输出结果：
+<sticker_suggestion>
+  <name>贴纸名称</name>
+  <description>贴纸使用说明</description>
+</sticker_suggestion>`;
+
+type StickerFormSuggestion = {
+  name: string;
+  description: string;
+};
+type StickerSuggestionStreamEvent =
   | { type: "status"; message: string }
   | { type: "reasoning"; delta: string }
-  | { type: "result"; suggestion: StickerSuggestion };
+  | { type: "result"; suggestion: StickerFormSuggestion };
 
-const suggestionTools = {
-  submit_suggestion: tool({
-    description: "提交新增贴纸表单的建议内容。必须且只能调用一次；此工具不会修改贴纸库。",
-    inputSchema: suggestionSchema,
-  }),
-};
+function parseStickerSuggestionXml(xml: string): StickerFormSuggestion {
+  const name = xml.match(/<name>([\s\S]*?)<\/name>/)?.[1];
+  const description = xml.match(/<description>([\s\S]*?)<\/description>/)?.[1];
+  if (name === undefined || description === undefined) {
+    return { name: "", description: xml };
+  }
 
-function createSuggestionAgent(modelAlias?: string) {
-  return new ToolLoopAgent({
-    model: modelAlias ? getModel(modelAlias) : getModelForRole("multimodal_image"),
-    instructions: `${creationPrompt}\n\n本次任务只提供表单建议，不得修改贴纸库。分析完成后必须调用 submit_suggestion 提交结果，不要输出普通文本。`,
-    tools: suggestionTools,
-    toolChoice: { type: "tool", toolName: "submit_suggestion" },
-    maxOutputTokens: 1024,
-  });
+  return { name: name.trim(), description: description.trim() };
 }
 
-export async function* streamStickerSuggestion(
+export async function* streamStickerFormSuggestion(
   image: File,
   modelAlias?: string,
   abortSignal?: AbortSignal,
-): AsyncGenerator<StickerSuggestionEvent> {
+): AsyncGenerator<StickerSuggestionStreamEvent> {
   yield { type: "status", message: "正在准备图片…" };
-  const compressedImage = await compressImage(image);
   yield { type: "status", message: "正在分析图片…" };
 
-  const result = await createSuggestionAgent(modelAlias).stream({
+  const suggestionStream = streamText({
+    model: modelAlias ? getModel(modelAlias) : getModelForRole("multimodal_image"),
+    instructions: stickerSuggestionInstructions,
     abortSignal,
     messages: [
       {
@@ -50,31 +63,37 @@ export async function* streamStickerSuggestion(
         content: [
           {
             type: "text",
-            text: "请根据这张图片填写新增贴纸表单。不要修改贴纸库，只返回结构化建议。",
+            text: "请根据这张图片填写新增贴纸表单，只返回指定的 XML 结构。",
           },
           {
             type: "file",
-            mediaType: compressedImage.type || "image/png",
-            data: await blobToDataURL(compressedImage),
+            mediaType: image.type || "image/png",
+            data: await blobToDataURL(image),
           },
         ],
       },
     ],
   });
 
-  let submitted = false;
-  for await (const part of result.stream) {
+  let responseXml = "";
+  let hasStartedResponse = false;
+  for await (const part of suggestionStream.stream) {
     if (part.type === "reasoning-delta") {
       yield { type: "reasoning", delta: part.text };
-    } else if (part.type === "tool-input-start" && part.toolName === "submit_suggestion") {
-      yield { type: "status", message: "正在整理名称与使用描述…" };
-    } else if (part.type === "tool-call" && part.toolName === "submit_suggestion") {
-      submitted = true;
-      yield { type: "result", suggestion: suggestionSchema.parse(part.input) };
+    } else if (part.type === "text-delta") {
+      if (!hasStartedResponse) {
+        hasStartedResponse = true;
+        yield { type: "status", message: "正在整理名称与使用描述…" };
+      }
+      responseXml += part.text;
     } else if (part.type === "error") {
       throw part.error;
     }
   }
 
-  if (!submitted) throw new Error("AI 未能生成贴纸表单建议，请重试");
+  if (!responseXml.trim()) throw new Error("AI 未能生成贴纸表单建议，请重试");
+  yield {
+    type: "result",
+    suggestion: parseStickerSuggestionXml(responseXml),
+  };
 }

@@ -1,3 +1,11 @@
 {
-  "editor.formatOnSave": true
+  "editor.formatOnSave": true,
+  "terminal.integrated.profiles.windows": {
+    "PowerShell UTF-8": {
+      "source": "PowerShell",
+      "args": ["-NoLogo", "-NoExit", "-Command", "chcp 65001 > $null"]
+    }
+  },
+  "terminal.integrated.defaultProfile.windows": "PowerShell UTF-8",
+  "rust-analyzer.linkedProjects": ["native/app-launcher/Cargo.toml", "native/napcat-supervisor/Cargo.toml"]
 }

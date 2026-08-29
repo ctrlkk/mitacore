@@ -1,9 +1,15 @@
-export type { UnifiedInboundMessage, MediaKind, MediaMap, ImageMap, PendingMessage } from "@/message/types";
+import { initializeDefaultData } from "@/default-data";
 import { logger } from "@/logger";
+import { loadConfig } from "@/config";
 import { startWebUi } from "@/webui";
 
 if (import.meta.main) {
-  startWebUi();
+  await initializeDefaultData();
+  await loadConfig();
+  const webUiPort = await startWebUi();
+  if (typeof process.send === "function") {
+    process.send({ type: "ready", port: webUiPort });
+  }
 
   try {
     const { startBot } = await import("@/app/runtime");

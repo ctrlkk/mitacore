@@ -25,7 +25,7 @@ export function memoryReview(
     reviewQueue = reviewQueue
       .catch((error) => log.error({ error }, "上一轮后台记忆复盘失败"))
       .then(async () => {
-        const { default: template } = await import("../prompts/memory-review.txt");
+        const { default: template } = await import("../prompts/memory-review.txt?raw");
         const branchInput = `<system_reminder>\n${template.trim()}\n</system_reminder>`;
         const branchTools: ToolSet = Object.fromEntries(
           Object.entries(allTools).map(([name, branchTool]) => {

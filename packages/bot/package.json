@@ -5,12 +5,14 @@
   "private": true,
   "module": "src/index.ts",
   "scripts": {
-    "supervisor:build": "cargo build --release --manifest-path ../napcat-supervisor/Cargo.toml",
-    "dev": "bun run supervisor:build && bun run . --watch",
-    "start": "bun run supervisor:build && bun run .",
+    "supervisor:build": "pnpm --workspace-root run supervisor:build",
+    "dev": "pnpm --workspace-root run package:default-data && pnpm run supervisor:build && node scripts/run-vite.mjs --watch",
+    "start": "pnpm --workspace-root run package:default-data && pnpm run supervisor:build && node scripts/run-vite.mjs",
+    "build": "vite build",
     "db": "drizzle-kit",
-    "migration": "bun run scripts/migration.ts",
-    "migration:check": "bun run scripts/migration.ts --check"
+    "migration": "tsx scripts/migration.ts",
+    "migration:check": "tsx scripts/migration.ts --check",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.18",
@@ -18,6 +20,7 @@
     "@ai-sdk/openai": "^4.0.20",
     "@ai-sdk/openai-compatible": "^3.0.14",
     "@ai-sdk/provider-utils": "^5.0.12",
+    "@hono/node-server": "^2.1.1",
     "@larksuiteoapi/node-sdk": "^1.71.1",
     "@types/mime-types": "^3.0.1",
     "@types/turndown": "^5.0.6",
@@ -26,7 +29,7 @@
     "bilibili": "workspace:*",
     "bs58": "^6.0.0",
     "channels": "workspace:*",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-orm": "1.0.0-rc.4",
     "fast-xml-builder": "^1.3.0",
     "fast-xml-parser": "^5.10.1",
     "fflate": "^0.8.3",
@@ -43,5 +46,12 @@
     "smol-toml": "^1.7.0",
     "turndown": "^7.2.4",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "drizzle-kit": "1.0.0-rc.4",
+    "tsx": "^4.20.3",
+    "vite": "^8.1.5",
+    "vitest": "^4.0.0"
   }
 }

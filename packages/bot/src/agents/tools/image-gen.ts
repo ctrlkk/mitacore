@@ -1,9 +1,10 @@
+import { Buffer } from "node:buffer";
 import type { ToolResultOutput } from "@ai-sdk/provider-utils";
 import type { LanguageModel, ToolSet } from "ai";
 import { z } from "zod";
 import { generateText, tool } from "ai";
 import { lookup } from "mime-types";
-import { imageToText } from "@/ai/multimedia";
+import { imageToText } from "@/agents/multimedia";
 import { sanitizeImagePath, virtualToRealPath } from "@/utils/image-cache";
 import { createFsFile, exists } from "@/utils/fs-file";
 import { logger, type PinoLogger } from "@/logger";
@@ -59,7 +60,7 @@ export function imageGen(
         };
       }
 
-      const { default: template } = await import("./image-gen.txt");
+      const { default: template } = await import("./image-gen.txt?raw");
       const branchInput = `<system_reminder>\n${template.trim().replace("{{task}}", task)}\n</system_reminder>`;
 
       // 子分支只需要知道工具能力，不能实际执行工具而偏离图像决策任务。
@@ -141,7 +142,7 @@ export function imageGen(
             const buffer = await image.bytes();
             return [
               { type: "text", text: `#${index} 图片路径：${path}` },
-              { type: "image-data", data: buffer.toBase64(), mediaType: image.type },
+              { type: "image-data", data: Buffer.from(buffer).toString("base64"), mediaType: image.type },
             ];
           }),
         ).then((parts) => parts.flat());

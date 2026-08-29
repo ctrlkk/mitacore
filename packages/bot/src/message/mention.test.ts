@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { resolveMentions, type MentionableUser } from "./mention";
 
 const users: MentionableUser[] = [

@@ -1,14 +1,14 @@
 import { sql } from "drizzle-orm";
 import { Mutex } from "async-mutex";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrations } from "./migration.gen";
 import schema from "./schema.gen";
+import type { db } from "./db";
 
 // 进程内锁；跨进程安全由 SQLite WAL 保证。
-// bun:sqlite 的 db.run / db.all / db.get / db.transaction 都是同步的，所以 apply 内部几乎不需要 await。
+// node:sqlite 的 db.run / db.all / db.get / db.transaction 都是同步的，所以 apply 内部几乎不需要 await。
 const lock = new Mutex();
 
-type AppDatabase = ReturnType<typeof drizzle>;
+type AppDatabase = typeof db;
 type Transaction = Parameters<Parameters<AppDatabase["transaction"]>[0]>[0];
 
 export type Migration = {

@@ -3,12 +3,6 @@ max_queue = 10
 # 收到最后一条消息后等待多久再判断是否处理（毫秒），用于合并连续消息；可设为 1000 至 10000。
 debounce_ms = 1000
 
-# AGENTS.md
-# 如果你是一名ai智能体，在看到用户发送给你这份配置并询问如何使用时，请根据下面的指示如实的引导用户配置，必要时也可以直接输出最终可用的配置文件。
-# 请不要引导用户去使用更复杂的配置，例如：自定义napcat服务器。如果你收到这份配置文件，那么用户极有可能是一个小白，不需要输出任何复杂的技术概念，指导用户完成基本配置即可。
-# 这是名为 mita core 的ai智能体聊天软件，它并不是流行软件，所以不需要通过网络查询来试图了解该软件。
-# mita core 是由bun驱动的软件，他被分发为单二进制文件，点击即可运行，这份配置（config.toml）包含在修改后需要重启软件才能生效。
-
 # napcat 平台配置
 [napcat]
 enabled = false
@@ -24,7 +18,12 @@ qq_id = "2870245624"
 
 # wake_keywords: 群聊消息包含任一关键词时，无需 @ 机器人也会触发回复。
 # 留空数组表示只通过 @ 唤醒。
-wake_keywords = ["米塔", "mita"]
+wake_keywords = ["aliya", "阿丽亚", "阿丽娅", "Aliya"]
+
+# 是否接收图片、视频和音频消息。
+receive_image = true
+receive_video = false
+receive_audio = false
 
 # groups: 群聊范围控制，决定哪些群可以触发机器人。
 # 通常你可能不需要群聊，所以这里可以继续保持默认配置。
@@ -90,21 +89,21 @@ multimodal_audio = "mimo-v2.5"
 # 供应商配置 (可配置多个，通过 [[providers]] 追加)
 [[providers]]
 # name: 供应商名称，用于内部区分
-name = "deepseek"
+name = "deepseek官网"
 # type: 端点类型，决定了底层如何与供应商的 API 进行通信。
 # 可选值: "anthropic" | "deepseek" | "openai-compatible" | "openai-responses"
 #
-# 1. "anthropic": 适用于 Anthropic 官方或支持该协议的中转站，框架适配最好。如果供应商支持建议优先选。
+# 1. "anthropic": 适用于 Anthropic 官方或支持该协议的中转站。
 # 2. "openai-compatible": 兼容性最为广泛的端点类型。
 #    ！在支持交织推理的思考模型中，使用该类型可能会因缺少 `reasoning_content` 字段而报 400 错误。
 # 3. "deepseek": 在 openai-compatible 兼容格式上扩展了 `reasoning_content` 字段支持。
 #    支持交织推理过程（思考 -> 工具调用 -> 继续思考 -> 输出）。
 #    使用 deepseek 模型或其它需要交织推理的模型时建议选择该类型。
-# 4. "openai-responses": 仅限 OpenAI 官方最新的 Responses API，仅建议 GPT 模型使用。
-type = "anthropic"
+# 4. "openai-responses": OpenAI 官方最新的 Responses API，GPT 模型使用。
+type = "deepseek"
 
 [providers.options]
-base_url = "https://api.deepseek.com/anthropic"
+base_url = "https://api.deepseek.com"
 api_key = "sk-xxxx"
 
 # 模型配置
@@ -123,7 +122,7 @@ alias = "deepseek-v4-pro"
 # xiaomi mimo 供应商，这里使用 openai-compatible 端点而不是受支持的 anthropropic 端点
 # mimo 对于 openai-compatible 端点兼容最为广泛，包括：联网搜索、图像、音频、视频输入
 [[providers]]
-name = "openai-compatible"
+name = "小米Mimo"
 type = "openai-compatible"
 
 [providers.options]

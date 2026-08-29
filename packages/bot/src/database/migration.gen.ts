@@ -8,5 +8,6 @@ export const migrations = (
     import("./migration/0003_media_cache"),
     import("./migration/0004_user_alias_last_seen"),
     import("./migration/0005_loving_celestials"),
+    import("./migration/20260819040653_new_dragon_lord"),
   ])
 ).map((module) => module.default) satisfies Migration[];

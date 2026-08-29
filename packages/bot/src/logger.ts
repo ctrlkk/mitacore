@@ -55,6 +55,9 @@ const createLogger = (): PinoLogger => {
   if (prettyEnabled) {
     streams.push({
       stream: pretty({
+        // 直接写入 fd 在 Windows 传统代码页中会将 UTF-8 字节错误解码为乱码；
+        // 使用 Node 的 stdout 让其通过控制台 Unicode API 输出。
+        destination: process.stdout,
         colorize: true,
         translateTime: "HH:MM:ss.l",
         ignore: "pid,hostname",

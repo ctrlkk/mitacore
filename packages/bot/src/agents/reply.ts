@@ -1,7 +1,7 @@
 import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-history";
 import { generateText, type LanguageModelUsage } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { getModelForRole } from "@/ai/model";
+import { getModelForRole } from "@/agents/model";
 import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message/parts";
 import { splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
@@ -67,8 +67,8 @@ export async function createReplySession(
   historyMessages = [...historyMessages, ...records];
 
   const prompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
-  const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt");
-  const { default: replyGroupPrompt } = await import("../prompts/reply-group.txt");
+  const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt?raw");
+  const { default: replyGroupPrompt } = await import("../prompts/reply-group.txt?raw");
 
   const system = [
     "<role>",

@@ -14,6 +14,10 @@ interface UnifiedVideoMessage {
   type: "video";
   data: { url: string };
 }
+interface UnifiedAudioMessage {
+  type: "audio";
+  data: { url: string };
+}
 interface UnifiedReplyMessage {
   type: "reply";
   data: { userId: string; nickname: string; segments: UnifiedInboundMessage[] }; // userId 为用户短号 u1、u2…
@@ -23,9 +27,10 @@ export type UnifiedInboundMessage =
   | UnifiedAtMessage
   | UnifiedImageMessage
   | UnifiedVideoMessage
+  | UnifiedAudioMessage
   | UnifiedReplyMessage;
 
-export type MediaKind = "image" | "video";
+export type MediaKind = "image" | "video" | "audio";
 
 export type MediaMap = Map<
   string,
@@ -35,8 +40,6 @@ export type MediaMap = Map<
     description: string;
   }
 >;
-
-export type ImageMap = Map<string, { path: string; description: string }>;
 
 export interface PendingMessage {
   userId: string; // 短号 u1、u2…，来自 user_alias

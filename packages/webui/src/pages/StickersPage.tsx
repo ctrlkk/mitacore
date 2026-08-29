@@ -1,461 +1,279 @@
-import { ImagePlus, LoaderCircle, Plus, RefreshCw, Search, Sparkles, Trash2, UploadCloud, X } from "lucide-react";
-import { Input, Modal, Popconfirm, Select, Upload } from "antd";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { Config, Sticker } from "@/types";
+import { useEffect, useState } from "react";
+import { ImagePlusIcon, LoaderCircleIcon, PlusIcon, RefreshCwIcon, StickerIcon, Trash2Icon } from "lucide-react";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { StickerCreateDialog } from "@/components/stickers/StickerCreateDialog";
 
-const { TextArea } = Input;
+type Sticker = {
+  name: string;
+  filename: string;
+  description: string;
+  size: number;
+  updated_at: number;
+  url: string;
+};
+
+type StickersResponse = {
+  stickers: Sticker[];
+  summary: { total: number; limit: number };
+};
 
 function getErrorMessage(payload: unknown, fallback: string) {
-  if (!payload || typeof payload !== "object") return fallback;
-  const error = (payload as { error?: unknown }).error;
-  if (!error || typeof error !== "object") return fallback;
-  const message = (error as { message?: unknown }).message;
-  return typeof message === "string" ? message : fallback;
+  if (!payload || typeof payload !== "object" || !("error" in payload)) return fallback;
+  const error = payload.error;
+  return error && typeof error === "object" && "message" in error && typeof error.message === "string"
+    ? error.message
+    : fallback;
 }
 
-function formatFileSize(size: number) {
-  if (size < 1024 * 1024) return `${Math.ceil(size / 1024)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  const unit = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)) - 1, units.length - 1);
+  return `${(bytes / 1024 ** (unit + 1)).toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
-type StickerSuggestionEvent =
-  | { type: "status"; message: string }
-  | { type: "reasoning"; delta: string }
-  | {
-      type: "result";
-      suggestion: { name: string; description: string };
-    }
-  | { type: "error"; message: string };
+function formatDate(timestamp: number) {
+  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium" }).format(timestamp);
+}
 
-export function StickersPage({ config }: { config: Config }) {
+export function StickersPage() {
   const [stickers, setStickers] = useState<Sticker[]>([]);
-  const [limit, setLimit] = useState(30);
-  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<StickersResponse["summary"]>({ total: 0, limit: 30 });
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
-  const [selectedSticker, setSelectedSticker] = useState<Sticker | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [suggesting, setSuggesting] = useState(false);
-  const [suggestionMessage, setSuggestionMessage] = useState("");
-  const [suggestionReasoning, setSuggestionReasoning] = useState("");
-  const [newName, setNewName] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [newImage, setNewImage] = useState<File | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState("");
-  const [suggestionModel, setSuggestionModel] = useState("");
-  const reasoningRef = useRef<HTMLParagraphElement>(null);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [selectedSticker, setSelectedSticker] = useState<Sticker>();
+  const [isStickerPreviewOpen, setIsStickerPreviewOpen] = useState(false);
+  const [stickerToDelete, setStickerToDelete] = useState<Sticker>();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const remaining = Math.max(summary.limit - summary.total, 0);
+  const canCreate = remaining > 0;
 
-  const modelOptions = useMemo(
-    () => [
-      ...new Set(config.providers.flatMap((provider) => provider.models.map((model) => model.alias)).filter(Boolean)),
-    ],
-    [config.providers],
-  );
+  useEffect(() => {
+    const controller = new AbortController();
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch("/api/stickers");
-      const payload = await response.json();
-      if (!response.ok) throw new Error(getErrorMessage(payload, "读取贴纸库失败"));
-      setStickers(payload.stickers ?? []);
-      setLimit(payload.summary?.limit ?? 30);
+    async function loadStickers() {
+      setIsLoading(true);
       setError("");
-    } catch (exception) {
-      setError(exception instanceof Error ? exception.message : "读取贴纸库失败");
-    } finally {
-      setLoading(false);
+      try {
+        const response = await fetch("/api/stickers", { signal: controller.signal });
+        const payload = (await response.json().catch(() => undefined)) as StickersResponse | undefined;
+        if (!response.ok || !payload) throw new Error(getErrorMessage(payload, "读取贴纸库失败"));
+        setStickers(payload.stickers);
+        setSummary(payload.summary);
+      } catch (exception) {
+        if (!controller.signal.aborted) setError(exception instanceof Error ? exception.message : "读取贴纸库失败");
+      } finally {
+        if (!controller.signal.aborted) setIsLoading(false);
+      }
     }
-  };
 
-  useEffect(() => {
-    void load();
-  }, []);
+    void loadStickers();
+    return () => controller.abort();
+  }, [refreshToken]);
 
-  useEffect(() => {
-    if (!newImage) {
-      setImagePreviewUrl("");
-      return;
-    }
-    const url = URL.createObjectURL(newImage);
-    setImagePreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [newImage]);
+  async function deleteSticker() {
+    if (!stickerToDelete || isDeleting) return;
 
-  useEffect(() => {
-    const reasoningElement = reasoningRef.current;
-    if (reasoningElement) reasoningElement.scrollTop = reasoningElement.scrollHeight;
-  }, [suggestionReasoning]);
-
-  const visibleStickers = useMemo(() => {
-    const keyword = search.trim().toLocaleLowerCase();
-    if (!keyword) return stickers;
-    return stickers.filter((sticker) =>
-      `${sticker.name}\n${sticker.description}`.toLocaleLowerCase().includes(keyword),
-    );
-  }, [search, stickers]);
-
-  const openSticker = (sticker: Sticker) => {
-    setError("");
-    setSelectedSticker(sticker);
-  };
-
-  const deleteSelectedSticker = async () => {
-    if (!selectedSticker) return;
-    setDeleting(true);
+    setIsDeleting(true);
     try {
-      const response = await fetch(`/api/stickers/${encodeURIComponent(selectedSticker.name)}`, { method: "DELETE" });
-      const payload = await response.json();
+      const response = await fetch(`/api/stickers/${encodeURIComponent(stickerToDelete.name)}`, { method: "DELETE" });
+      const payload = await response.json().catch(() => undefined);
       if (!response.ok) throw new Error(getErrorMessage(payload, "删除贴纸失败"));
-      setStickers((value) => value.filter((sticker) => sticker.name !== selectedSticker.name));
-      setSelectedSticker(null);
-      setError("");
+      setStickerToDelete(undefined);
+      toast.success(`贴纸 [${stickerToDelete.name}] 已删除`);
+      setRefreshToken((current) => current + 1);
     } catch (exception) {
-      setError(exception instanceof Error ? exception.message : "删除贴纸失败");
+      toast.error(exception instanceof Error ? exception.message : "删除贴纸失败");
     } finally {
-      setDeleting(false);
+      setIsDeleting(false);
     }
-  };
-
-  const createSticker = async () => {
-    if (!newImage) {
-      setError("请选择贴纸图片");
-      return;
-    }
-    setCreating(true);
-    try {
-      const form = new FormData();
-      form.set("name", newName);
-      form.set("description", newDescription);
-      form.set("image", newImage);
-      const response = await fetch("/api/stickers", { method: "POST", body: form });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(getErrorMessage(payload, "添加贴纸失败"));
-      setCreateOpen(false);
-      setNewName("");
-      setNewDescription("");
-      setNewImage(null);
-      setSuggestionMessage("");
-      setSuggestionReasoning("");
-      setError("");
-      await load();
-    } catch (exception) {
-      setError(exception instanceof Error ? exception.message : "添加贴纸失败");
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const suggestSticker = async () => {
-    if (!newImage) {
-      setError("请先选择贴纸图片");
-      return;
-    }
-    setSuggesting(true);
-    setError("");
-    setSuggestionMessage("正在上传图片…");
-    setSuggestionReasoning("");
-    try {
-      const form = new FormData();
-      form.set("image", newImage);
-      if (suggestionModel) form.set("model", suggestionModel);
-      const response = await fetch("/api/stickers/suggestion", { method: "POST", body: form });
-      if (!response.ok) {
-        const payload = await response.json();
-        throw new Error(getErrorMessage(payload, "生成贴纸表单建议失败"));
-      }
-      if (!response.body) throw new Error("浏览器不支持读取流式响应");
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let receivedResult = false;
-      const consumeLine = (line: string) => {
-        if (!line.trim()) return;
-        const event = JSON.parse(line) as StickerSuggestionEvent;
-        if (event.type === "status") {
-          setSuggestionMessage(event.message);
-          return;
-        }
-        if (event.type === "reasoning") {
-          setSuggestionReasoning((value) => `${value}${event.delta}`.slice(-20_000));
-          return;
-        }
-        if (event.type === "error") throw new Error(event.message);
-
-        receivedResult = true;
-        const { suggestion } = event;
-        setNewName(suggestion.name);
-        setNewDescription(suggestion.description);
-        setSuggestionMessage("已生成贴纸表单建议，可继续修改后添加。");
-      };
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) consumeLine(line);
-      }
-      buffer += decoder.decode();
-      consumeLine(buffer);
-      if (!receivedResult) throw new Error("AI 未能生成贴纸表单建议，请重试");
-      setError("");
-    } catch (exception) {
-      setError(exception instanceof Error ? exception.message : "生成贴纸表单建议失败");
-      setSuggestionMessage("");
-    } finally {
-      setSuggesting(false);
-    }
-  };
+  }
 
   return (
-    <div className="mx-auto max-w-[1240px] px-[clamp(20px,5vw,72px)] pb-16 pt-7.5 max-[480px]:px-3.5 max-[480px]:pb-10 max-[480px]:pt-4">
-      <div className="mb-3 flex items-center justify-between gap-3 text-xs text-muted">
-        <span>共 {stickers.length} 张贴纸</span>
-        <span>
-          容量 {stickers.length} / {limit}
-        </span>
-      </div>
-      <div className="mb-5 flex gap-2.5 max-[480px]:flex-col">
-        <Input
-          className="flex-1"
-          prefix={<Search size={17} />}
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="搜索贴纸名或描述"
-        />
-        <button
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#e9eff2] px-3.5 py-2.5 text-sm font-700 text-[#294051] hover:bg-[#dce5e9] disabled:cursor-wait disabled:opacity-65"
-          onClick={load}
-          disabled={loading}
-        >
-          <RefreshCw size={16} />
-          刷新
-        </button>
-        <button
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-3.5 py-2.5 text-sm font-700 text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-65"
-          onClick={() => {
-            setError("");
-            setCreateOpen(true);
-          }}
-          disabled={stickers.length >= limit}
-        >
-          <Plus size={16} />
-          添加贴纸
-        </button>
-      </div>
-      {error && (
-        <p className="mb-5 rounded-lg bg-[#fff0f0] px-3 py-2.5 text-xs leading-[1.5] text-[#922e2e]">{error}</p>
-      )}
-      {loading ? (
-        <p className="flex min-h-45 items-center justify-center gap-2 text-sm text-muted">
-          <LoaderCircle className="animate-spin" />
-          正在读取贴纸库…
-        </p>
-      ) : !visibleStickers.length ? (
-        <div className="flex min-h-55 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#ccd5db] bg-white text-center text-sm text-muted">
-          <ImagePlus size={28} strokeWidth={1.5} />
-          <span>{stickers.length ? "没有符合条件的贴纸。" : "贴纸库还是空的，添加第一张贴纸吧。"}</span>
+    <section className="flex flex-1 flex-col gap-6 p-4 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">贴纸管理</h1>
+          <p className="text-sm text-muted-foreground">维护代理可根据名称和场景描述调用的专属贴纸。</p>
         </div>
-      ) : (
-        <div className="grid grid-cols-4 gap-3.5 max-[820px]:grid-cols-2">
-          {visibleStickers.map((sticker) => (
-            <button
-              className="grid min-w-0 overflow-hidden rounded-[10px] b-ui bg-white p-0 text-left text-[#253744] hover:border-[#96bcb0] hover:translate-y--0.25"
-              key={sticker.name}
-              onClick={() => openSticker(sticker)}
-            >
-              <img
-                className="w-full aspect-square object-contain bg-[#f0f2f4] p-2"
-                src={sticker.url}
-                alt={sticker.name}
-              />
-              <strong className="overflow-hidden px-2.5 pt-2.5 text-ellipsis whitespace-nowrap font-mono text-xs">
-                [{sticker.name}]
-              </strong>
-              <span className="line-clamp-2 min-h-9 px-2.5 pb-2.5 pt-1 text-[11px] leading-[1.45] text-muted">
-                {sticker.description || "暂无描述"}
-              </span>
-            </button>
-          ))}
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRefreshToken((current) => current + 1)}
+            disabled={isLoading}
+          >
+            <RefreshCwIcon data-icon="inline-start" className={isLoading ? "animate-spin" : undefined} />
+            刷新
+          </Button>
+          <Button size="sm" onClick={() => setIsCreateOpen(true)} disabled={!canCreate}>
+            <PlusIcon data-icon="inline-start" />
+            添加贴纸
+          </Button>
         </div>
-      )}
+      </div>
 
-      <Modal
-        open={createOpen}
-        title="添加贴纸"
-        okText={creating ? "正在添加" : "添加"}
-        cancelText="取消"
-        confirmLoading={creating}
-        onOk={createSticker}
-        okButtonProps={{ disabled: suggesting }}
-        onCancel={() => !creating && !suggesting && setCreateOpen(false)}
-        closable={!creating && !suggesting}
-        maskClosable={!creating && !suggesting}
-      >
-        <div className="grid gap-4 py-2">
-          {error && (
-            <p className="m-0 rounded-lg bg-[#fff0f0] px-3 py-2.5 text-xs leading-[1.5] text-[#922e2e]">{error}</p>
-          )}
-          {suggestionReasoning && (
-            <div className="rounded-lg bg-[#f4f6f8] px-3 py-2.5">
-              <strong className="text-xs text-[#40515f]">AI 思考过程</strong>
-              <p
-                className="mb-0 mt-1.5 max-h-36 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] leading-[1.6] text-muted"
-                ref={reasoningRef}
-              >
-                {suggestionReasoning}
-              </p>
-            </div>
-          )}
-          {suggestionMessage && (
-            <p className="m-0 rounded-lg bg-[#edf7f2] px-3 py-2.5 text-xs leading-[1.5] text-[#416050]">
-              {suggestionMessage}
+      <Card>
+        <CardHeader className="border-b">
+          <CardTitle className="flex items-center gap-2">
+            <StickerIcon className="size-4" />
+            贴纸库
+          </CardTitle>
+          <CardDescription>每张贴纸都需要明确的名称与描述，帮助代理准确选择合适的表达。</CardDescription>
+          <CardAction>
+            <Badge variant={canCreate ? "secondary" : "destructive"}>
+              {summary.total} / {summary.limit}
+            </Badge>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4 pt-4">
+          {error ? (
+            <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {error}
             </p>
-          )}
-          <label className="grid gap-1.5 text-sm font-600">
-            贴纸名
-            <Input
-              value={newName}
-              onChange={(event) => setNewName(event.target.value)}
-              placeholder="例如：开心、震惊、晚安"
-              maxLength={32}
-            />
-            <small className="font-400 text-muted">2–32 个字符，发送时使用 [贴纸名]。</small>
-          </label>
-          <label className="grid gap-1.5 text-sm font-600">
-            使用描述
-            <TextArea
-              value={newDescription}
-              onChange={(event) => setNewDescription(event.target.value)}
-              placeholder="说明适用语气、场景、强度和不适用场景"
-              rows={4}
-              maxLength={500}
-              showCount
-            />
-          </label>
-          <label className="grid gap-1.5 text-sm font-600">
-            AI 模型
-            <Select
-              value={suggestionModel || undefined}
-              options={[
-                { label: `默认图像模型（${config.models.multimodal_image || "未配置"}）`, value: "" },
-                ...modelOptions.map((model) => ({ label: model, value: model })),
-              ]}
-              placeholder="选择用于分析贴纸的模型"
-              disabled={suggesting || creating}
-              onChange={setSuggestionModel}
-            />
-            <small className="font-400 text-muted">请仅选择支持图片模态输入的模型；纯文本模型无法分析贴纸图片。</small>
-          </label>
-          <Upload.Dragger
-            accept=".webp,.png,.jpg,.jpeg,.gif"
-            maxCount={1}
-            showUploadList={false}
-            beforeUpload={(file) => {
-              setNewImage(file);
-              setSuggestionMessage("");
-              setSuggestionReasoning("");
-              return false;
-            }}
-          >
-            {newImage ? (
-              <div className="flex items-center gap-3 p-3 text-left">
-                <img
-                  className="h-16 w-16 shrink-0 rounded-lg bg-[#f0f2f4] object-contain p-1"
-                  src={imagePreviewUrl}
-                  alt="待添加贴纸预览"
-                />
-                <div className="min-w-0 flex-1">
-                  <strong className="block overflow-hidden text-sm text-ellipsis whitespace-nowrap">
-                    {newImage.name}
-                  </strong>
-                  <span className="mt-1 block text-xs text-muted">{formatFileSize(newImage.size)} · 点击更换图片</span>
-                </div>
-                <button
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted hover:bg-[#fff0f0] hover:text-[#ae3737]"
-                  type="button"
-                  aria-label="移除图片"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setNewImage(null);
-                    setSuggestionMessage("");
-                    setSuggestionReasoning("");
-                  }}
-                >
-                  <X size={17} />
-                </button>
-              </div>
-            ) : (
-              <>
-                <UploadCloud className="mx-auto mb-2 text-brand" />
-                <p className="m-0 text-sm">拖入或点击选择图片</p>
-                <p className="mb-0 mt-1 text-xs text-muted">支持 WebP、PNG、JPG、JPEG、GIF，最大 10 MB</p>
-              </>
-            )}
-          </Upload.Dragger>
-          <button
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#e9eff2] px-3.5 py-2.5 text-sm font-700 text-[#294051] hover:bg-[#dce5e9] disabled:cursor-not-allowed disabled:opacity-65"
-            type="button"
-            onClick={suggestSticker}
-            disabled={!newImage || suggesting || creating}
-          >
-            {suggesting ? <LoaderCircle className="animate-spin" size={16} /> : <Sparkles size={16} />}
-            {suggesting ? "AI 正在分析" : "AI 辅助填写"}
-          </button>
-        </div>
-      </Modal>
-      <Modal
-        open={Boolean(selectedSticker)}
-        title={selectedSticker ? `[${selectedSticker.name}]` : "贴纸"}
-        footer={
-          <div className="flex justify-start">
-            <Popconfirm
-              title="删除贴纸"
-              description="删除后无法恢复，确定要继续吗？"
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true, loading: deleting }}
-              onConfirm={deleteSelectedSticker}
-            >
-              <button
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#fff0f0] px-3.5 py-2 text-sm font-700 text-[#ae3737] hover:bg-[#ffe2e2] disabled:opacity-65"
-                disabled={deleting}
-              >
-                {deleting ? <LoaderCircle className="animate-spin" size={16} /> : <Trash2 size={16} />}
-                删除
-              </button>
-            </Popconfirm>
-          </div>
-        }
-        onCancel={() => !deleting && setSelectedSticker(null)}
-        closable={!deleting}
-        maskClosable={!deleting}
-      >
-        {selectedSticker && (
-          <div className="grid gap-4">
-            {error && (
-              <p className="m-0 rounded-lg bg-[#fff0f0] px-3 py-2.5 text-xs leading-[1.5] text-[#922e2e]">{error}</p>
-            )}
-            <img
-              className="mx-auto block max-h-[48vh] max-w-full rounded-lg bg-[#f0f2f4] object-contain p-2"
-              src={selectedSticker.url}
-              alt={selectedSticker.name}
-            />
-            <div>
-              <strong className="text-sm">使用描述</strong>
-              <p className="mb-0 mt-1.5 whitespace-pre-wrap text-sm leading-[1.6] text-[#40515f]">
-                {selectedSticker.description}
-              </p>
+          ) : null}
+          {isLoading ? (
+            <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground">
+              <LoaderCircleIcon className="size-4 animate-spin" />
+              正在读取贴纸库
             </div>
-          </div>
-        )}
-      </Modal>
-    </div>
+          ) : stickers.length === 0 ? (
+            <div className="flex min-h-64 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+              <StickerIcon className="size-8" />
+              <p className="text-sm">贴纸库还是空的</p>
+              {canCreate ? (
+                <Button variant="outline" size="sm" onClick={() => setIsCreateOpen(true)}>
+                  <ImagePlusIcon data-icon="inline-start" />
+                  添加第一张贴纸
+                </Button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+              {stickers.map((sticker) => (
+                <StickerCard
+                  key={sticker.name}
+                  sticker={sticker}
+                  onOpen={() => {
+                    setSelectedSticker(sticker);
+                    setIsStickerPreviewOpen(true);
+                  }}
+                  onDelete={() => setStickerToDelete(sticker)}
+                />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <StickerCreateDialog
+        open={isCreateOpen}
+        onOpenChange={setIsCreateOpen}
+        onCreated={() => setRefreshToken((current) => current + 1)}
+      />
+      <StickerPreviewDialog
+        open={isStickerPreviewOpen}
+        sticker={selectedSticker}
+        onClose={() => setIsStickerPreviewOpen(false)}
+      />
+      <AlertDialog open={Boolean(stickerToDelete)} onOpenChange={(open) => !open && setStickerToDelete(undefined)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除贴纸</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除贴纸 [{stickerToDelete?.name}] 吗？此操作无法撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>取消</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={isDeleting} onClick={() => void deleteSticker()}>
+              {isDeleting ? (
+                <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <Trash2Icon data-icon="inline-start" />
+              )}
+              删除贴纸
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </section>
+  );
+}
+
+function StickerCard({ sticker, onOpen, onDelete }: { sticker: Sticker; onOpen: () => void; onDelete: () => void }) {
+  return (
+    <Card size="sm" className="min-w-0 gap-2 py-0">
+      <button
+        type="button"
+        aria-label={`预览贴纸 [${sticker.name}]`}
+        className="group relative block w-full overflow-hidden text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        onClick={onOpen}
+      >
+        <img
+          className="aspect-square w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+          src={sticker.url}
+          alt={sticker.description || `[${sticker.name}]`}
+          loading="lazy"
+        />
+      </button>
+      <CardContent className="flex items-center gap-1 px-3 pb-3">
+        <div className="min-w-0 flex-1">
+          <CardTitle className="truncate text-sm">[{sticker.name}]</CardTitle>
+          <CardDescription
+            className="truncate text-xs"
+            title={`${formatBytes(sticker.size)} · ${formatDate(sticker.updated_at)}`}
+          >
+            {formatBytes(sticker.size)} · {formatDate(sticker.updated_at)}
+          </CardDescription>
+          <p className="line-clamp-1 text-xs text-muted-foreground">{sticker.description}</p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0"
+          aria-label={`删除贴纸 [${sticker.name}]`}
+          onClick={onDelete}
+        >
+          <Trash2Icon />
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StickerPreviewDialog({ open, sticker, onClose }: { open: boolean; sticker?: Sticker; onClose: () => void }) {
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>[{sticker?.name}]</DialogTitle>
+          <DialogDescription>{sticker?.description}</DialogDescription>
+        </DialogHeader>
+        {sticker ? (
+          <img
+            className="aspect-square w-full rounded-lg border object-contain"
+            src={sticker.url}
+            alt={sticker.description || `[${sticker.name}]`}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -5,8 +5,8 @@
   "private": true,
   "scripts": {
     "build": "vite build",
-    "postbuild": "bun run build/prepare-dist.ts",
-    "server": "node src/server.ts"
+    "postbuild": "tsx build/prepare-dist.ts",
+    "server": "node src/image-gen.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.8",
@@ -22,7 +22,8 @@
     "@types/node": "^26.0.1",
     "postject": "^1.0.0-alpha.6",
     "prettier": "^3.9.0",
-    "typescript": "^5",
+    "tsx": "^4.20.3",
+    "typescript": "~6.0.3",
     "vite": "^8.1.5"
   },
   "prettier": {

@@ -1,12 +1,27 @@
 import type { WeixinCredentials } from "channels/weixin";
 
 export type WeixinStatus = "idle" | "waiting_qr" | "scanned" | "waiting_verify_code" | "ready" | "failed";
-export type NapCatStatus = "idle" | "starting" | "ready" | "external" | "failed";
+export type NapCatStatus =
+  | "idle"
+  | "starting"
+  | "waiting_qr"
+  | "connecting"
+  | "ready"
+  | "offline"
+  | "external"
+  | "failed";
 export type QQBotStatus = "idle" | "waiting_qr" | "connecting" | "ready" | "failed";
-
 export type ChannelSnapshot = {
   weixin: { status: WeixinStatus; qrcode_content?: string; error?: string };
-  napcat: { status: NapCatStatus; embed_url?: string; error?: string };
+  napcat: {
+    status: NapCatStatus;
+    qrcode_content?: string;
+    embed_url?: string;
+    qq_version?: string;
+    napcat_version?: string;
+    login_error?: string;
+    error?: string;
+  };
   qqbot: { status: QQBotStatus; qrcode_content?: string; error?: string };
 };
 

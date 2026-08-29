@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test } from "vitest";
 import { ChannelController } from "./channel-controller";
 
 test("验证码只能提交给正在等待的登录请求", async () => {
@@ -27,4 +27,55 @@ test("登录结果交由运行时在持久化后发布就绪状态", async () =>
     error: undefined,
   });
   expect(snapshots).toEqual(["waiting_qr", "waiting_qr"]);
+});
+
+test("NapCat 登录状态包含二维码并在连接后清除", () => {
+  const controller = new ChannelController();
+
+  controller.updateNapcat({
+    status: "waiting_qr",
+    qrcode_content: "https://qrcode.example.test/login",
+    login_error: undefined,
+  });
+  expect(controller.getSnapshot().napcat).toEqual({
+    status: "waiting_qr",
+    qrcode_content: "https://qrcode.example.test/login",
+    login_error: undefined,
+  });
+
+  controller.updateNapcat({
+    status: "connecting",
+    qrcode_content: undefined,
+    login_error: undefined,
+  });
+  expect(controller.getSnapshot().napcat).toEqual({
+    status: "connecting",
+    qrcode_content: undefined,
+    login_error: undefined,
+  });
+});
+
+test("NapCat 可发布 QQ 账号下线状态", () => {
+  const controller = new ChannelController();
+
+  controller.updateNapcat({ status: "offline", qrcode_content: undefined, login_error: undefined, error: undefined });
+
+  expect(controller.getSnapshot().napcat).toEqual({
+    status: "offline",
+    qrcode_content: undefined,
+    login_error: undefined,
+    error: undefined,
+  });
+});
+
+test("NapCat 可发布 NTQQ 与 NapCat 版本", () => {
+  const controller = new ChannelController();
+
+  controller.updateNapcat({ qq_version: "9.9.27-45758", napcat_version: "4.18.19" });
+
+  expect(controller.getSnapshot().napcat).toEqual({
+    status: "idle",
+    qq_version: "9.9.27-45758",
+    napcat_version: "4.18.19",
+  });
 });
