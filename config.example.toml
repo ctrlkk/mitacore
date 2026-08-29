@@ -98,7 +98,7 @@ name = "deepseek官网"
 type = "deepseek"
 
 [providers.options]
-base_url = "https://api.deepseek.com/v1"
+base_url = "https://api.deepseek.com"
 api_key = "sk-xxxx"
 
 # 模型配置

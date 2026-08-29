@@ -45,7 +45,7 @@ const defaultProviders = [
   {
     name: "deepseek官网",
     type: "deepseek" as const,
-    options: { base_url: "https://api.deepseek.com/v1", api_key: "sk-xxxx" },
+    options: { base_url: "https://api.deepseek.com", api_key: "sk-xxxx" },
     models: [
       { id: "deepseek-v4-flash", alias: "deepseek-v4-flash" },
       { id: "deepseek-v4-pro", alias: "deepseek-v4-pro" },
