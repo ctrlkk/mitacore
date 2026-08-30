@@ -1,7 +1,9 @@
 packages:
   - "packages/*"
 allowBuilds:
+  '@ffmpeg-installer/linux-arm64': true
   "@ffmpeg-installer/linux-x64": true
+  '@ffprobe-installer/linux-arm64': true
   "@ffprobe-installer/linux-x64": true
   esbuild: true
   gifsicle: true
