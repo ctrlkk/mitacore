@@ -1,12 +1,12 @@
 import { constants } from "node:fs";
 import { copyFile, lstat, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { parse, join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { tool, type ToolSet } from "ai";
 import { Mutex } from "async-mutex";
 import { z } from "zod";
 import type { ImagePart } from "./parts";
 import { blobToDataURL } from "@/utils/blob";
+import { createFsFile } from "@/utils/fs-file";
 import { sanitizeImagePath, virtualToRealPath } from "@/utils/image-cache";
 import { dataPath } from "@/utils/path";
 
@@ -137,8 +137,7 @@ export async function getStickersContext() {
 export async function resolveSticker(name: string): Promise<ImagePart | null> {
   const file = await findStickerFile(name);
   if (!file) return null;
-  const url = await fetch(pathToFileURL(file.path))
-    .then((response) => response.blob())
+  const url = await createFsFile(file.path)
     .then(blobToDataURL)
     .catch(() => null);
   if (!url) return null;
