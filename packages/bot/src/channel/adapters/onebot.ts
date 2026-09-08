@@ -131,6 +131,10 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
           binPath(supervisorName),
           projectPath("native", "napcat-supervisor", "target", "release", supervisorName),
         ],
+        linuxInjectorPaths: [
+          binPath("libnapcat_launcher.so"),
+          projectPath("native", "napcat-linux-launcher", "target", "release", "libnapcat_launcher.so"),
+        ],
         logger,
         onWebUiReady: (embed_url) =>
           channelController.updateNapcat({ status: "starting", embed_url, login_error: undefined, error: undefined }),

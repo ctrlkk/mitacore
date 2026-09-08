@@ -102,6 +102,18 @@ async function buildSupervisor() {
   if (process.platform !== "win32") await chmod(join(outputDir, binaryName), 0o755);
 }
 
+/** Linux 构建时生成 NapCat LD_PRELOAD 注入器并随应用发布。 */
+async function buildLinuxInjector() {
+  if (process.platform !== "linux") return;
+
+  const binaryName = "libnapcat_launcher.so";
+  const source = join(root, "native", "napcat-linux-launcher", "target", "release", binaryName);
+  const outputDir = join(outDir, "bin");
+  await runCmd([packageManager, "run", "linux-injector:build"], root);
+  await mkdir(outputDir, { recursive: true });
+  await copyFile(source, join(outputDir, binaryName));
+}
+
 /** 构建兼容旧版 app.exe 使用方式的 Node 启动器。 */
 async function buildLauncher() {
   const manifest = join(root, "native", "app-launcher", "Cargo.toml");
@@ -192,7 +204,15 @@ async function copyAssets() {
 console.log("==> 开始并行构建...\n");
 await mkdir(outDir, { recursive: true });
 
-await Promise.all([buildApp(), buildSupervisor(), buildLauncher(), buildWebUi(), copyBin(), copyAssets()]);
+await Promise.all([
+  buildApp(),
+  buildSupervisor(),
+  buildLinuxInjector(),
+  buildLauncher(),
+  buildWebUi(),
+  copyBin(),
+  copyAssets(),
+]);
 // await runCmd([packageManager, "run", "obfuscate"], root);
 
 console.log("\n==> 构建完成：");

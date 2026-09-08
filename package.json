@@ -9,6 +9,8 @@
   },
   "scripts": {
     "supervisor:build": "cargo build --release --manifest-path native/napcat-supervisor/Cargo.toml",
+    "linux-injector:build": "tsx scripts/build-linux-injector.ts",
+    "native:build": "pnpm run supervisor:build && pnpm run linux-injector:build",
     "dev": "node scripts/run.mjs --filter bot dev",
     "start": "node scripts/run.mjs --filter bot start",
     "webui:dev": "pnpm --filter webui dev",

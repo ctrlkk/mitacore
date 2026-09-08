@@ -5,9 +5,9 @@
   "private": true,
   "module": "src/index.ts",
   "scripts": {
-    "supervisor:build": "pnpm --workspace-root run supervisor:build",
-    "dev": "pnpm --workspace-root run package:default-data && pnpm run supervisor:build && node scripts/run-vite.mjs --watch",
-    "start": "pnpm --workspace-root run package:default-data && pnpm run supervisor:build && node scripts/run-vite.mjs",
+    "native:build": "pnpm --workspace-root run native:build",
+    "dev": "pnpm --workspace-root run package:default-data && pnpm run native:build && node scripts/run-vite.mjs --watch",
+    "start": "pnpm --workspace-root run package:default-data && pnpm run native:build && node scripts/run-vite.mjs",
     "build": "vite build",
     "db": "drizzle-kit",
     "migration": "tsx scripts/migration.ts",

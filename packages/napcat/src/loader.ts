@@ -11,6 +11,7 @@ import oneBotConfigTemplate from "./onebot-config.json" with { type: "json" };
 
 const LOAD_SCRIPT_FILE = "loadNapCat.js";
 const SUPERVISOR_NAME = `napcat-supervisor${process.platform === "win32" ? ".exe" : ""}`;
+const LINUX_INJECTOR_NAME = "libnapcat_launcher.so";
 const SUPERVISOR_READY = "NAPCAT_SUPERVISOR_READY";
 const WEBUI_TOKEN_DEFAULT = Math.random().toString(36).substring(2, 15);
 const IS_WIN = process.platform === "win32";
@@ -92,6 +93,8 @@ export interface NapCatConfig {
   runtimeDir: string;
   /** supervisor 可执行文件候选路径，按顺序查找 */
   supervisorPaths: string[];
+  /** Linux LD_PRELOAD 注入器候选路径，按顺序查找 */
+  linuxInjectorPaths: string[];
   /** 接入宿主应用的日志器 */
   logger?: NapCatLogger;
   /** 向宿主报告来自 QQ 内核回调的登录状态 */
@@ -107,6 +110,7 @@ interface SpawnArgs {
   qqntPath: string;
   runtimeDir: string;
   supervisorPaths: string[];
+  linuxInjectorPaths: string[];
   logger: NapCatLogger;
 }
 
@@ -118,7 +122,7 @@ interface NapcatHandle {
   webuiToken: string;
 }
 
-/** 跨平台启动器接口 — win32/posix 各自实现 */
+/** 跨平台启动器接口 — win32/linux 各自实现 */
 interface PlatformAdapter {
   /** 查找 QQNT 可执行文件路径 */
   findQQ(): string | null;
@@ -133,6 +137,15 @@ function resolveSupervisorPath(supervisorPaths: string[]): string {
   const path = supervisorPaths.find(existsSync);
   if (!path) {
     throw new Error(`未找到 ${SUPERVISOR_NAME}，请先构建 NapCat supervisor`);
+  }
+  return path;
+}
+
+/** 查找随应用构建的 Linux LD_PRELOAD 注入器。 */
+function resolveLinuxInjectorPath(injectorPaths: string[]): string {
+  const path = injectorPaths.find(existsSync);
+  if (!path) {
+    throw new Error(`未找到 ${LINUX_INJECTOR_NAME}，请在 Linux 环境重新构建应用`);
   }
   return path;
 }
@@ -237,7 +250,7 @@ const win32Adapter: PlatformAdapter = {
   },
 };
 
-const posixAdapter: PlatformAdapter = {
+const linuxAdapter: PlatformAdapter = {
   findQQ() {
     const candidates = ["/opt/QQ/qq", "~/opt/QQ/qq", "/usr/local/bin/qq", "/snap/bin/qq"];
     for (const p of candidates) {
@@ -258,7 +271,8 @@ const posixAdapter: PlatformAdapter = {
   },
 
   async spawn(args) {
-    const { qqId, qqExe, mjsPath, qqntPath, runtimeDir, supervisorPaths, logger } = args;
+    const { qqId, qqExe, mjsPath, qqntPath, runtimeDir, supervisorPaths, linuxInjectorPaths, logger } = args;
+    const injector = resolveLinuxInjectorPath(linuxInjectorPaths);
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -268,10 +282,12 @@ const posixAdapter: PlatformAdapter = {
       NAPCAT_DISABLE_PIPE: "1",
     };
 
+    const preload = process.env.LD_PRELOAD ? `${injector}:${process.env.LD_PRELOAD}` : injector;
+    const injectedCommand = ["/usr/bin/env", `LD_PRELOAD=${preload}`, qqExe, "--no-sandbox", "-q", qqId];
     const useXvfb = !process.env.DISPLAY && existsSync("/usr/bin/xvfb-run");
-    const cmd = useXvfb ? "xvfb-run" : qqExe;
-    const spawnArgs = useXvfb ? ["-a", qqExe, "--no-sandbox", "-q", qqId] : ["--no-sandbox", "-q", qqId];
-    logger.info({ cmd, args: spawnArgs }, "启动 NapCat launcher (posix)");
+    const cmd = useXvfb ? "xvfb-run" : "/usr/bin/env";
+    const spawnArgs = useXvfb ? ["-a", ...injectedCommand] : injectedCommand.slice(1);
+    logger.info({ cmd, args: spawnArgs, injector }, "启动 NapCat launcher (linux)");
     const proc = await spawnSupervised(runtimeDir, supervisorPaths, logger, qqId, cmd, spawnArgs, env);
     const handle: NapcatHandle = {
       proc,
@@ -283,7 +299,11 @@ const posixAdapter: PlatformAdapter = {
   },
 };
 
-const platform: PlatformAdapter = IS_WIN ? win32Adapter : posixAdapter;
+function getPlatformAdapter(): PlatformAdapter {
+  if (IS_WIN) return win32Adapter;
+  if (process.platform === "linux") return linuxAdapter;
+  throw new Error(`内置 NapCat 暂不支持当前平台: ${process.platform}`);
+}
 
 /**
  * 获取临时端口号
@@ -306,7 +326,7 @@ function acquireEphemeralPort(): Promise<number> {
 }
 
 /** 解析 QQNT 可执行文件路径；优先使用传入值，否则自动查找 */
-function resolveQQPath(qqPathOverride: string): string {
+function resolveQQPath(qqPathOverride: string, platform: PlatformAdapter): string {
   let qqExe: string;
 
   if (qqPathOverride) {
@@ -414,7 +434,8 @@ export async function launchNapCat(config: NapCatConfig) {
   const logger = config.logger ?? noopLogger;
   logger.info({ qqId: config.qqId, napcatDir: config.napcatDir }, "准备启动 NapCat");
 
-  const qqExe = resolveQQPath(config.qqPath);
+  const platform = getPlatformAdapter();
+  const qqExe = resolveQQPath(config.qqPath, platform);
   await ensureNapcat(config.napcatDir, logger);
   mkdirSync(config.runtimeDir, { recursive: true });
   await platform.cleanOrphans(config.runtimeDir, config.qqId);
@@ -426,6 +447,7 @@ export async function launchNapCat(config: NapCatConfig) {
     qqntPath: resolve(config.napcatDir, "qqnt.json"),
     runtimeDir: config.runtimeDir,
     supervisorPaths: config.supervisorPaths,
+    linuxInjectorPaths: config.linuxInjectorPaths,
     logger,
   });
 
@@ -653,11 +675,10 @@ export async function startBuiltinNapCat(options: StartBuiltinNapCatOptions) {
     });
     void napcatVersionPromise.catch(() => {});
 
-    await startedNapcat.waitForReady();
+    const [, api] = await Promise.all([startedNapcat.waitForReady(), apiPromise]);
     logger.info("NapCat 协议适配器已就绪，QQ 已登录");
 
     // QQ 登录完成后通过专有 API 更新账号配置，NapCat 会同步重载 OneBot 网络适配器。
-    const api = await apiPromise;
     logger.info({ port: startedNapcat.webuiPort }, "NapCat WebUI 就绪");
     const currentConfig = await api.getOB11Config();
     await api.setOB11Config(oneBotConfigWithPort(currentConfig, wsPort));
