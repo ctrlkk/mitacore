@@ -12,14 +12,6 @@
 namespace {
 
 constexpr char kPackageSuffix[] = "resources/app/package.json";
-constexpr char kLoadScriptSuffix[] = "resources/app/loadNapCat.js";
-constexpr char kLoadScript[] =
-    "(async () => {"
-    "const { pathToFileURL } = await import('node:url');"
-    "const mainPath = process.env.NAPCAT_MAIN_PATH;"
-    "if (!mainPath) throw new Error('NAPCAT_MAIN_PATH is not set');"
-    "await import(pathToFileURL(mainPath).href);"
-    "})()";
 
 using Open64Fn = int (*)(const char *, int, ...);
 using Fopen64Fn = FILE *(*)(const char *, const char *);
@@ -80,6 +72,7 @@ int create_memfd(const char *content) {
   size_t written = 0;
   while (written < length) {
     const ssize_t result = write(fd, content + written, length - written);
+    if (result < 0 && errno == EINTR) continue;
     if (result <= 0) {
       close(fd);
       return -1;
@@ -94,8 +87,7 @@ int create_memfd(const char *content) {
   return fd;
 }
 
-int open_virtual_file(const char *path) {
-  if (ends_with(path, kLoadScriptSuffix)) return create_memfd(kLoadScript);
+int open_patch_package(const char *path) {
   if (!ends_with(path, kPackageSuffix)) return -1;
 
   char *package = read_patch_package();
@@ -115,7 +107,7 @@ int open_virtual_file(const char *path) {
 }  // namespace
 
 extern "C" int open64(const char *path, int flags, ...) {
-  const int virtual_fd = open_virtual_file(path);
+  const int virtual_fd = open_patch_package(path);
   if (virtual_fd >= 0) return virtual_fd;
   if (virtual_fd == -2) return -1;
 
@@ -139,7 +131,7 @@ extern "C" int open64(const char *path, int flags, ...) {
 }
 
 extern "C" FILE *fopen64(const char *path, const char *mode) {
-  const int virtual_fd = open_virtual_file(path);
+  const int virtual_fd = open_patch_package(path);
   if (virtual_fd >= 0) {
     FILE *file = fdopen(virtual_fd, mode);
     if (!file) close(virtual_fd);

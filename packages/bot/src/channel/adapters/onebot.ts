@@ -245,7 +245,17 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
   });
   let selfId: string;
   try {
-    await bot.connect();
+    const connectDeadline = Date.now() + 30_000;
+    while (true) {
+      try {
+        await bot.connect();
+        break;
+      } catch (error) {
+        if (!config.napcat.qq_id || Date.now() >= connectDeadline) throw error;
+        logger.debug({ err: error }, "OneBot WebSocket 尚未就绪，等待重试");
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+      }
+    }
 
     const user = await bot.getLoginInfo();
     selfId = String(user.user_id);
