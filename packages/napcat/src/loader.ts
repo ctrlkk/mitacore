@@ -743,6 +743,9 @@ export async function startBuiltinNapCat(options: StartBuiltinNapCatOptions) {
     const webuiUrl = `http://localhost:${startedNapcat.webuiPort}/webui?token=${startedNapcat.webuiToken}`;
 
     options.onVersion?.({ qqVersion: startedNapcat.qqVersion });
+    await startedNapcat.waitForReady();
+    logger.info("NapCat 协议适配器已就绪，QQ 已登录");
+
     startedNapcat.startWebUiConnection();
     const apiPromise = startedNapcat.waitForWebUI();
     const napcatVersionPromise = apiPromise.then(async (api) => {
@@ -753,8 +756,7 @@ export async function startBuiltinNapCat(options: StartBuiltinNapCatOptions) {
     });
     void napcatVersionPromise.catch(() => {});
 
-    const [, api] = await Promise.all([startedNapcat.waitForReady(), apiPromise]);
-    logger.info("NapCat 协议适配器已就绪，QQ 已登录");
+    const api = await apiPromise;
 
     // 由 NapCat 自己持久化配置并重载 OneBot 网络适配器。
     logger.info({ port: startedNapcat.webuiPort }, "NapCat WebUI 就绪");

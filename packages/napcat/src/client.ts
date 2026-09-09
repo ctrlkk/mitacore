@@ -54,8 +54,6 @@ class NapCatApiError extends Error {
   }
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 function describeNapCatError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message
@@ -118,51 +116,32 @@ async function webuiFetch<T>(
   return envelope.data.data as T;
 }
 
-async function loginWebUI(
-  port: number,
-  token: string,
-  logger: NapCatLogger,
-  timeoutMs: number,
-): Promise<WebUIConnection> {
+async function loginWebUI(port: number, token: string, timeoutMs: number): Promise<WebUIConnection> {
   const hash = createHash("sha256")
     .update(token + ".napcat")
     .digest("hex");
 
-  const candidates = ["127.0.0.1", "localhost"];
-  let lastError: unknown;
-  let attempt = 0;
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const host of candidates) {
-      attempt++;
-      try {
-        const remainingMs = deadline - Date.now();
-        if (remainingMs <= 0) break;
-        const resp = await fetch(`http://${host}:${port}/api/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hash }),
-          signal: AbortSignal.timeout(Math.min(3000, remainingMs)),
-        });
-        const responseText = await resp.text();
-        const envelope = WebUIEnvelopeSchema.safeParse(JSON.parse(responseText));
-        if (!envelope.success) throw new NapCatApiError(`WebUI 登录响应格式不正确 (HTTP ${resp.status})`);
-        if (envelope.data.code === 0) {
-          const { Credential } = LoginCredentialSchema.parse(envelope.data.data);
-          return { host, port, credential: Credential };
-        }
-        throw new NapCatApiError(
-          `WebUI 登录失败 (HTTP ${resp.status}, API ${envelope.data.code}): ${envelope.data.message ?? "未知错误"}`,
-        );
-      } catch (error) {
-        lastError = error;
-        logger.warn({ host, attempt, error: describeNapCatError(error) }, "WebUI 登录尝试失败");
-      }
+  const host = "127.0.0.1";
+  try {
+    const resp = await fetch(`http://${host}:${port}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hash }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const responseText = await resp.text();
+    const envelope = WebUIEnvelopeSchema.safeParse(JSON.parse(responseText));
+    if (!envelope.success) throw new NapCatApiError(`WebUI 登录响应格式不正确 (HTTP ${resp.status})`);
+    if (envelope.data.code === 0) {
+      const { Credential } = LoginCredentialSchema.parse(envelope.data.data);
+      return { host, port, credential: Credential };
     }
-    const remainingMs = deadline - Date.now();
-    if (remainingMs > 0) await sleep(Math.min(1000, remainingMs));
+    throw new NapCatApiError(
+      `WebUI 登录失败 (HTTP ${resp.status}, API ${envelope.data.code}): ${envelope.data.message ?? "未知错误"}`,
+    );
+  } catch (error) {
+    throw new NapCatApiError(`无法登录 NapCat WebUI：${describeNapCatError(error)}`);
   }
-  throw new NapCatApiError(`无法登录 NapCat WebUI：${describeNapCatError(lastError)}`);
 }
 
 /**
@@ -175,10 +154,10 @@ async function loginWebUI(
 export async function createNapCatApi(
   port: number,
   token: string,
-  logger: NapCatLogger = noopLogger,
+  _logger: NapCatLogger = noopLogger,
   timeoutMs = 30_000,
 ) {
-  const conn = await loginWebUI(port, token, logger, timeoutMs);
+  const conn = await loginWebUI(port, token, timeoutMs);
 
   return {
     conn,
