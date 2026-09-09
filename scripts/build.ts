@@ -62,23 +62,7 @@ async function findExecutable(name: string) {
  * 构建应用主程序
  */
 async function buildApp() {
-  const appBundle = "app.mjs";
   const botDir = join(root, "packages", "bot");
-
-  // 清理旧产物 (force: true 确保路径不存在时不报错，省去 existsSync 判断)
-  await rm(join(outDir, appBundle), { force: true });
-  await rm(join(outDir, "main.cjs"), { force: true });
-  await rm(join(outDir, "main.mjs"), { force: true });
-  await rm(join(outDir, "cleanup.mjs"), { force: true });
-  await rm(join(outDir, "supervisor.cjs"), { force: true });
-  await rm(join(outDir, "supervisor.mjs"), { force: true });
-  await rm(join(outDir, "default-data.zip"), { force: true });
-  await rm(join(outDir, "default-data.manifest.json"), { force: true });
-  await rm(join(outDir, "sidecar"), { recursive: true, force: true });
-  await rm(join(outDir, "app-chunks"), { recursive: true, force: true });
-  await rm(join(outDir, "app.cjs"), { force: true });
-  await rm(join(root, "build"), { recursive: true, force: true });
-  await rm(join(root, "pyrpc.spec"), { force: true });
 
   await runCmd([packageManager, "--dir", botDir, "run", "build"], root);
   await runCmd([packageManager, "run", "package:default-data", join(outDir, "references", "default-data.zip")], root);
@@ -130,7 +114,6 @@ async function buildWebUi() {
   const webUiDir = join(root, "packages", "webui");
   const outputDir = join(outDir, "webui");
   await runCmd([packageManager, "run", "build"], webUiDir);
-  await rm(outputDir, { recursive: true, force: true });
   await cp(join(webUiDir, "dist"), outputDir, { recursive: true });
 }
 
@@ -179,12 +162,13 @@ async function copyBin() {
 }
 
 /**
- * 复制运行时资源：prompts 目录、config.example.toml
+ * 复制运行时资源。
  */
 async function copyAssets() {
   const targets: Array<{ src: string; dest: string; label: string }> = [
     { src: join(root, "prompts"), dest: join(outDir, "prompts"), label: "prompts/" },
     { src: join(root, "config.example.toml"), dest: join(outDir, "config.example.toml"), label: "config.example.toml" },
+    { src: join(root, ".env.example"), dest: join(outDir, ".env.example"), label: ".env.example" },
   ];
 
   for (const { src, dest, label } of targets) {
@@ -202,6 +186,7 @@ async function copyAssets() {
 }
 
 console.log("==> 开始并行构建...\n");
+await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
 await Promise.all([

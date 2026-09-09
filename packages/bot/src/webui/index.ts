@@ -576,8 +576,8 @@ export function createApp() {
 
 export async function startWebUi(): Promise<number> {
   const app = createApp();
-  const portValue = process.env.WEBUI_PORT;
-  const port = portValue ? Number(portValue) : 0;
+  const portValue = process.env.WEBUI_PORT?.trim();
+  const port = portValue ? Number(portValue) : 14_251;
   if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new Error("WEBUI_PORT 必须是 0 到 65535 之间的整数");
 
   return await new Promise<number>((resolve, reject) => {

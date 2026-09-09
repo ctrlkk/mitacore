@@ -5,10 +5,6 @@ set -euo pipefail
 
 QQ_SIGN_URL='https://im.qq.com/http2rpc/gotrpc/noauth/trpc.qqntv2.urlsign.UrlSign/GetSign'
 
-log() {
-  printf '[napcat-install] %s\n' "$*"
-}
-
 run_as_root() {
   if [ "$(id -u)" -eq 0 ]; then
     "$@"
@@ -52,7 +48,7 @@ case "$(uname -m)" in
     ;;
 esac
 
-log "使用 $package_manager 安装运行依赖..."
+printf '使用 %s 安装运行依赖...\n' "$package_manager"
 if [ "$package_manager" = 'apt-get' ]; then
   run_as_root apt-get update
   run_as_root apt-get install -y --no-install-recommends ca-certificates curl jq xvfb xauth
@@ -61,8 +57,8 @@ else
 fi
 
 if [ -x /opt/QQ/qq ]; then
-  log '已检测到 Linux QQ：/opt/QQ/qq'
-  log '环境准备完成。NapCat 将在应用首次启动时自动下载并配置。'
+  printf '已检测到 Linux QQ：/opt/QQ/qq\n'
+  printf '环境准备完成。NapCat 将在应用首次启动时自动下载并配置。\n'
   exit 0
 fi
 
@@ -71,7 +67,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 chmod 755 "$tmp_dir"
 qq_package="$tmp_dir/QQ.$package_format"
 
-log "下载 Linux QQ（$(uname -m)，$package_format）..."
+printf '下载 Linux QQ（%s，%s）...\n' "$(uname -m)" "$package_format"
 qq_sign_payload="$(jq -cn --arg url "$qq_url" '{url: $url}')"
 qq_signed_url="$(curl --fail --location --retry 3 --retry-delay 2 "$QQ_SIGN_URL" \
   --header 'Content-Type: application/json' \
@@ -79,7 +75,7 @@ qq_signed_url="$(curl --fail --location --retry 3 --retry-delay 2 "$QQ_SIGN_URL"
   --data-binary "$qq_sign_payload" | jq -er 'select(.retcode == 0) | .data.url')"
 curl --fail --location --retry 3 --retry-delay 2 --output "$qq_package" "$qq_signed_url"
 
-log '安装 Linux QQ...'
+printf '安装 Linux QQ...\n'
 if [ "$package_manager" = 'apt-get' ]; then
   run_as_root apt-get install -y --allow-downgrades "$qq_package"
 else
@@ -91,4 +87,4 @@ if [ ! -x /opt/QQ/qq ]; then
   exit 1
 fi
 
-log '环境准备完成。NapCat 将在应用首次启动时自动下载并配置。'
+printf '环境准备完成。NapCat 将在应用首次启动时自动下载并配置。\n'
