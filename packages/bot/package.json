@@ -6,8 +6,8 @@
   "module": "src/index.ts",
   "scripts": {
     "native:build": "pnpm --workspace-root run native:build",
-    "dev": "pnpm --workspace-root run package:default-data && pnpm run native:build && node scripts/run-vite.mjs --watch",
-    "start": "pnpm --workspace-root run package:default-data && pnpm run native:build && node scripts/run-vite.mjs",
+    "dev": "pnpm --workspace-root dev",
+    "start": "pnpm --workspace-root start",
     "build": "vite build",
     "db": "drizzle-kit",
     "migration": "tsx scripts/migration.ts",
