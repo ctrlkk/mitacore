@@ -9,28 +9,14 @@ if (process.platform !== "linux") {
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const source = join(root, "native", "napcat-linux-launcher", "launcher.cpp");
+const source = join(root, "native", "napcat-linux-launcher", "launcher.c");
 const outputDir = join(root, "native", "napcat-linux-launcher", "target", "release");
 const output = join(outputDir, "libnapcat_launcher.so");
-const compiler = process.env.CXX || "g++";
+const compiler = process.env.CC || "gcc";
 
 await mkdir(outputDir, { recursive: true });
 
-const args = [
-  "-std=c++17",
-  "-O2",
-  "-Wall",
-  "-Wextra",
-  "-Werror",
-  "-fno-exceptions",
-  "-fno-rtti",
-  "-fPIC",
-  "-shared",
-  source,
-  "-o",
-  output,
-  "-ldl",
-];
+const args = ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-fPIC", "-shared", source, "-o", output, "-ldl"];
 const code = await new Promise<number>((resolve, reject) => {
   const child = spawn(compiler, args, { cwd: root, stdio: "inherit" });
   child.once("error", reject);
