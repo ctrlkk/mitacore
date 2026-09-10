@@ -59,7 +59,7 @@ const createLogger = (): PinoLogger => {
         // 使用 Node 的 stdout 让其通过控制台 Unicode API 输出。
         destination: process.stdout,
         colorize: true,
-        translateTime: "HH:MM:ss.l",
+        translateTime: "SYS:HH:MM:ss.l",
         ignore: "pid,hostname",
       }),
       level: baseOptions.level,
