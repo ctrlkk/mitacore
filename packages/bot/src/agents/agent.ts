@@ -5,7 +5,6 @@ import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessag
 import { splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { logUsage } from "@/utils/format";
-import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-history";
 import { imageGen } from "./tools/image-gen";

@@ -1,5 +1,5 @@
 import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-history";
-import { generateText, hasToolCall, isStepCount, tool, type ToolSet } from "ai";
+import { generateText, isStepCount, tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { getModelForRole } from "@/agents/model";
@@ -37,7 +37,7 @@ async function saveHistory(history: ChatHistory, log: PinoLogger = logger) {
 }
 
 /**
- * 运行规划层
+ * 运行允许 submit_plan 返回后继续工具循环的规划层。
  * @param userInputMessage 已用 <user_input> 标签包好的用户消息
  * @param onReply 实际发送消息的回调
  * @returns 本轮是否通过 submit_plan 向用户发送过消息
@@ -66,7 +66,7 @@ export async function runPlanner(
     "<role>",
     planPrompt.trim(),
     "",
-    "`submit_plan` 会返回 `reply agent` 实际发送给用户的消息内容。调用它表示本轮规划已经完成；工具执行后程序会直接结束本轮，不再向你发起模型请求。",
+    "`submit_plan` 会返回 `reply agent` 实际发送给用户的消息内容。你可以据此判断消息是否准确表达了意图，以及是否需要采取后续行动。调用它不会结束本轮工具循环；你可以继续使用其他工具，并在确有必要时再次调用 `submit_plan` 发送后续消息。不要无意义地重复发送相同内容。任务完成后停止调用工具并结束。",
     "</role>",
     "",
     "<capabilities>",
@@ -85,7 +85,7 @@ export async function runPlanner(
 
   const submitPlanTool = tool({
     description:
-      "根据回复策略调用 reply agent 向用户发送一条消息。工具返回实际发送内容；调用后本轮规划结束，不会再进行模型请求。",
+      "根据回复策略调用 reply agent 向用户发送一条消息。工具返回实际发送内容，供你判断后续行动；调用后可以继续使用其他工具，必要时也可以再次发送。",
     inputSchema: z.object({
       plan: z.string().describe("回复策略与参考信息，需具体、准确并足以让 reply agent 独立完成消息"),
     }),
@@ -117,7 +117,7 @@ export async function runPlanner(
     instructions: system,
     messages: toModelMessages([...historyMessages, ...runtimeMessages]),
     tools,
-    stopWhen: [isStepCount(10), hasToolCall("submit_plan")],
+    stopWhen: isStepCount(10),
     maxOutputTokens: 4096,
     async onLanguageModelCallEnd({ content, usage }) {
       const reasoningText = content
@@ -147,12 +147,6 @@ export async function runPlanner(
     },
   });
 
-  if (replyCount > 0) {
-    runtimeMessages.push({
-      message: { role: "assistant", content: "[Done]" },
-      timestamp: Date.now(),
-    });
-  }
   let finalHistory: ChatHistory = [...historyMessages, ...runtimeMessages];
   if (isOverflow(result.finalStep.usage)) {
     log.info("检测到上下文溢出，开始执行压缩...");

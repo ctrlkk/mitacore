@@ -5,7 +5,7 @@ import type { ChannelReplyContext } from "@/channel/types";
 import type { MessagePart } from "@/message/parts";
 import type { MediaKind, MediaMap, PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import { audioToText, imageToText, videoToText } from "@/agents/multimedia";
-import { runPlanner as runContinuousPlanner } from "@/agents/planner-continuous";
+import { runPlanner } from "@/agents/planner";
 import { config } from "@/config";
 import { get_media_description, set_media_description } from "@/database/media-cache";
 import { listMentionableUserAliases } from "@/database/user-alias";
@@ -14,6 +14,7 @@ import { createFsFile } from "@/utils/fs-file";
 import { downloadToCache } from "@/utils/image-cache";
 import { compressImage } from "@/utils/image-resize";
 import { compressVideo } from "@/utils/video-resize";
+import { runMain } from "@/agents/agent";
 
 type MediaResource = {
   url: string;
@@ -379,10 +380,11 @@ export function createBot(sessionId: string) {
             await sleep(500);
           }
         };
-        const replied = await runContinuousPlanner(prompt, onReply, log);
-        if (!replied) {
-          log.info("规划层未调用 submit_plan，跳过回复");
-        }
+        // const replied = await runPlanner(prompt, onReply, log);
+        // if (!replied) {
+        //   log.info("规划层未调用 submit_plan，跳过回复");
+        // }
+        await runMain(prompt, onReply, log);
       } finally {
         await cancelTyping();
       }

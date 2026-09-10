@@ -5,7 +5,6 @@ import { getModelForRole } from "@/agents/model";
 import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message/parts";
 import { splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
-import { config } from "@/config";
 import { logger, type PinoLogger } from "@/logger";
 import { compactHistory, isOverflow } from "./compaction";
 import { injectSystemContext } from "./system-context";
@@ -49,7 +48,7 @@ function joinReply(parts: ParsedMessagePart[]): string {
 }
 
 /**
- * 创建本轮回复层会话（仙狐小姐 persona）
+ * 创建本轮回复层会话
  * @param userPrompt 已用 <user_input> 标签包好的用户消息
  * @param onReply 实际发送消息的回调
  */
