@@ -13,7 +13,7 @@ interface ApiOptions {
 }
 
 function baseInfo() {
-  return { channel_version: CHANNEL_VERSION, bot_agent: "AgentsBot/1.0" };
+  return { channel_version: CHANNEL_VERSION, bot_agent: "openclaw/1.0" };
 }
 
 function headers(token?: string): Record<string, string> {
@@ -86,7 +86,7 @@ export async function sendText(
       msg: {
         from_user_id: "",
         to_user_id: to,
-        client_id: `agents-bot:${Date.now()}-${randomBytes(4).toString("hex")}`,
+        client_id: `${Date.now()}-${randomBytes(4).toString("hex")}`,
         message_type: 2,
         message_state: 2,
         item_list: [{ type: MessageItemType.TEXT, text_item: { text } }],
@@ -204,7 +204,7 @@ export async function sendImage(
       msg: {
         from_user_id: "",
         to_user_id: to,
-        client_id: `agents-bot:${Date.now()}-${randomBytes(4).toString("hex")}`,
+        client_id: `${Date.now()}-${randomBytes(4).toString("hex")}`,
         message_type: 2,
         message_state: 2,
         item_list: [

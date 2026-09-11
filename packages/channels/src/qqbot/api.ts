@@ -36,7 +36,7 @@ export class QQBotHttpClient {
     this.fetcher = options.fetch ?? fetch;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 15_000;
     this.tokenBaseUrl = trimTrailingSlash(options.tokenBaseUrl ?? DEFAULT_TOKEN_BASE_URL);
-    this.userAgent = options.userAgent ?? "AgentsBot/1.0";
+    this.userAgent = options.userAgent ?? "openclaw/1.0";
   }
 
   async getGatewayUrl(): Promise<string> {

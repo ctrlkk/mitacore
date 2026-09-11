@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "agents-bot",
+  "name": "mitacore",
   "type": "module",
   "private": true,
   "packageManager": "pnpm@11.16.0",
