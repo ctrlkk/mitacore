@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 
 const { tempDir } = vi.hoisted(() => ({
-  tempDir: `${process.env.TEMP ?? "."}/agents-bot-stickers-${crypto.randomUUID()}`,
+  tempDir: `${process.env.TEMP ?? "."}/stickers-test-${crypto.randomUUID()}`,
 }));
 
 vi.mock("@/utils/path", () => ({

@@ -153,10 +153,7 @@ async function hasAnySchemaFiles() {
 
 async function drizzle(output: string, name?: string) {
   // config 文件扔到 tmpdir，避免污染项目目录；out 用相对路径（drizzle-kit 给绝对路径会重复 prepend cwd 出 bug）
-  const config = path.join(
-    os.tmpdir(),
-    `agents-bot-drizzle-${Date.now()}-${Math.random().toString(36).slice(2)}.config.ts`,
-  );
+  const config = path.join(os.tmpdir(), `drizzle-config-${Date.now()}-${Math.random().toString(36).slice(2)}.ts`);
   const relOut = path.relative(botDir, output);
   await fs.writeFile(
     config,
