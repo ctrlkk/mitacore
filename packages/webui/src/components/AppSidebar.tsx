@@ -1,4 +1,12 @@
-import { BrainCircuitIcon, FileText, HouseIcon, ImagesIcon, NetworkIcon, StickerIcon } from "lucide-react";
+import {
+  BrainCircuitIcon,
+  FileText,
+  HouseIcon,
+  ImagesIcon,
+  NetworkIcon,
+  Settings2Icon,
+  StickerIcon,
+} from "lucide-react";
 import { Link, useLocation } from "react-router";
 import {
   Sidebar,
@@ -56,6 +64,14 @@ export function AppSidebarContent() {
                   <Link to="/models" onClick={handleNavigation}>
                     <BrainCircuitIcon />
                     <span>模型配置</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={pathname === "/settings"}>
+                  <Link to="/settings" onClick={handleNavigation}>
+                    <Settings2Icon />
+                    <span>消息循环</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

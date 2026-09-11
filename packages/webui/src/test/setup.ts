@@ -4,6 +4,16 @@ import { vi } from "vitest";
 
 configure({ asyncUtilTimeout: 5_000 });
 
+// jsdom 不执行布局；尺寸变化在组件测试中按需单独模拟。
+Object.defineProperty(window, "ResizeObserver", {
+  writable: true,
+  value: class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+});
+
 Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: vi.fn().mockImplementation((query: string) => ({

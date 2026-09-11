@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ComponentType, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HashRouter } from "react-router";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -9,6 +10,34 @@ vi.mock("@/components/PersonaEditor", () => ({
   PersonaEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
     <textarea aria-label="人设内容" value={value} onChange={(event) => onChange(event.target.value)} />
   ),
+}));
+
+vi.mock("@xyflow/react", () => ({
+  Background: () => null,
+  BaseEdge: () => null,
+  Controls: () => null,
+  EdgeLabelRenderer: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  Handle: () => null,
+  MarkerType: { ArrowClosed: "arrowclosed" },
+  Position: { Bottom: "bottom", Left: "left", Right: "right", Top: "top" },
+  ReactFlow: ({
+    children,
+    nodes = [],
+    nodeTypes = {},
+  }: {
+    children?: ReactNode;
+    nodes?: Array<{ id: string; type?: string; data: Record<string, unknown> }>;
+    nodeTypes?: Record<string, ComponentType<{ data: Record<string, unknown> }>>;
+  }) => (
+    <div>
+      {nodes.map(({ id, type, data }) => {
+        const NodeComponent = type ? nodeTypes[type] : undefined;
+        return NodeComponent ? <NodeComponent key={id} data={data} /> : null;
+      })}
+      {children}
+    </div>
+  ),
+  getSmoothStepPath: () => ["", 0, 0],
 }));
 
 function renderApp(path = "/") {
@@ -183,7 +212,9 @@ describe("App", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "使用 QQ 扫码登录" })).toBeInTheDocument();
-    expect(screen.getByText("NTQQ 9.9.27-45758 · NapCat 4.18.19")).toBeInTheDocument();
+    expect(screen.getByLabelText("NapCat 运行版本")).toHaveTextContent(
+      /NTQQ\s*9\.9\.27-45758\s*·\s*NapCat\s*4\.18\.19/,
+    );
     expect(screen.queryByRole("button", { name: "在新窗口打开登录页" })).not.toBeInTheDocument();
   });
 
@@ -253,6 +284,95 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "QQ Bot" })).toBeInTheDocument();
   });
+
+  it("保存消息循环设置并重启服务", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/config" && init?.method === "PUT") {
+        return Promise.resolve(new Response(JSON.stringify({ saved: true }), { status: 200 }));
+      }
+      if (String(input) === "/api/runtime/restart") {
+        return Promise.resolve(new Response(JSON.stringify({ accepted: true }), { status: 202 }));
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ max_queue: 10, debounce_ms: 1000, napcat: { enabled: false } }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderApp("/settings");
+
+    expect(await screen.findByRole("heading", { name: "消息循环" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("消息队列上限"), { target: { value: "25" } });
+    fireEvent.change(screen.getByLabelText("消息合并等待时间"), { target: { value: "2400" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存并重启" }));
+
+    await waitFor(() => {
+      const [, init] = fetchMock.mock.calls.find(([, requestInit]) => requestInit?.method === "PUT")!;
+      expect(JSON.parse(init!.body as string)).toMatchObject({
+        max_queue: 25,
+        debounce_ms: 2400,
+        napcat: { enabled: false },
+      });
+      expect(fetchMock).toHaveBeenCalledWith("/api/runtime/restart", { method: "POST" });
+    });
+  }, 10_000);
+
+  it("按当前参数模拟消息入队和超限淘汰", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ max_queue: 2, debounce_ms: 1000 }), {
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    renderApp("/settings");
+
+    await screen.findByRole("button", { name: "普通消息" });
+    for (let index = 0; index < 3; index++) {
+      fireEvent.click(screen.getByRole("button", { name: "普通消息" }));
+    }
+
+    const queue = screen.getByRole("region", { name: "会话队列" });
+    expect(within(queue).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(queue).getByText("2 / 2")).toBeInTheDocument();
+    expect(screen.getByLabelText("异步预处理消息数")).toHaveTextContent("3");
+    const debounceProgress = screen.getByRole("progressbar", { name: "静默等待进度" });
+    expect(debounceProgress).toHaveAttribute("aria-valuetext", "剩余 1.0 秒");
+    await waitFor(() => {
+      expect(Number(debounceProgress.getAttribute("aria-valuenow"))).toBeLessThan(1000);
+    });
+    expect(screen.getByLabelText("已淘汰消息数")).toHaveTextContent("1");
+
+    fireEvent.click(screen.getByRole("button", { name: "@ / 私聊消息" }));
+    expect(await screen.findByText(/防抖继续等待/, {}, { timeout: 1500 })).toBeInTheDocument();
+    expect(await screen.findByText(/调度器取走全部/, {}, { timeout: 2000 })).toBeInTheDocument();
+
+    const normalMessageButton = screen.getByRole("button", { name: "普通消息" });
+    expect(normalMessageButton).toBeEnabled();
+    expect(screen.getByRole("button", { name: "@ / 私聊消息" })).toBeEnabled();
+    fireEvent.click(normalMessageButton);
+    expect(within(queue).getAllByRole("listitem")).toHaveLength(1);
+  }, 10_000);
+
+  it("阻止保存无效的消息合并等待时间", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ max_queue: 10, debounce_ms: 1000 }), {
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    renderApp("/settings");
+
+    fireEvent.change(await screen.findByLabelText("消息合并等待时间"), { target: { value: "500" } });
+
+    expect(screen.getByText("不能小于 1000")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存并重启" })).toBeDisabled();
+  }, 10_000);
 
   it("为未知路由显示 404，并可返回首页", async () => {
     renderApp("/unknown");

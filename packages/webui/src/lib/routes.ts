@@ -9,6 +9,7 @@ export const appRoutes = [
   { path: "/channels/weixin", label: "微信" },
   { path: "/channels/qqbot", label: "QQ Bot" },
   { path: "/models", label: "模型配置" },
+  { path: "/settings", label: "消息循环" },
   { path: "/persona", label: "人设编辑器" },
   { path: "/knowledge", label: "知识图谱" },
   { path: "/media", label: "媒体缓存" },

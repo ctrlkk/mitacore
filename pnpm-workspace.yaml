@@ -1,15 +1,17 @@
 packages:
   - "packages/*"
 allowBuilds:
-  '@ffmpeg-installer/linux-arm64': true
+  "@ffmpeg-installer/linux-arm64": true
   "@ffmpeg-installer/linux-x64": true
-  '@ffprobe-installer/linux-arm64': true
+  "@ffprobe-installer/linux-arm64": true
   "@ffprobe-installer/linux-x64": true
   esbuild: true
   gifsicle: true
   protobufjs: true
 minimumReleaseAgeExclude:
   - "@hono/node-server@2.1.1"
+overrides:
+  use-sync-external-store: ^1.6.0
 onlyBuiltDependencies:
   - "@ffmpeg-installer/linux-x64"
   - "@ffprobe-installer/linux-x64"
