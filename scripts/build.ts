@@ -165,19 +165,37 @@ async function copyBin() {
  * 复制运行时资源。
  */
 async function copyAssets() {
-  const targets: Array<{ src: string; dest: string; label: string }> = [
+  const targets = [
     { src: join(root, "prompts"), dest: join(outDir, "prompts"), label: "prompts/" },
     { src: join(root, "config.example.toml"), dest: join(outDir, "config.example.toml"), label: "config.example.toml" },
     { src: join(root, ".env.example"), dest: join(outDir, ".env.example"), label: ".env.example" },
+    {
+      src: join(root, "scripts", "install.sh"),
+      dest: join(outDir, "scripts", "install.sh"),
+      label: "scripts/install.sh",
+      executable: true,
+    },
+    {
+      src: join(root, "scripts", "build-linux-injector.sh"),
+      dest: join(outDir, "scripts", "build-linux-injector.sh"),
+      label: "scripts/build-linux-injector.sh",
+      executable: true,
+    },
+    {
+      src: join(root, "native", "napcat-linux-launcher", "launcher.c"),
+      dest: join(outDir, "scripts", "launcher.c"),
+      label: "scripts/launcher.c",
+    },
   ];
 
-  for (const { src, dest, label } of targets) {
+  for (const { src, dest, label, executable } of targets) {
     try {
       const stats = await stat(src);
       // 确保目标父目录存在
       await mkdir(join(dest, ".."), { recursive: true });
       // node:fs/promises 的 cp 方法原生支持递归目录拷贝和文件拷贝，无需分类讨论
       await cp(src, dest, { recursive: stats.isDirectory() });
+      if (executable && process.platform !== "win32") await chmod(dest, 0o755);
       console.log(`复制 ${label} → ${dest}`);
     } catch {
       console.warn(`跳过：${label}（源不存在 ${src}）`);
