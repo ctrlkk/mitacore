@@ -263,6 +263,18 @@ function buildPrompt(batch: PendingMessage[], mediaMap: MediaMap) {
   return finalPrompt;
 }
 
+async function preparePrompt(batch: PendingMessage[]) {
+  // 普通批次与中途插入批次必须经过同一套媒体处理，避免 steering 消息丢失附件上下文。
+  const mediaMaps = await Promise.all(batch.map((message) => message.resourcesPromise!));
+  const mediaMap: MediaMap = new Map();
+  for (const map of mediaMaps) {
+    for (const [url, info] of map) {
+      mediaMap.set(url, info);
+    }
+  }
+  return buildPrompt(batch, mediaMap).trim();
+}
+
 /**
  * 创建一个任务调度器。
  * 只关心三件事：收集任务、收到 arm 信号时执行、对外提供队列快照。
@@ -290,20 +302,28 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, o
         });
       }
 
-      const batch = queue.splice(0);
-      const ctx = currentCtx;
-
-      armed = false;
-      currentCtx = null;
-
-      if (batch.length === 0 || !ctx) continue;
+      const next = takeArmed();
+      if (!next) continue;
 
       try {
-        await process(batch, ctx);
+        await process(next.batch, next.ctx);
       } catch (error) {
         logger.error({ error: withoutRequestBodyValues(error) }, "处理批次出错");
       }
     }
+  }
+
+  function takeArmed() {
+    if (!armed) return;
+
+    // 原子取走当前已触发批次，保证 scheduler 主循环和运行中的 agent 不会重复消费同一批消息。
+    const batch = queue.splice(0);
+    const ctx = currentCtx;
+    armed = false;
+    currentCtx = null;
+
+    if (batch.length === 0 || !ctx) return;
+    return { batch, ctx };
   }
 
   function enqueue(item: T, ctx: C) {
@@ -332,7 +352,7 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, o
     return [...queue];
   }
 
-  return { enqueue, arm, snapshot, run };
+  return { enqueue, arm, snapshot, takeArmed, run };
 }
 
 /**
@@ -354,14 +374,7 @@ export function createBot(sessionId: string) {
   async function processBatch(batch: PendingMessage[], ctx: ChannelReplyContext) {
     processing = true;
     try {
-      const mediaMaps = await Promise.all(batch.map((m) => m.resourcesPromise!));
-      const mediaMap: MediaMap = new Map();
-      for (const map of mediaMaps) {
-        for (const [url, info] of map) {
-          mediaMap.set(url, info);
-        }
-      }
-      const prompt = buildPrompt(batch, mediaMap).trim();
+      const prompt = await preparePrompt(batch);
       log.info({ prompt }, "用户输入");
 
       const cancelTyping = await ctx.setTyping();
@@ -384,7 +397,14 @@ export function createBot(sessionId: string) {
         // if (!replied) {
         //   log.info("规划层未调用 submit_plan，跳过回复");
         // }
-        await runMain(prompt, onReply, log);
+        await runMain(prompt, onReply, log, async () => {
+          // 只提升已经通过原有防抖和触发判定的消息，未 armed 的消息继续留给后续批次。
+          const next = scheduler.takeArmed();
+          if (!next) return;
+          const steeringPrompt = await preparePrompt(next.batch);
+          log.info({ prompt: steeringPrompt }, "工具循环中插入用户输入");
+          return steeringPrompt;
+        });
       } finally {
         await cancelTyping();
       }

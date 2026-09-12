@@ -56,12 +56,14 @@ function joinReply(parts: ParsedMessagePart[]): string {
  * 运行单 agent（兼具规划与回复，输出直接面向用户）
  * @param userPrompt 已用 <user_input> 标签包好的用户消息
  * @param onReply 实际发送消息的回调
+ * @param takeSteeringPrompt 在每个模型调用结束后提取工具循环期间新到达的用户消息
  * @returns replyText（拼接所有 step 的文本）+ usage
  */
 export async function runMain(
   userPrompt: string,
   onReply: (segments: MessagePart[]) => Promise<void>,
   log: PinoLogger = logger,
+  takeSteeringPrompt?: () => Promise<string | undefined>,
 ) {
   const model = getModelForRole("main");
 
@@ -89,13 +91,15 @@ export async function runMain(
     "</workspace_instructions>",
   ].join("\n");
 
-  const tools: ToolSet = { ...workspaceTools };
+  const tools: ToolSet = {};
   tools.task = task(log);
   tools.image_gen = imageGen(tools, system, model);
   tools.web_search = websearch();
   tools.web_fetch = webfetch();
 
-  for (let step = 0; step < 20; step++) {
+  let stepsSinceUserPrompt = 0;
+  while (stepsSinceUserPrompt < 20) {
+    stepsSinceUserPrompt++;
     const result = await generateText({
       model,
       instructions: system,
@@ -156,7 +160,22 @@ export async function runMain(
       },
     });
 
-    if (result.toolCalls.length === 0) {
+    // generateText 返回时，本轮模型输出和工具结果都已写入历史；此处是插入 user 消息的安全边界。
+    const steeringPrompt = await takeSteeringPrompt?.();
+    if (steeringPrompt !== undefined) {
+      const { records: steeringRecords } = await injectSystemContext(
+        [...historyMessages, ...savedMessages],
+        steeringPrompt,
+        log,
+      );
+      // runtimeMessages 供下一次模型调用使用，savedMessages 保证中途消息最终会持久化。
+      runtimeMessages.push(...steeringRecords);
+      savedMessages.push(...steeringRecords);
+      // 新用户输入开启新的回合，不应继承上一条输入已经消耗的工具循环额度。
+      stepsSinceUserPrompt = 0;
+    }
+
+    if (result.toolCalls.length === 0 && steeringPrompt === undefined) {
       let finalHistory: ChatHistory = [...historyMessages, ...savedMessages];
 
       if (isOverflow(result.finalStep.usage)) {
