@@ -49,6 +49,13 @@ export interface DoubaoTtsSynthesisOptions {
   model?: DoubaoTtsModel;
   /** 复刻 2.0 同语种合成时尽量还原训练音频的风格、口音和韵律。 */
   toneFidelity?: boolean;
+  /**
+   * 自然语言语音指令或只引用不合成的对话上文。
+   * 复刻音色需使用表现力增强版模型，标准版会过滤此参数。
+   */
+  contextTexts?: string[];
+  /** SSML 标记文本；启用后服务端会按 SSML 规则解析 `text`。 */
+  ssml?: string;
   /** 输出音频格式，默认 `mp3`；流式场景推荐 `pcm`。 */
   format?: DoubaoTtsAudioFormat;
   /** 输出采样率，默认 24000 Hz；`ogg_opus` 仅支持 48000 Hz。 */
@@ -125,6 +132,9 @@ export class DoubaoTtsClient {
   async synthesize(text: string, options: DoubaoTtsSynthesisOptions): Promise<DoubaoTtsResult> {
     if (!text.trim()) throw new Error("豆包 TTS 待合成文本不能为空");
     if (!options.speaker) throw new Error("豆包 TTS 音色 ID 不能为空");
+    if (options.model === "seed-tts-2.0-standard" && options.contextTexts?.length) {
+      throw new Error("豆包 TTS 标准版模型不支持使用语音指令或引用上下文");
+    }
     options.signal?.throwIfAborted();
 
     const release = await acquireMutex(this.synthesisLock, options.signal);
@@ -337,6 +347,8 @@ function createSynthesisFrame(text: string, options: DoubaoTtsSynthesisOptions) 
         speaker: options.speaker,
         ...(options.model ? { model: options.model } : {}),
         ...(options.toneFidelity !== undefined ? { tone_fidelity: options.toneFidelity } : {}),
+        ...(options.contextTexts !== undefined ? { context_texts: options.contextTexts } : {}),
+        ...(options.ssml !== undefined ? { ssml: options.ssml } : {}),
         audio_params: {
           format: options.format ?? "mp3",
           sample_rate: options.sampleRate ?? 24000,

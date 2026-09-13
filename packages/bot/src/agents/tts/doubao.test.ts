@@ -78,6 +78,8 @@ describe("DoubaoTtsClient", () => {
       speaker: "test-speaker",
       format: "pcm",
       speechRate: 10,
+      contextTexts: ["请用轻松、自然的语气说话。"],
+      ssml: "<speak>你好</speak>",
       additions: { disable_markdown_filter: true },
       onAudioChunk,
     });
@@ -98,6 +100,8 @@ describe("DoubaoTtsClient", () => {
         text: "你好",
         speaker: "test-speaker",
         audio_params: { format: "pcm", sample_rate: 24000, speech_rate: 10 },
+        context_texts: ["请用轻松、自然的语气说话。"],
+        ssml: "<speak>你好</speak>",
         additions: '{"disable_markdown_filter":true}',
       },
     });
@@ -133,14 +137,15 @@ describe("DoubaoTtsClient", () => {
     expect(factory).toHaveBeenCalledTimes(1);
   });
 
-  test("使用复刻资源和指定模型合成自定义音色", async () => {
+  test("使用表现力增强版复刻音色引用上下文", async () => {
     const { factory, sockets, options } = createFactory();
     const client = new DoubaoTtsClient({ apiKey: "test-key", resourceId: "seed-icl-2.0" }, factory);
 
     const result = client.synthesize("こんにちは", {
       speaker: "S_testSpeaker",
-      model: "seed-tts-2.0-standard",
+      model: "seed-tts-2.0-expressive",
       toneFidelity: true,
+      contextTexts: ["友達との再会を喜んでいます。"],
     });
     await vi.waitFor(() => expect(sockets[0]?.sent).toHaveLength(1));
 
@@ -148,8 +153,9 @@ describe("DoubaoTtsClient", () => {
     expect(JSON.parse(sockets[0]!.sent[0]!.subarray(8).toString())).toMatchObject({
       req_params: {
         speaker: "S_testSpeaker",
-        model: "seed-tts-2.0-standard",
+        model: "seed-tts-2.0-expressive",
         tone_fidelity: true,
+        context_texts: ["友達との再会を喜んでいます。"],
       },
     });
 
@@ -189,6 +195,20 @@ describe("DoubaoTtsClient", () => {
 
     await expect(client.synthesize("   ", { speaker: "test-speaker" })).rejects.toThrow("待合成文本不能为空");
     await expect(client.synthesize("你好", { speaker: "" })).rejects.toThrow("音色 ID 不能为空");
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  test("拒绝标准版复刻音色使用上下文", async () => {
+    const { factory } = createFactory();
+    const client = new DoubaoTtsClient({ apiKey: "test-key" }, factory);
+
+    await expect(
+      client.synthesize("你好", {
+        speaker: "test-speaker",
+        model: "seed-tts-2.0-standard",
+        contextTexts: ["请用温柔的语气说话。"],
+      }),
+    ).rejects.toThrow("标准版模型不支持使用语音指令或引用上下文");
     expect(factory).not.toHaveBeenCalled();
   });
 
