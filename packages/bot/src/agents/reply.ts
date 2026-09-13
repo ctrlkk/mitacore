@@ -3,7 +3,7 @@ import { generateText, type LanguageModelUsage } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { getModelForRole } from "@/agents/model";
 import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message/parts";
-import { splitMessage } from "@/message/splitter";
+import { cleanMessage, splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { logger, type PinoLogger } from "@/logger";
 import { compactHistory, isOverflow } from "./compaction";
@@ -28,8 +28,11 @@ async function saveHistory(history: ChatHistory, log: PinoLogger = logger) {
   }
 }
 
-function sliceReply(chunk: string): ParsedMessagePart[] {
-  const parts = parseMarkdown(chunk);
+function cleanReply(chunk: string): ParsedMessagePart[] {
+  return parseMarkdown(chunk).map((part) => (typeof part === "string" ? cleanMessage(part) : part));
+}
+
+function sliceReply(parts: ParsedMessagePart[]): ParsedMessagePart[] {
   const result: ParsedMessagePart[] = [];
   for (const part of parts) {
     if (typeof part === "string") {
@@ -103,9 +106,9 @@ export async function createReplySession(
       log.info({ reasoningText: result.finalStep.reasoningText, text: result.text }, "助手响应");
       logUsage(log, result.usage);
 
-      const parsedReply = sliceReply(result.text);
-      const replyContent = joinReply(parsedReply);
-      const segments = await resolveMessageParts(parsedReply);
+      const cleanedReply = cleanReply(result.text);
+      const replyContent = joinReply(cleanedReply);
+      const segments = await resolveMessageParts(sliceReply(cleanedReply));
       if (segments.length > 0) await onReply(segments);
 
       let finalHistory: ChatHistory = [...historyMessages];

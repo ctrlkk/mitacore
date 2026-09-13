@@ -2,7 +2,7 @@ import { generateText, type LanguageModelUsage, type ToolSet } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { getModelForRole } from "@/agents/model";
 import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message/parts";
-import { splitMessage } from "@/message/splitter";
+import { cleanMessage, splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { logUsage } from "@/utils/format";
 import { logger, type PinoLogger } from "@/logger";
@@ -33,8 +33,11 @@ async function saveHistory(history: ChatHistory, log: PinoLogger = logger) {
   }
 }
 
-function sliceReply(chunk: string): ParsedMessagePart[] {
-  const parts = parseMarkdown(chunk);
+function cleanReply(chunk: string): ParsedMessagePart[] {
+  return parseMarkdown(chunk).map((part) => (typeof part === "string" ? cleanMessage(part) : part));
+}
+
+function sliceReply(parts: ParsedMessagePart[]): ParsedMessagePart[] {
   const result: ParsedMessagePart[] = [];
   for (const part of parts) {
     if (typeof part === "string") {
@@ -85,10 +88,10 @@ export async function runMain(
     "<role>",
     replyPrompt.trim(),
     "</role>",
-    "",
-    "<workspace_instructions>",
-    workspacePrompt.trim(),
-    "</workspace_instructions>",
+    // "",
+    // "<workspace_instructions>",
+    // workspacePrompt.trim(),
+    // "</workspace_instructions>",
   ].join("\n");
 
   const tools: ToolSet = {};
@@ -119,7 +122,7 @@ export async function runMain(
         logUsage(log, usage);
         for (const part of content) {
           if (part.type !== "text") continue;
-          const segments = await resolveMessageParts(sliceReply(part.text));
+          const segments = await resolveMessageParts(sliceReply(cleanReply(part.text)));
           if (segments.length > 0) await onReply(segments);
         }
       },
@@ -141,7 +144,7 @@ export async function runMain(
           }
 
           if (typeof message.content === "string") {
-            const content = joinReply(sliceReply(message.content));
+            const content = joinReply(cleanReply(message.content));
             if (content) {
               savedMessages.push({ message: { ...message, content }, timestamp, usage: messageUsage });
             }
@@ -150,7 +153,7 @@ export async function runMain(
 
           const content = message.content.flatMap((part): typeof message.content => {
             if (part.type !== "text") return [part];
-            const text = joinReply(sliceReply(part.text));
+            const text = joinReply(cleanReply(part.text));
             return text ? [{ type: "text", text }] : [];
           });
           if (content.length > 0) {

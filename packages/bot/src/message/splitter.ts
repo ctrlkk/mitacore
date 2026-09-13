@@ -52,6 +52,15 @@ function recoverKaomoji(sentences: string[], mapping: Map<string, string>): stri
 }
 
 const TRAILING_PUNCTUATION = /[。；，,\s]+$/;
+const NARRATION_PATTERN = /(?:（[^）]*?[\u4e00-\u9fff][^）]*?）|\[[^\]]*?[\u4e00-\u9fff][^\]]*?\])/g;
+
+/**
+ * 移除回复中的旁白，同时保留用于历史记录和语音合成的完整标点。
+ */
+export function cleanMessage(text: string): string {
+  const cleanedText = text.replace(NARRATION_PATTERN, "");
+  return cleanedText.trim() ? cleanedText : "呃呃";
+}
 
 function splitParagraphs(text: string): string[] {
   return text
@@ -165,27 +174,23 @@ export function splitMessage(text: string, config: Partial<SplitterConfig> = {})
     kaomojiMapping = result.mapping;
   }
 
-  const bracketPattern = /(?:（[^）]*?[\u4e00-\u9fff][^）]*?）|\[[^\]]*?[\u4e00-\u9fff][^\]]*?\])/g;
-  const cleanedText = protectedText.replace(bracketPattern, "");
-  if (!cleanedText.trim()) return ["呃呃"];
-
   const maxLength = cfg.maxLength * 2;
-  if (getWesternRatio(cleanedText) < 0.1 && cleanedText.length > maxLength) {
+  if (getWesternRatio(protectedText) < 0.1 && protectedText.length > maxLength) {
     return [getRandomDefaultReply()];
   }
 
-  const paragraphSentences = splitParagraphs(cleanedText).map(splitIntoSentences);
+  const paragraphSentences = splitParagraphs(protectedText).map(splitIntoSentences);
   if (paragraphSentences.flat().length > cfg.maxSentenceNum) {
-    return cfg.enableOverflowReturnAll ? [cleanedText] : [getRandomDefaultReply()];
+    return cfg.enableOverflowReturnAll ? [protectedText] : [getRandomDefaultReply()];
   }
 
-  const targetLength = Math.max(1, Math.floor(cleanedText.length / cfg.maxSplitNum));
+  const targetLength = Math.max(1, Math.floor(protectedText.length / cfg.maxSplitNum));
   let chunks = groupSentences(paragraphSentences, targetLength, maxLength);
   chunks = mergeChunks(chunks, cfg.maxSplitNum)
     .map((chunk) => ({ ...chunk, text: chunk.text.replace(TRAILING_PUNCTUATION, "") }))
     .filter((chunk) => Boolean(chunk.text));
 
-  if (chunks.length === 0) return [cleanedText];
+  if (chunks.length === 0) return [protectedText];
 
   if (cfg.enableKaomojiProtection) {
     return recoverKaomoji(
