@@ -27,7 +27,9 @@ function toUnifiedMessages(inbound: QQBotInboundMessage): UnifiedInboundMessage[
 }
 
 function toText(part: MessagePart) {
-  return typeof part === "string" ? part : part.raw;
+  if (typeof part === "string") return part;
+  if (part.type === "audio") throw new Error("QQ Bot 不支持发送音频消息");
+  return part.raw;
 }
 
 async function loginWithQr(): Promise<QQBotQrCredentials> {

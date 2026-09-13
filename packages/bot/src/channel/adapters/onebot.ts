@@ -1,6 +1,7 @@
-import type { OneBotIncomingMessageSegment } from "channels/onebot";
+import type { OneBotIncomingMessageSegment, OneBotOutgoingMessage, OutgoingRecordSegment } from "channels/onebot";
 import type { PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import type { ChannelReplyContext } from "@/channel/types";
+import type { MessagePart } from "@/message/parts";
 import { createBot } from "@/app/queue-loop";
 import { handleCommand } from "@/app/command";
 import { config } from "@/config";
@@ -14,6 +15,21 @@ import { binPath, dataPath, projectPath } from "@/utils/path";
 
 type Scope = { mode: "whitelist" | "blacklist"; ids: string[] };
 type MediaSettings = { receive_image: boolean; receive_video: boolean; receive_audio: boolean };
+
+export async function toOneBotMessage(
+  part: MessagePart,
+  mentionableUsers: Parameters<typeof resolveMentions>[1] = [],
+): Promise<OneBotOutgoingMessage> {
+  if (typeof part === "string") return resolveMentions(part, mentionableUsers);
+  if (part.type === "image") return part;
+  if (part.blob.size === 0) throw new Error("音频 Blob 不能为空");
+  if (!part.blob.type.startsWith("audio/")) throw new Error("音频 Blob 的 MIME 类型必须为 audio/*");
+
+  return {
+    type: "record",
+    data: { file: `base64://${Buffer.from(await part.blob.arrayBuffer()).toString("base64")}` },
+  } satisfies OutgoingRecordSegment;
+}
 
 function exceedsSize(fileSize: number | string | undefined, limit: number): boolean {
   const size = Number(fileSize);
@@ -384,8 +400,7 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
         platform: "onebot",
         conversationType: event.message_type,
         selfId,
-        reply: async (part, mentionableUsers = []) =>
-          await ctx.reply(typeof part === "string" ? resolveMentions(part, mentionableUsers) : part),
+        reply: async (part, mentionableUsers = []) => await ctx.reply(await toOneBotMessage(part, mentionableUsers)),
         setTyping: async () => await ctx.setTyping(),
       };
       getBot(sessionId).enqueue(message, channelContext);

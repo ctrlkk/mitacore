@@ -32,6 +32,7 @@ function toUnifiedSegments(segments: WeixinInboundSegment[], userId: string): Un
 
 function toWeixinMessage(part: MessagePart) {
   if (typeof part === "string") return part;
+  if (part.type === "audio") throw new Error("微信不支持发送音频消息");
   return { type: "image" as const, url: part.data.file || part.data.url };
 }
 

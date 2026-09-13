@@ -17,7 +17,12 @@ export interface ImagePart {
   };
 }
 
-export type MessagePart = string | ImagePart;
+export interface AudioPart {
+  type: "audio";
+  blob: Blob;
+}
+
+export type MessagePart = string | ImagePart | AudioPart;
 
 type MediaReference =
   | {

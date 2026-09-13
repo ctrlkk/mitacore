@@ -108,7 +108,6 @@ export async function createReplySession(
       const segments = await resolveMessageParts(parsedReply);
       if (segments.length > 0) await onReply(segments);
 
-      const replyText = segments.map((segment) => (typeof segment === "string" ? segment : segment.raw)).join("\n");
       let finalHistory: ChatHistory = [...historyMessages];
       if (replyContent) {
         finalHistory.push({
@@ -125,7 +124,7 @@ export async function createReplySession(
       await saveHistory(finalHistory, log);
       historyMessages = finalHistory;
 
-      return { replyText, usage: result.usage };
+      return { replyText: replyContent, usage: result.usage };
     },
   };
 }
