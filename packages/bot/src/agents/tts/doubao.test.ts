@@ -198,18 +198,27 @@ describe("DoubaoTtsClient", () => {
     expect(factory).not.toHaveBeenCalled();
   });
 
-  test("拒绝标准版复刻音色使用上下文", async () => {
-    const { factory } = createFactory();
+  test("将标准版复刻音色的上下文交给服务端处理", async () => {
+    const { factory, sockets } = createFactory();
     const client = new DoubaoTtsClient({ apiKey: "test-key" }, factory);
 
-    await expect(
-      client.synthesize("你好", {
-        speaker: "test-speaker",
+    const result = client.synthesize("你好", {
+      speaker: "test-speaker",
+      model: "seed-tts-2.0-standard",
+      contextTexts: ["我今天遇到了一件开心的事。"],
+    });
+    await vi.waitFor(() => expect(sockets[0]?.sent).toHaveLength(1));
+
+    expect(JSON.parse(sockets[0]!.sent[0]!.subarray(8).toString())).toMatchObject({
+      req_params: {
         model: "seed-tts-2.0-standard",
-        contextTexts: ["请用温柔的语气说话。"],
-      }),
-    ).rejects.toThrow("标准版模型不支持使用语音指令或引用上下文");
-    expect(factory).not.toHaveBeenCalled();
+        context_texts: ["我今天遇到了一件开心的事。"],
+      },
+    });
+
+    sockets[0]!.receive(createEventFrame(0xb, 352, Buffer.from([1])));
+    sockets[0]!.receive(createEventFrame(0x9, 152, Buffer.from("{}")));
+    await result;
   });
 
   test("握手期间可以取消", async () => {
