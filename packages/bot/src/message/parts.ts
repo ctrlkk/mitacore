@@ -24,6 +24,13 @@ export interface AudioPart {
 
 export type MessagePart = string | ImagePart | AudioPart;
 
+export interface ReplyOutput {
+  /** 用于按聊天节奏逐条发送的消息片段。 */
+  segments: MessagePart[];
+  /** 清理旁白后、保留完整标点的可朗读文本。 */
+  speechText: string;
+}
+
 type MediaReference =
   | {
       type: "image-reference";

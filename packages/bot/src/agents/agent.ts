@@ -1,7 +1,7 @@
 import { generateText, type LanguageModelUsage, type ToolSet } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { getModelForRole } from "@/agents/model";
-import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message/parts";
+import { parseMarkdown, resolveMessageParts, type ParsedMessagePart, type ReplyOutput } from "@/message/parts";
 import { cleanMessage, splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { logUsage } from "@/utils/format";
@@ -55,6 +55,13 @@ function joinReply(parts: ParsedMessagePart[]): string {
   return parts.map((part) => (typeof part === "string" ? part : part.raw)).join("\n");
 }
 
+function joinSpeechText(parts: ParsedMessagePart[]): string {
+  return parts
+    .filter((part): part is string => typeof part === "string")
+    .join("\n")
+    .trim();
+}
+
 /**
  * 运行单 agent（兼具规划与回复，输出直接面向用户）
  * @param userPrompt 已用 <user_input> 标签包好的用户消息
@@ -64,7 +71,7 @@ function joinReply(parts: ParsedMessagePart[]): string {
  */
 export async function runMain(
   userPrompt: string,
-  onReply: (segments: MessagePart[]) => Promise<void>,
+  onReply: (output: ReplyOutput) => Promise<void>,
   log: PinoLogger = logger,
   takeSteeringPrompt?: () => Promise<string | undefined>,
 ) {
@@ -120,11 +127,11 @@ export async function runMain(
           .join("");
         log.info({ reasoningText, text }, "助手响应");
         logUsage(log, usage);
-        for (const part of content) {
-          if (part.type !== "text") continue;
-          const segments = await resolveMessageParts(sliceReply(cleanReply(part.text)));
-          if (segments.length > 0) await onReply(segments);
-        }
+        const cleanedReply = content.flatMap((part): ParsedMessagePart[] =>
+          part.type === "text" ? cleanReply(part.text) : [],
+        );
+        const segments = await resolveMessageParts(sliceReply(cleanedReply));
+        if (segments.length > 0) await onReply({ segments, speechText: joinSpeechText(cleanedReply) });
       },
       onToolExecutionStart({ toolCall }) {
         log.info({ toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input }, "工具调用");

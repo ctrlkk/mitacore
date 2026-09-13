@@ -2,7 +2,7 @@ import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-histor
 import { generateText, type LanguageModelUsage } from "ai";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { getModelForRole } from "@/agents/model";
-import { parseMarkdown, resolveMessageParts, type MessagePart, type ParsedMessagePart } from "@/message/parts";
+import { parseMarkdown, resolveMessageParts, type ParsedMessagePart, type ReplyOutput } from "@/message/parts";
 import { cleanMessage, splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { logger, type PinoLogger } from "@/logger";
@@ -50,6 +50,13 @@ function joinReply(parts: ParsedMessagePart[]): string {
   return parts.map((part) => (typeof part === "string" ? part : part.raw)).join("\n");
 }
 
+function joinSpeechText(parts: ParsedMessagePart[]): string {
+  return parts
+    .filter((part): part is string => typeof part === "string")
+    .join("\n")
+    .trim();
+}
+
 /**
  * 创建本轮回复层会话
  * @param userPrompt 已用 <user_input> 标签包好的用户消息
@@ -57,7 +64,7 @@ function joinReply(parts: ParsedMessagePart[]): string {
  */
 export async function createReplySession(
   userPrompt: string,
-  onReply: (segments: MessagePart[]) => Promise<void>,
+  onReply: (output: ReplyOutput) => Promise<void>,
   log: PinoLogger = logger,
 ): Promise<{
   send: (plan: string, reasoning: string) => Promise<{ replyText: string; usage: LanguageModelUsage | undefined }>;
@@ -109,7 +116,7 @@ export async function createReplySession(
       const cleanedReply = cleanReply(result.text);
       const replyContent = joinReply(cleanedReply);
       const segments = await resolveMessageParts(sliceReply(cleanedReply));
-      if (segments.length > 0) await onReply(segments);
+      if (segments.length > 0) await onReply({ segments, speechText: joinSpeechText(cleanedReply) });
 
       let finalHistory: ChatHistory = [...historyMessages];
       if (replyContent) {

@@ -14,7 +14,7 @@ import { logUsage } from "@/utils/format";
 import { workspaceTools } from "@/workspace/tool";
 import { memoryReview } from "./background-review";
 import { createReplySession } from "./reply";
-import type { MessagePart } from "@/message/parts";
+import type { ReplyOutput } from "@/message/parts";
 
 const MEMORY_REVIEW_INTERVAL = 10;
 
@@ -44,7 +44,7 @@ async function saveHistory(history: ChatHistory, log: PinoLogger = logger) {
  */
 export async function runPlanner(
   userInputMessage: string,
-  onReply: (segments: MessagePart[]) => Promise<void>,
+  onReply: (output: ReplyOutput) => Promise<void>,
   log: PinoLogger = logger,
 ): Promise<boolean> {
   const model = getModelForRole("plan");

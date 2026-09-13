@@ -2,19 +2,18 @@ import { APICallError, RetryError } from "ai";
 import XMLBuilder from "fast-xml-builder";
 import dayjs, { sleep } from "shared/time";
 import type { ChannelReplyContext } from "@/channel/types";
-import type { MessagePart } from "@/message/parts";
 import type { MediaKind, MediaMap, PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import { audioToText, imageToText, videoToText } from "@/agents/multimedia";
 import { runPlanner } from "@/agents/planner";
 import { config } from "@/config";
 import { get_media_description, set_media_description } from "@/database/media-cache";
-import { listMentionableUserAliases } from "@/database/user-alias";
 import { logger } from "@/logger";
 import { createFsFile } from "@/utils/fs-file";
 import { downloadToCache } from "@/utils/image-cache";
 import { compressImage } from "@/utils/image-resize";
 import { compressVideo } from "@/utils/video-resize";
 import { runMain } from "@/agents/agent";
+import { deliverReply, getLatestUserText } from "./reply-delivery";
 
 type MediaResource = {
   url: string;
@@ -375,23 +374,13 @@ export function createBot(sessionId: string) {
     processing = true;
     try {
       const prompt = await preparePrompt(batch);
+      let speechContextText = getLatestUserText(batch);
       log.info({ prompt }, "用户输入");
 
       const cancelTyping = await ctx.setTyping();
       try {
-        const onReply = async (segments: MessagePart[]) => {
-          const mentionableUsers = (() => {
-            if (ctx.platform !== "onebot" || ctx.conversationType !== "group") return [];
-            if (segments.some((segment) => typeof segment === "string" && segment.includes("@"))) {
-              return listMentionableUserAliases("onebot").filter((user) => user.platformId !== ctx.selfId);
-            }
-            return [];
-          })();
-
-          for (const seg of segments) {
-            await ctx.reply(seg, mentionableUsers);
-            await sleep(500);
-          }
+        const onReply = (output: Parameters<typeof deliverReply>[0]) => {
+          return deliverReply(output, ctx, speechContextText, log);
         };
         // const replied = await runPlanner(prompt, onReply, log);
         // if (!replied) {
@@ -401,6 +390,7 @@ export function createBot(sessionId: string) {
           // 只提升已经通过原有防抖和触发判定的消息，未 armed 的消息继续留给后续批次。
           const next = scheduler.takeArmed();
           if (!next) return;
+          speechContextText = getLatestUserText(next.batch);
           const steeringPrompt = await preparePrompt(next.batch);
           log.info({ prompt: steeringPrompt }, "工具循环中插入用户输入");
           return steeringPrompt;
