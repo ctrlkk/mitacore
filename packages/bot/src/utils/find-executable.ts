@@ -12,10 +12,8 @@ export function findExecutable(name: string): string | null {
     if (statSync(bundled).isFile()) return bundled;
   } catch {}
 
-  const extensions =
-    process.platform === "win32"
-      ? (process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(delimiter).flatMap((ext) => [ext, ext.toLowerCase()])
-      : [""];
+  // .cmd/.bat 需要 shell 才能执行，而调用方统一使用 shell: false。
+  const extensions = process.platform === "win32" ? [".exe", ".com"] : [""];
 
   return (
     [...(process.platform === "win32" ? [process.cwd()] : []), ...(process.env.PATH || "").split(delimiter)]
