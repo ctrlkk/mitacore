@@ -52,7 +52,7 @@ export async function deliverReply(
   const speechPromise =
     ctx.platform === "onebot" && output.speechText && process.env.DUBAO_API_KEY
       ? synthesizeSpeech(output.speechText, contextText, log).catch((error) => {
-          log.warn({ error }, "回复语音合成失败，已降级为文本");
+          log.warn({ err: error }, "回复语音合成失败，已降级为文本");
           return undefined;
         })
       : Promise.resolve(undefined);
@@ -66,7 +66,7 @@ export async function deliverReply(
   const speech = await speechPromise;
   if (speech) {
     await ctx.reply(speech).catch((error) => {
-      log.warn({ error }, "回复语音发送失败，已保留文本");
+      log.warn({ err: error }, "回复语音发送失败，已保留文本");
     });
   }
 }

@@ -52,7 +52,7 @@ export async function handleBilibiliDownload(input: string, ctx: OneBotEventCont
         logger.warn("封面提取失败");
       }
     } catch (error) {
-      logger.warn({ error }, "封面提取异常");
+      logger.warn({ err: error }, "封面提取异常");
     }
   }
 

@@ -328,7 +328,7 @@ export async function launchNapCat(config: NapCatConfig) {
     });
     handle.proc.stderr!.resume();
     handle.proc.on("error", (err) => {
-      logger.error({ error: err }, "启动进程失败");
+      logger.error({ err }, "启动进程失败");
       clearTimeout(webUiConnectTimer);
       rejectApi(err);
       rejectReady(err);

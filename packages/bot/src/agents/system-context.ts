@@ -26,12 +26,12 @@ export async function injectSystemContext(
         await writeFile(memoryPath, "", { encoding: "utf8", flag: "a" });
         return await readFile(memoryPath, "utf8");
       } catch (error) {
-        log.error({ error }, "创建 MEMORY.md 失败");
+        log.error({ err: error }, "创建 MEMORY.md 失败");
         return "";
       }
     }
 
-    log.error({ error }, "读取 MEMORY.md 失败");
+    log.error({ err: error }, "读取 MEMORY.md 失败");
     return "";
   });
 

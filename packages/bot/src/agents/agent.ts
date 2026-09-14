@@ -29,7 +29,7 @@ async function saveHistory(history: ChatHistory, log: PinoLogger = logger) {
     await mkdir(dataPath(), { recursive: true });
     await writeFile(dataPath("history.json"), JSON.stringify(history, null, 2));
   } catch (error) {
-    log.error({ error }, "保存单 agent 历史失败");
+    log.error({ err: error }, "保存单 agent 历史失败");
   }
 }
 

@@ -405,7 +405,7 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
       };
       getBot(sessionId).enqueue(message, channelContext);
     } catch (error) {
-      logger.error({ sessionId, error }, "消息解析或入队失败");
+      logger.error({ sessionId, err: error }, "消息解析或入队失败");
     }
   });
 }

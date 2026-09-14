@@ -112,7 +112,7 @@ describe("deliverReply", () => {
     await deliverReply(output, ctx, undefined, log, { delayMs: 0, synthesizeSpeech });
 
     expect(ctx.reply).toHaveBeenCalledTimes(2);
-    expect(log.warn).toHaveBeenCalledWith({ error }, "回复语音合成失败，已降级为文本");
+    expect(log.warn).toHaveBeenCalledWith({ err: error }, "回复语音合成失败，已降级为文本");
   });
 
   test("语音发送失败时不影响已经发送的文本", async () => {
@@ -128,6 +128,6 @@ describe("deliverReply", () => {
     await expect(deliverReply(output, ctx, undefined, log, { delayMs: 0, synthesizeSpeech })).resolves.toBeUndefined();
 
     expect(ctx.reply).toHaveBeenCalledTimes(3);
-    expect(log.warn).toHaveBeenCalledWith({ error }, "回复语音发送失败，已保留文本");
+    expect(log.warn).toHaveBeenCalledWith({ err: error }, "回复语音发送失败，已保留文本");
   });
 });

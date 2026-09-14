@@ -61,7 +61,7 @@ function createMediaProcessor() {
               return await downloadToCache(url, { limit: 5 * 1024 * 1024 });
             }
           } catch (error) {
-            logger.error({ url, kind, error }, "下载失败");
+            logger.error({ url, kind, err: error }, "下载失败");
             return null;
           }
         }).then((res) => (res ? { url, kind, ...res } : null)),
@@ -404,7 +404,7 @@ export function createBot(sessionId: string) {
   }
 
   const scheduler = createScheduler(processBatch, { maxQueue: config.max_queue });
-  scheduler.run().catch((error) => log.error({ error }, "scheduler 运行失败"));
+  scheduler.run().catch((error) => log.error({ err: error }, "scheduler 运行失败"));
 
   const debounceMs = config.debounce_ms;
   let lastMsgAt = Date.now();
@@ -497,7 +497,7 @@ export function createBot(sessionId: string) {
         break;
       }
     } catch (err) {
-      log.error({ error: err }, "触发判定失败");
+      log.error({ err }, "触发判定失败");
     } finally {
       evaluating = false;
     }
@@ -547,7 +547,7 @@ export function createBot(sessionId: string) {
       lastMsgAt = Date.now();
       dirty = true;
 
-      evaluationLoop(ctx).catch((err) => log.error({ error: err }, "dispatch 失败"));
+      evaluationLoop(ctx).catch((err) => log.error({ err }, "dispatch 失败"));
     },
   };
 }

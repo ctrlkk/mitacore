@@ -36,18 +36,24 @@ function toWeixinMessage(part: MessagePart) {
   return { type: "image" as const, url: part.data.file || part.data.url };
 }
 
+function toLogFields(details: unknown): object {
+  if (details instanceof Error) return { err: details };
+  if (details !== null && typeof details === "object") return details;
+  return details === undefined ? {} : { details };
+}
+
 const clientLogger = {
   debug(message: string, details?: unknown) {
-    logger.debug({ details }, message);
+    logger.debug(toLogFields(details), message);
   },
   info(message: string, details?: unknown) {
-    logger.info({ details }, message);
+    logger.info(toLogFields(details), message);
   },
   warn(message: string, details?: unknown) {
-    logger.warn({ details }, message);
+    logger.warn(toLogFields(details), message);
   },
   error(message: string, details?: unknown) {
-    logger.error({ details }, message);
+    logger.error(toLogFields(details), message);
   },
 };
 
@@ -139,5 +145,5 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
       };
       getBot(`weixin:${WEIXIN_USER_KEY}`).enqueue(message, context);
     })
-    .catch((error) => logger.error({ error }, "微信渠道异常退出"));
+    .catch((error) => logger.error({ err: error }, "微信渠道异常退出"));
 }

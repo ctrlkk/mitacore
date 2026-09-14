@@ -53,7 +53,7 @@ export class WeixinClient {
     let failures = 0;
 
     await notifyLifecycle(this.credentials, "start").catch((error) => {
-      this.logger.warn?.("通知微信渠道启动失败，继续运行", error);
+      this.logger.warn?.("通知微信渠道启动失败，继续运行", { err: error });
     });
     this.logger.info?.("微信渠道已连接", { accountId: this.credentials.accountId });
     while (!controller.signal.aborted) {
@@ -79,7 +79,7 @@ export class WeixinClient {
       } catch (error) {
         if (controller.signal.aborted) break;
         failures += 1;
-        this.logger.error?.("微信长轮询失败", { error, failures });
+        this.logger.error?.("微信长轮询失败", { err: error, failures });
         await sleep(failures >= 3 ? 30_000 : 2_000);
         if (failures >= 3) failures = 0;
       }
@@ -90,7 +90,7 @@ export class WeixinClient {
   async stop() {
     this.abortController?.abort();
     await notifyLifecycle(this.credentials, "stop").catch((error) => {
-      this.logger.warn?.("通知微信渠道停止失败", error);
+      this.logger.warn?.("通知微信渠道停止失败", { err: error });
     });
   }
 
@@ -124,7 +124,7 @@ export class WeixinClient {
         if (cancelled || updating) return;
         updating = sendTyping(this.credentials, senderId, ticket, 1)
           .catch((error) => {
-            this.logger.debug?.("刷新微信输入状态失败", error);
+            this.logger.debug?.("刷新微信输入状态失败", { err: error });
           })
           .finally(() => {
             updating = null;
@@ -137,11 +137,11 @@ export class WeixinClient {
         clearInterval(timer);
         await updating;
         await sendTyping(this.credentials, senderId, ticket, 2).catch((error) => {
-          this.logger.debug?.("取消微信输入状态失败", error);
+          this.logger.debug?.("取消微信输入状态失败", { err: error });
         });
       };
     } catch (error) {
-      this.logger.debug?.("设置微信输入状态失败", error);
+      this.logger.debug?.("设置微信输入状态失败", { err: error });
       return () => {};
     }
   }
@@ -184,7 +184,7 @@ export class WeixinClient {
             segments.push({ type: "video", data: { url } });
           }
         } catch (error) {
-          this.logger.error?.("微信媒体解析失败", { error, messageId: item.msg_id });
+          this.logger.error?.("微信媒体解析失败", { err: error, messageId: item.msg_id });
         }
       }
     }

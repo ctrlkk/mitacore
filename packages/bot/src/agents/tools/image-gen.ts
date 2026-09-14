@@ -125,7 +125,7 @@ export function imageGen(
         // return { status: "success", results };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        log.error({ error, prompt, images }, "图像生成失败");
+        log.error({ err: error, prompt, images }, "图像生成失败");
         return { status: "failed", error: message };
       }
     },
