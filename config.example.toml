@@ -91,15 +91,13 @@ multimodal_audio = "mimo-v2.5"
 # name: 供应商名称，用于内部区分
 name = "deepseek官网"
 # type: 端点类型，决定了底层如何与供应商的 API 进行通信。
-# 可选值: "anthropic" | "deepseek" | "openai-compatible" | "openai-responses"
+# 可选值: "anthropic" | "google" | "deepseek" | "openai-compatible" | "openai-responses"
 #
 # 1. "anthropic": 适用于 Anthropic 官方或支持该协议的中转站。
-# 2. "openai-compatible": 兼容性最为广泛的端点类型。
-#    ！在支持交织推理的思考模型中，使用该类型可能会因缺少 `reasoning_content` 字段而报 400 错误。
-# 3. "deepseek": 在 openai-compatible 兼容格式上扩展了 `reasoning_content` 字段支持。
-#    支持交织推理过程（思考 -> 工具调用 -> 继续思考 -> 输出）。
-#    使用 deepseek 模型或其它需要交织推理的模型时建议选择该类型。
-# 4. "openai-responses": OpenAI 官方最新的 Responses API，GPT 模型使用。
+# 2. "google": Google Gemini 原生 API。
+# 3. "openai-compatible": 兼容性最为广泛的端点类型。
+# 4. "deepseek": 在 openai-compatible 兼容格式上扩展了 `reasoning_content` 字段支持。支持交织推理过程。
+# 5. "openai-responses": OpenAI 官方最新的 Responses API。
 type = "deepseek"
 
 [providers.options]

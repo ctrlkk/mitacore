@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import anthropicIcon from "@/assets/provider-icons/anthropic.svg";
 import bailianIcon from "@/assets/provider-icons/bailian.svg";
 import deepseekIcon from "@/assets/provider-icons/deepseek.svg";
+import googleIcon from "@/assets/provider-icons/google.svg";
 import mimoIcon from "@/assets/provider-icons/mimo.svg";
 import minimaxIcon from "@/assets/provider-icons/minimax.svg";
 import openaiIcon from "@/assets/provider-icons/openai.svg";
@@ -68,7 +69,7 @@ type ModelRole =
   | "multimodal_video"
   | "multimodal_audio";
 
-type ProviderType = "anthropic" | "openai-responses" | "openai-compatible" | "deepseek";
+type ProviderType = "anthropic" | "google" | "openai-responses" | "openai-compatible" | "deepseek";
 
 type ModelProvider = {
   name: string;
@@ -102,6 +103,7 @@ const roleDefinitions: Array<{ key: ModelRole; label: string; description: strin
 
 const providerTypes: Array<{ value: ProviderType; label: string }> = [
   { value: "anthropic", label: "Anthropic" },
+  { value: "google", label: "Google Gemini" },
   { value: "openai-responses", label: "OpenAI Responses" },
   { value: "openai-compatible", label: "OpenAI Compatible" },
   { value: "deepseek", label: "DeepSeek" },
@@ -109,6 +111,7 @@ const providerTypes: Array<{ value: ProviderType; label: string }> = [
 
 const providerIconPaths: Record<Exclude<ProviderType, "openai-responses" | "openai-compatible">, string> = {
   anthropic: anthropicIcon,
+  google: googleIcon,
   deepseek: deepseekIcon,
 };
 

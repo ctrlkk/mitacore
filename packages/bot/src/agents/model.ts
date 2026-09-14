@@ -1,5 +1,6 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createDeepSeek } from "@ai-sdk/deepseek";
+import { createGoogle } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { config, type Config, type ModelRole } from "@/config";
@@ -34,6 +35,8 @@ function createProvider(cfg: Config["providers"][number]): ProviderFn {
   switch (type) {
     case "anthropic":
       return createAnthropic({ name, ...common });
+    case "google":
+      return createGoogle({ name, ...common });
     case "openai-responses":
       return createOpenAI({ name, ...common });
     case "openai-compatible":
@@ -73,6 +76,7 @@ export function getModelForRole(role: ModelRole): LanguageModel {
  * 用于绕过 AI SDK 直接调用 provider API（如 mimo 的 video_url 扩展）。
  */
 export function getModelConfig(alias: string): {
+  type: Config["providers"][number]["type"];
   baseUrl: string;
   apiKey: string;
   modelId: string;
@@ -81,6 +85,7 @@ export function getModelConfig(alias: string): {
     const modelCfg = providerCfg.models.find((m) => m.alias === alias);
     if (modelCfg) {
       return {
+        type: providerCfg.type,
         baseUrl: providerCfg.options.base_url,
         apiKey: providerCfg.options.api_key,
         modelId: modelCfg.id,
@@ -92,6 +97,7 @@ export function getModelConfig(alias: string): {
 
 /** 根据模型职责获取当前时段应使用的 provider 配置与真实模型 ID。 */
 export function getModelConfigForRole(role: ModelRole): {
+  type: Config["providers"][number]["type"];
   baseUrl: string;
   apiKey: string;
   modelId: string;

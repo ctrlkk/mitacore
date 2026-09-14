@@ -3,7 +3,7 @@ import { parse, stringify, type TomlTableWithoutBigInt } from "smol-toml";
 import { z } from "zod";
 import { projectPath } from "./utils/path";
 
-const providerType = z.enum(["anthropic", "openai-responses", "openai-compatible", "deepseek"]);
+const providerType = z.enum(["anthropic", "google", "openai-responses", "openai-compatible", "deepseek"]);
 
 const modelRoles = [
   "plan",

@@ -104,11 +104,29 @@ const VIDEO_SYSTEM_PROMPT = `你将作为视觉模块，负责解释视频内容
  */
 export async function videoToText(blob: Blob): Promise<string> {
   const alias = resolveModelAlias(config, "multimodal_video");
-  const { baseUrl, apiKey, modelId } = getModelConfigForRole("multimodal_video");
+  const { type, baseUrl, apiKey, modelId } = getModelConfigForRole("multimodal_video");
 
   const mediaType = blob.type || "video/mp4";
   if (!mediaType.startsWith("video/")) {
     throw new Error(`videoToText 需要 video/* mediaType，拿到的是 "${mediaType}"`);
+  }
+
+  if (type === "google") {
+    const { text } = await generateText({
+      model: getModelForRole("multimodal_video"),
+      instructions: VIDEO_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "file", mediaType, data: await blob.arrayBuffer() },
+            { type: "text", text: "解释视频" },
+          ],
+        },
+      ],
+      maxOutputTokens: 2024,
+    });
+    return text;
   }
 
   const dataUrl = await blobToDataURL(blob);

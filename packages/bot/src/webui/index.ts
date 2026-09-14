@@ -159,7 +159,7 @@ function getSafeMediaPath(rawFilename: string) {
 }
 
 const modelRequestSchema = z.object({
-  type: z.enum(["anthropic", "openai-responses", "openai-compatible", "deepseek"]),
+  type: z.enum(["anthropic", "google", "openai-responses", "openai-compatible", "deepseek"]),
   base_url: z
     .url()
     .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "仅支持 HTTP 或 HTTPS 地址"),
@@ -170,10 +170,11 @@ function getModelHeaders(type: z.infer<typeof modelRequestSchema>["type"], apiKe
   if (type === "anthropic") {
     return new Headers({ "x-api-key": apiKey, "anthropic-version": "2023-06-01" });
   }
+  if (type === "google") return new Headers({ "x-goog-api-key": apiKey });
   return new Headers({ Authorization: `Bearer ${apiKey}` });
 }
 
-function getModelIds(payload: unknown): string[] {
+function getModelIds(payload: unknown, type: z.infer<typeof modelRequestSchema>["type"]): string[] {
   if (!payload || typeof payload !== "object") return [];
 
   const response = payload as { data?: unknown; models?: unknown };
@@ -183,7 +184,7 @@ function getModelIds(payload: unknown): string[] {
       if (!model || typeof model !== "object") return [];
       const { id, name } = model as { id?: unknown; name?: unknown };
       if (typeof id === "string" && id) return [id];
-      if (typeof name === "string" && name) return [name];
+      if (typeof name === "string" && name) return [type === "google" ? name.replace(/^models\//, "") : name];
       return [];
     });
   });
@@ -332,7 +333,7 @@ export function createApp() {
       });
       if (!response.ok) throw new Error(`供应商返回 HTTP ${response.status}，请检查 API 地址和密钥`);
 
-      return c.json({ models: getModelIds(await response.json()) });
+      return c.json({ models: getModelIds(await response.json(), request.type) });
     } catch (error) {
       if (error instanceof DOMException && error.name === "TimeoutError") {
         return c.json({ error: { message: "获取模型超时，请检查 API 地址和网络连接" } }, 504);

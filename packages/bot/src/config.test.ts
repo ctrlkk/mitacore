@@ -27,4 +27,26 @@ describe("配置校验", () => {
       receive_audio: false,
     });
   });
+
+  it("接受 Google Gemini 原生供应商", () => {
+    const config = validateConfig({
+      providers: [
+        {
+          name: "Google Gemini",
+          type: "google",
+          options: {
+            base_url: "https://generativelanguage.googleapis.com/v1beta",
+            api_key: "test-key",
+          },
+          models: [{ id: "gemini-3.8-flash", alias: "gemini" }],
+        },
+      ],
+    });
+
+    expect(config.providers[0]).toMatchObject({
+      name: "Google Gemini",
+      type: "google",
+      models: [{ id: "gemini-3.8-flash", alias: "gemini" }],
+    });
+  });
 });
