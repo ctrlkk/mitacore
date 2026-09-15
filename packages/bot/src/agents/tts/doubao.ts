@@ -1,3 +1,8 @@
+/**
+ * 豆包 V3 WebSocket 语音合成客户端。
+ *
+ * @see https://docs.volcengine.com/docs/6561/1719100?lang=zh
+ */
 import { randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { Mutex } from "async-mutex";
@@ -30,6 +35,64 @@ const SessionFinishedResponseSchema = z.object({
 export type DoubaoTtsAudioFormat = "mp3" | "pcm" | "ogg_opus";
 export type DoubaoTtsSampleRate = 8000 | 16000 | 22050 | 24000 | 32000 | 44100 | 48000;
 export type DoubaoTtsModel = z.infer<typeof DoubaoTtsModelSchema>;
+
+/** 豆包 TTS V3 协议中需要序列化为 JSON 字符串的 `additions` 扩展参数。 */
+export interface DoubaoTtsAdditions {
+  /** 在整段输入文本末尾追加的静音时长，单位为毫秒，取值范围为 0 至 30000。 */
+  silence_duration?: number;
+  /** 是否自动识别输入文本的语种。 */
+  enable_language_detector?: boolean;
+  /** 是否解析并过滤 Markdown 标记。 */
+  disable_markdown_filter?: boolean;
+  /** 是否保留文本中的 Emoji，建议配合时间戳使用。 */
+  disable_emoji_filter?: boolean;
+  /** 静音裁剪的判定阈值，需与 `mute_cut_remain_ms` 同时设置。 */
+  mute_cut_threshold?: string;
+  /** 静音裁剪后保留的静音时长，需与 `mute_cut_threshold` 同时设置。 */
+  mute_cut_remain_ms?: string;
+  /** 是否朗读 LaTeX 公式；启用时需同时设置 `disable_markdown_filter`。 */
+  enable_latex_tn?: boolean;
+  /** LaTeX 解析器版本；`v2` 表示启用，空字符串表示不启用。 */
+  latex_parser?: "" | "v2";
+  /** 控制过滤括号内容的最大长度；0 表示不过滤。 */
+  max_length_to_filter_parenthesis?: number;
+  /** 明确指定朗读语种，实际支持范围取决于模型和音色。 */
+  explicit_language?: "crosslingual" | "zh" | "zh-cn" | "en" | "ja" | "es-mx" | "id" | "pt-br" | "de" | "fr" | "ko";
+  /** 西欧语种的参考发音语种。 */
+  context_language?: "id" | "es" | "pt";
+  /** 明确指定中文方言，当前仅部分音色支持。 */
+  explicit_dialect?: "dongbei" | "shaanxi" | "sichuan";
+  /** 不支持合成的文本占比阈值，最大为 1，默认 0.3。 */
+  unsupported_char_ratio_thresh?: number;
+  /** 是否在合成音频结尾添加 AIGC 节奏水印。 */
+  aigc_watermark?: boolean;
+  /** 写入音频文件头的 AIGC 元数据水印，仅支持 MP3、WAV 和 OGG Opus。 */
+  aigc_metadata?: {
+    enable?: boolean;
+    content_producer?: string;
+    produce_id?: string;
+    content_propagator?: string;
+    propagate_id?: string;
+  };
+  /** 相同文本的合成缓存配置；缓存保留一小时且缓存响应不含时间戳。 */
+  cache_config?: {
+    text_type: 1;
+    use_cache: true;
+  };
+  /** 音频后处理配置。 */
+  post_process?: {
+    /** 音调调整，取值范围为 -12 至 12。 */
+    pitch?: number;
+  };
+  /** 辅助控制语速、情绪、音量等表现力的语音指令，仅第一个字符串生效。 */
+  context_texts?: string[];
+  /** 多轮串行合成使用的上下文会话 ID。 */
+  section_id?: string;
+  /** 是否启用语音标签 CoT 解析。 */
+  use_tag_parser?: boolean;
+  /** 设置 `bit_rate` 时是否禁用服务端默认比特率。 */
+  disable_default_bit_rate?: boolean;
+}
 
 export interface DoubaoTtsClientOptions {
   /** 新版控制台生成的 API Key。 */
@@ -69,7 +132,7 @@ export interface DoubaoTtsSynthesisOptions {
   /** 是否返回字级时间戳字幕，仅支持中文和英文，默认关闭。 */
   enableSubtitle?: boolean;
   /** 协议 `additions` 扩展参数；封装会自动序列化为 JSON 字符串。 */
-  additions?: Record<string, unknown>;
+  additions?: DoubaoTtsAdditions;
   /** 用于取消排队、建连或正在进行的合成请求。 */
   signal?: AbortSignal;
   /** 每收到一个音频分片时调用；异步回调会按接收顺序串行执行。 */
