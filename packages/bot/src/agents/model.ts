@@ -97,7 +97,7 @@ function applyModelOptions(
 
 /**
  * 根据模型别名获取模型实例
- * @param alias 在 config.toml 中配置的模型别名
+ * @param alias 在配置文件中配置的模型别名
  */
 export function getModel(alias: string): LanguageModel {
   for (const providerCfg of config.providers) {
@@ -112,7 +112,7 @@ export function getModel(alias: string): LanguageModel {
     }
     return applyModelOptions(provider(modelCfg.id), providerCfg.type, modelCfg.options);
   }
-  throw new Error(`未找到别名为 "${alias}" 的模型，请检查 config.toml 配置`);
+  throw new Error(`未找到别名为 "${alias}" 的模型，请检查配置文件`);
 }
 
 /** 根据模型职责获取当前时段应使用的模型实例。 */
@@ -136,7 +136,7 @@ export function getModelConfig(alias: string) {
       };
     }
   }
-  throw new Error(`未找到别名为 "${alias}" 的模型，请检查 config.toml 配置`);
+  throw new Error(`未找到别名为 "${alias}" 的模型，请检查配置文件`);
 }
 
 /** 根据模型职责获取当前时段应使用的 provider 配置与真实模型 ID。 */

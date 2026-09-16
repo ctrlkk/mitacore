@@ -90,7 +90,7 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
           token: credentials.token,
         },
       });
-      logger.info({ accountId: credentials.accountId }, "微信凭证已写入 config.toml");
+      logger.info({ accountId: credentials.accountId }, "微信凭证已写入配置文件");
     } catch (error) {
       channelController.updateWeixin({
         status: "failed",

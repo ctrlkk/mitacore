@@ -1,0 +1,153 @@
+// 复制为 config.jsonc 后，填入自己的渠道和模型供应商信息。
+// WebUI 保存配置时会重新格式化文件，并移除这些注释。
+{
+  // 单个会话单次处理前最多暂存并合并的消息数，不是模型上下文长度；超出时会丢弃最早的消息。
+  "max_queue": 10,
+  // 收到最后一条消息后等待多久再判断是否处理（毫秒），用于合并连续消息；可设为 1000 至 10000。
+  "debounce_ms": 1000,
+
+  // NapCat（QQ OneBot）渠道配置。
+  "napcat": {
+    "enabled": false,
+
+    // 自定义 NapCat WebSocket 地址和 token；省略时使用内置服务。
+    // 如果不清楚这些选项的用途，建议保持省略。
+    // 可选字段示例：ws_url 为 ws://localhost:3001，token 为 NapCat 服务令牌。
+
+    // 内置 NapCat 启动器登录的机器人 QQ 号，不是你日常使用的个人 QQ 号。
+    "qq_id": "your-qq-id",
+
+    // 群聊消息包含任一关键词时，无需 @ 机器人也会触发回复；空数组表示只通过 @ 唤醒。
+    "wake_keywords": ["aliya", "阿丽亚", "阿丽娅", "Aliya"],
+
+    // 是否接收对应类型的媒体消息。
+    "receive_image": true,
+    "receive_video": false,
+    "receive_audio": false,
+
+    // 群聊范围控制。mode 可为 whitelist（仅列表内生效）或 blacklist（排除列表内）。
+    "groups": {
+      "mode": "whitelist",
+      // 群号列表，使用字符串格式。
+      "ids": ["your-group-id"]
+    },
+
+    // 私聊范围控制。通常将自己使用的 QQ 号加入白名单。
+    "private_chats": {
+      "mode": "whitelist",
+      "ids": ["your-qq-id"]
+    },
+
+    // 在已允许的群内，进一步控制哪些成员可以触发机器人。
+    "group_members": {
+      "mode": "blacklist",
+      "ids": []
+    },
+
+    // 管理员 QQ 号列表，只有管理员能使用 /help、/ping 和 /undo 指令。
+    "admins": ["your-qq-id"]
+  },
+
+  // 微信渠道。启用且未填写凭据时，启动后会在终端或 WebUI 中引导登录；
+  // 登录成功后 account_id 和 token 会自动写回当前配置文件。
+  "weixin": {
+    "enabled": false
+    // 可选字段 account_id 和 token 会在登录成功后自动填入。
+  },
+
+  // QQ 官方机器人渠道。启用且未填写凭据时，启动后会输出扫码链接；
+  // 登录成功后 app_id 和 app_secret 会自动写回当前配置文件。
+  "qqbot": {
+    "enabled": false,
+    // 可选字段 app_id 和 app_secret 会在登录成功后自动填入。
+    // 管理员 ID 使用用户 openid。
+    "admins": ["your-user-openid"]
+  },
+
+  // 为不同任务分配模型。值应填写下方 providers.models 中定义的 alias。
+  "models": {
+    // 规划层使用的模型。
+    "plan": "deepseek-v4-flash",
+    // 回复层使用的模型。
+    "reply": "deepseek-v4-pro",
+    // 单 agent 模式的主模型；启用后取代 plan + reply，同时承担规划与回复。
+    "main": "deepseek-v4-flash",
+    // task 工具中只读 explore 子代理使用的模型。
+    "task_explore": "deepseek-v4-flash",
+    // task 工具中可读写 general 子代理使用的模型。
+    "task_general": "deepseek-v4-pro",
+    // 分别用于图像、视频和音频理解的模型。
+    "multimodal_image": "mimo-v2.5",
+    "multimodal_video": "mimo-v2.5",
+    "multimodal_audio": "mimo-v2.5"
+  },
+
+  // 按服务器本地时间临时覆盖部分模型职责。时间使用 HH:mm 格式，最多配置 50 条规则。
+  "model_schedule": {
+    "rules": [
+      // 示例：{ "start": "00:00", "end": "08:00", "models": { "reply": "deepseek-v4-flash" } }
+    ]
+  },
+
+  // 供应商配置。可在数组中配置多个供应商，每个供应商至少包含一个模型。
+  "providers": [
+    {
+      // 供应商名称，用于界面展示和内部区分。
+      "name": "DeepSeek",
+      // 端点类型决定底层使用的 API 协议：
+      // anthropic：Anthropic Messages API 或兼容接口。
+      // google：Google Gemini 原生 API。
+      // deepseek：在 OpenAI 兼容格式上扩展 reasoning_content，支持交织推理过程。
+      // openai-compatible：OpenAI Chat Completions 兼容接口，兼容范围最广。
+      // openai-responses：OpenAI Responses API 或兼容接口。
+      "type": "deepseek",
+      "options": {
+        // 供应商 API 基础地址和密钥。
+        "base_url": "https://api.deepseek.com",
+        "api_key": "your-deepseek-api-key"
+      },
+      "models": [
+        {
+          // id 是供应商 API 使用的真实模型 ID。
+          "id": "deepseek-v4-flash",
+          // alias 是其他配置引用的稳定别名，也可用于避免多供应商模型重名。
+          "alias": "deepseek-v4-flash",
+          // 模型调用的默认参数；调用方显式传入的同名参数优先。
+          "options": {
+            // 默认最大输出 token 数，必须为正整数。
+            "max_output_tokens": 4096,
+            // 采样温度，具体范围由供应商决定。
+            "temperature": 0.7,
+            // nucleus sampling 参数，范围为 0 至 1。
+            "top_p": 0.95,
+            // 推理强度：provider-default、none、minimal、low、medium、high 或 xhigh。
+            "reasoning": "provider-default"
+            // 还支持 top_k、presence_penalty、frequency_penalty、stop_sequences 和 seed。
+            // provider_options 可传递供应商专属 JSON 选项，字段名保持供应商原始格式。
+            // 例如 provider_options 可设为 { "example_option": true }。
+          }
+        },
+        // 一个供应商可以配置多个模型。
+        {
+          "id": "deepseek-v4-pro",
+          "alias": "deepseek-v4-pro"
+        }
+      ]
+    },
+    // 小米 Mimo 使用 openai-compatible 端点时，对联网搜索和多媒体输入的兼容性较广。
+    {
+      "name": "Xiaomi Mimo",
+      "type": "openai-compatible",
+      "options": {
+        "base_url": "https://api.xiaomimimo.com/v1",
+        "api_key": "your-mimo-api-key"
+      },
+      "models": [
+        {
+          "id": "mimo-v2.5",
+          "alias": "mimo-v2.5"
+        }
+      ]
+    }
+  ]
+}

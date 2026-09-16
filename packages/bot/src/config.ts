@@ -1,5 +1,6 @@
 import { readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { parse, stringify, type TomlTableWithoutBigInt } from "smol-toml";
+import { parse as parseJsonc, type ParseError } from "jsonc-parser";
+import { parse } from "smol-toml";
 import { z } from "zod";
 import { projectPath } from "./utils/path";
 
@@ -145,7 +146,7 @@ const modelOptionsSchema = z
       .optional()
       .describe("默认推理强度"),
     provider_options: z
-      .record(z.string(), z.unknown())
+      .record(z.string(), z.json())
       .optional()
       .describe("传递给当前模型供应商的专属选项，字段名保持原样"),
   })
@@ -221,6 +222,7 @@ const schema = z
 export type Config = z.infer<typeof schema>;
 export const defaultConfig: Config = schema.parse({});
 export let config = structuredClone(defaultConfig);
+let activeConfigPath = projectPath("config.jsonc");
 
 export class ConfigValidationError extends Error {
   constructor(
@@ -238,45 +240,98 @@ export function validateConfig(input: unknown): Config {
   return result.data;
 }
 
-/** 异步加载并校验配置文件；文件不存在时使用安全的默认配置启动 WebUI。 */
-export async function loadConfig(path = projectPath("config.toml")): Promise<Config> {
-  let raw: string;
-  try {
-    raw = await readFile(path, "utf8");
-  } catch (e) {
-    if (e instanceof Error && (e as NodeJS.ErrnoException).code === "ENOENT") {
-      config = structuredClone(defaultConfig);
-      return config;
-    }
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`无法读取配置文件 ${path}：${msg}`);
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = parse(raw);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`配置文件 TOML 解析失败：${msg}`);
-  }
-
-  config = validateConfig(parsed);
-  return config;
-}
-
-export async function saveConfig(input: unknown, path = projectPath("config.toml")): Promise<Config> {
-  const validated = validateConfig(input);
+async function writeConfigFile(validated: Config, path: string): Promise<void> {
   const temporaryPath = `${path}.tmp-${process.pid}-${crypto.randomUUID()}`;
   try {
-    await writeFile(temporaryPath, `${stringify(validated as unknown as TomlTableWithoutBigInt)}\n`, {
+    await writeFile(temporaryPath, `${JSON.stringify(validated, null, 2)}\n`, {
       encoding: "utf8",
       mode: 0o600,
     });
     await rename(temporaryPath, path);
-    config = validated;
-    return config;
   } catch (error) {
     await unlink(temporaryPath).catch(() => undefined);
     throw error;
   }
+}
+
+function isNotFound(error: unknown): boolean {
+  return error instanceof Error && (error as NodeJS.ErrnoException).code === "ENOENT";
+}
+
+async function readOptionalConfigFile(path: string, type: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if (isNotFound(error)) return undefined;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`无法读取 ${type} 配置文件 ${path}：${message}`);
+  }
+}
+
+function parseJsoncConfig(raw: string, path: string): unknown {
+  const errors: ParseError[] = [];
+  const parsed = parseJsonc(raw, errors, { allowTrailingComma: false, disallowComments: false });
+  if (errors.length > 0) throw new Error(`JSONC 配置文件解析失败：${path}`);
+  return parsed;
+}
+
+/** 异步加载并校验配置文件；文件不存在时使用安全的默认配置启动 WebUI。 */
+export async function loadConfig(
+  jsoncPath = projectPath("config.jsonc"),
+  jsonPath = projectPath("config.json"),
+  legacyTomlPath = projectPath("config.toml"),
+): Promise<Config> {
+  const jsonc = await readOptionalConfigFile(jsoncPath, "JSONC");
+  if (jsonc !== undefined) {
+    const validated = validateConfig(parseJsoncConfig(jsonc, jsoncPath));
+    activeConfigPath = jsoncPath;
+    config = validated;
+    return config;
+  }
+
+  const json = await readOptionalConfigFile(jsonPath, "JSON");
+  if (json !== undefined) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(json);
+    } catch {
+      throw new Error(`JSON 配置文件解析失败：${jsonPath}`);
+    }
+    const validated = validateConfig(parsed);
+    activeConfigPath = jsonPath;
+    config = validated;
+    return config;
+  }
+
+  const toml = await readOptionalConfigFile(legacyTomlPath, "旧 TOML");
+  if (toml !== undefined) {
+    let parsed: unknown;
+    try {
+      parsed = parse(toml);
+    } catch {
+      throw new Error(`旧 TOML 配置文件解析失败：${legacyTomlPath}`);
+    }
+
+    const validated = validateConfig(parsed);
+    try {
+      await writeConfigFile(validated, jsoncPath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`迁移配置写入失败 ${jsoncPath}：${message}`);
+    }
+    activeConfigPath = jsoncPath;
+    config = validated;
+    return config;
+  }
+
+  activeConfigPath = jsoncPath;
+  config = structuredClone(defaultConfig);
+  return config;
+}
+
+export async function saveConfig(input: unknown, path = activeConfigPath): Promise<Config> {
+  const validated = validateConfig(input);
+  await writeConfigFile(validated, path);
+  config = validated;
+  return config;
 }

@@ -64,7 +64,7 @@ export async function startQQBotChannel(getBot: (sessionId: string) => ReturnTyp
       ...config,
       qqbot: { ...config.qqbot, app_id: credentials.appId, app_secret: credentials.appSecret },
     });
-    logger.info({ appId: credentials.appId }, "QQ Bot 凭证已写入 config.toml");
+    logger.info({ appId: credentials.appId }, "QQ Bot 凭证已写入配置文件");
   }
 
   const client = new QQBotClient(credentials);

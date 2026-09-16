@@ -167,7 +167,11 @@ async function copyBin() {
 async function copyAssets() {
   const targets = [
     { src: join(root, "prompts"), dest: join(outDir, "prompts"), label: "prompts/" },
-    { src: join(root, "config.example.toml"), dest: join(outDir, "config.example.toml"), label: "config.example.toml" },
+    {
+      src: join(root, "config.example.jsonc"),
+      dest: join(outDir, "config.example.jsonc"),
+      label: "config.example.jsonc",
+    },
     { src: join(root, ".env.example"), dest: join(outDir, ".env.example"), label: ".env.example" },
     {
       src: join(root, "scripts", "install.sh"),

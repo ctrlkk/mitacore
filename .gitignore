@@ -49,4 +49,6 @@ migration-tmp/
 src/database/.drizzle-out/
 
 /config.toml
+/config.jsonc
+/config.json
 target/
