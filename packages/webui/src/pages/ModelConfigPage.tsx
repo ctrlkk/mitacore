@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import anthropicIcon from "@/assets/provider-icons/anthropic.svg";
 import bailianIcon from "@/assets/provider-icons/bailian.svg";
 import deepseekIcon from "@/assets/provider-icons/deepseek.svg";
@@ -56,8 +56,10 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@/components/ui/combobox";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 type ModelRole =
   | "plan"
@@ -71,11 +73,28 @@ type ModelRole =
 
 type ProviderType = "anthropic" | "google" | "openai-responses" | "openai-compatible" | "deepseek";
 
+type ReasoningLevel = "provider-default" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
+type ModelOptions = {
+  max_output_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+  top_k?: number;
+  presence_penalty?: number;
+  frequency_penalty?: number;
+  stop_sequences?: string[];
+  seed?: number;
+  reasoning?: ReasoningLevel;
+  provider_options?: Record<string, unknown>;
+};
+
+type ModelNumberOptionKey = Exclude<keyof ModelOptions, "stop_sequences" | "reasoning" | "provider_options">;
+
 type ModelProvider = {
   name: string;
   type: ProviderType;
   options: { base_url: string; api_key: string };
-  models: Array<{ id: string; alias: string }>;
+  models: Array<{ id: string; alias: string; options?: ModelOptions }>;
 };
 
 type ScheduleRule = {
@@ -107,6 +126,55 @@ const providerTypes: Array<{ value: ProviderType; label: string }> = [
   { value: "openai-responses", label: "OpenAI Responses" },
   { value: "openai-compatible", label: "OpenAI Compatible" },
   { value: "deepseek", label: "DeepSeek" },
+];
+
+const reasoningLevels: Array<{ value: ReasoningLevel; label: string }> = [
+  { value: "provider-default", label: "供应商默认" },
+  { value: "none", label: "关闭推理" },
+  { value: "minimal", label: "最低 (minimal)" },
+  { value: "low", label: "低 (low)" },
+  { value: "medium", label: "中 (medium)" },
+  { value: "high", label: "高 (high)" },
+  { value: "xhigh", label: "极高 (xhigh)" },
+];
+
+const modelNumberFields: Array<{
+  key: ModelNumberOptionKey;
+  label: string;
+  description: string;
+  step?: number | "any";
+  validate?: (value: number) => string | undefined;
+}> = [
+  {
+    key: "max_output_tokens",
+    label: "最大输出 Tokens",
+    description: "限制单次生成的最大输出长度。",
+    step: 1,
+    validate: (value) => (Number.isInteger(value) && value > 0 ? undefined : "请输入大于 0 的整数"),
+  },
+  { key: "temperature", label: "Temperature", description: "控制输出随机性，范围由供应商决定。" },
+  {
+    key: "top_p",
+    label: "Top P",
+    description: "Nucleus sampling 参数，取值 0 到 1。",
+    validate: (value) => (value >= 0 && value <= 1 ? undefined : "请输入 0 到 1 之间的数字"),
+  },
+  {
+    key: "top_k",
+    label: "Top K",
+    description: "每次采样参与候选的 token 数量。",
+    step: 1,
+    validate: (value) => (Number.isInteger(value) && value > 0 ? undefined : "请输入大于 0 的整数"),
+  },
+  { key: "presence_penalty", label: "Presence Penalty", description: "降低已出现内容再次出现的倾向。" },
+  { key: "frequency_penalty", label: "Frequency Penalty", description: "根据出现频率降低重复内容。" },
+  {
+    key: "seed",
+    label: "Seed",
+    description: "用于可复现采样的整数随机种子。",
+    step: 1,
+    validate: (value) => (Number.isInteger(value) ? undefined : "请输入整数"),
+  },
 ];
 
 const providerIconPaths: Record<Exclude<ProviderType, "openai-responses" | "openai-compatible">, string> = {
@@ -213,6 +281,33 @@ async function getResponseError(response: Response, fallback: string) {
   return getErrorMessage(await response.json().catch(() => undefined), fallback);
 }
 
+function getOptionalNumberError(input: string, validate?: (value: number) => string | undefined): string | undefined {
+  if (!input.trim()) return undefined;
+  const value = Number(input);
+  if (!Number.isFinite(value)) return "请输入有效数字";
+  return validate?.(value);
+}
+
+function parseProviderOptions(input: string): {
+  value?: Record<string, unknown>;
+  error?: string;
+} {
+  if (!input.trim()) return {};
+  try {
+    const value: unknown = JSON.parse(input);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { error: "请输入 JSON 对象" };
+    }
+    return { value: value as Record<string, unknown> };
+  } catch {
+    return { error: "JSON 格式不正确" };
+  }
+}
+
+function getModelOptionCount(options?: ModelOptions) {
+  return options ? Object.keys(options).length : 0;
+}
+
 function createProvider(): ModelProvider {
   return {
     name: "新供应商",
@@ -223,11 +318,7 @@ function createProvider(): ModelProvider {
 }
 
 function createProviderFromPreset(provider: ModelProvider): ModelProvider {
-  return {
-    ...provider,
-    options: { ...provider.options },
-    models: provider.models.map((model) => ({ ...model })),
-  };
+  return structuredClone(provider);
 }
 
 function getProviderEndpoint(baseUrl: string) {
@@ -666,6 +757,7 @@ function ProviderEditor({
 }) {
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [fetchedModelIds, setFetchedModelIds] = useState<string[]>([]);
+  const [modelOptionsIndex, setModelOptionsIndex] = useState<number>();
   const dialogContentRef = useRef<HTMLDivElement>(null);
   const aliasCounts = new Map<string, number>();
   for (const alias of [...existingAliases, ...provider.models.map((model) => model.alias)]) {
@@ -717,25 +809,29 @@ function ProviderEditor({
       <DialogContent
         ref={dialogContentRef}
         showCloseButton={false}
-        className="max-h-[calc(100svh-2rem)] max-w-3xl gap-0 overflow-visible p-0 sm:max-w-3xl"
+        className="flex max-h-[calc(100svh-2rem)] max-w-3xl flex-col gap-0 overflow-visible p-0 sm:max-w-3xl"
       >
         <DialogHeader className="border-b px-4 py-4 sm:px-5">
           <DialogTitle>{isNew ? "添加供应商" : "编辑供应商"}</DialogTitle>
           <DialogDescription>模型别名会用于模型分工和时段覆盖。</DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4 sm:p-5">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              供应商名称
-              <Input value={provider.name} onChange={(event) => onChange({ ...provider, name: event.target.value })} />
-            </label>
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              接口类型
+          <FieldGroup className="grid gap-4 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="provider-name">供应商名称</FieldLabel>
+              <Input
+                id="provider-name"
+                value={provider.name}
+                onChange={(event) => onChange({ ...provider, name: event.target.value })}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="provider-type">接口类型</FieldLabel>
               <Select
                 value={provider.type}
                 onValueChange={(value) => onChange({ ...provider, type: value as ProviderType })}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="provider-type" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -749,20 +845,22 @@ function ProviderEditor({
                   </SelectGroup>
                 </SelectContent>
               </Select>
-            </label>
-            <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-2">
-              API 基础 URL
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="provider-base-url">API 基础 URL</FieldLabel>
               <Input
+                id="provider-base-url"
                 value={provider.options.base_url}
                 placeholder="https://api.example.com/v1"
                 onChange={(event) =>
                   onChange({ ...provider, options: { ...provider.options, base_url: event.target.value } })
                 }
               />
-            </label>
-            <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-2">
-              API Key
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="provider-api-key">API Key</FieldLabel>
               <Input
+                id="provider-api-key"
                 type="text"
                 name="api-key"
                 autoComplete="off"
@@ -772,8 +870,8 @@ function ProviderEditor({
                   onChange({ ...provider, options: { ...provider.options, api_key: event.target.value } })
                 }
               />
-            </label>
-          </div>
+            </Field>
+          </FieldGroup>
 
           <section className="flex flex-col gap-4 border-t pt-5" aria-labelledby="provider-models-title">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -830,7 +928,16 @@ function ProviderEditor({
                       <span className="text-xs text-destructive">模型别名“{model.alias.trim()}”已被使用</span>
                     ) : null}
                   </label>
-                  <div className="flex items-end">
+                  <div className="flex items-end gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      aria-label={`配置模型参数 ${model.alias || model.id || index + 1}`}
+                      onClick={() => setModelOptionsIndex(index)}
+                    >
+                      <Settings2Icon data-icon="inline-start" />
+                      参数{getModelOptionCount(model.options) ? ` · ${getModelOptionCount(model.options)}` : ""}
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -860,6 +967,208 @@ function ProviderEditor({
               完成编辑
             </Button>
           </div>
+        </DialogFooter>
+      </DialogContent>
+      {modelOptionsIndex !== undefined && provider.models[modelOptionsIndex] ? (
+        <ModelOptionsEditor
+          key={modelOptionsIndex}
+          model={provider.models[modelOptionsIndex]}
+          providerType={provider.type}
+          onClose={() => setModelOptionsIndex(undefined)}
+          onSave={(options) => {
+            updateModel(modelOptionsIndex, (model) => {
+              const updated = { ...model };
+              if (options) updated.options = options;
+              else delete updated.options;
+              return updated;
+            });
+            setModelOptionsIndex(undefined);
+          }}
+        />
+      ) : null}
+    </Dialog>
+  );
+}
+
+function ModelOptionsEditor({
+  model,
+  providerType,
+  onClose,
+  onSave,
+}: {
+  model: ModelProvider["models"][number];
+  providerType: ProviderType;
+  onClose: () => void;
+  onSave: (options: ModelOptions | undefined) => void;
+}) {
+  const fieldId = useId();
+  const [numberInputs, setNumberInputs] = useState<Record<ModelNumberOptionKey, string>>(
+    () =>
+      Object.fromEntries(modelNumberFields.map(({ key }) => [key, model.options?.[key]?.toString() ?? ""])) as Record<
+        ModelNumberOptionKey,
+        string
+      >,
+  );
+  const [reasoning, setReasoning] = useState<ReasoningLevel | "unset">(model.options?.reasoning ?? "unset");
+  const [stopSequences, setStopSequences] = useState(model.options?.stop_sequences?.join("\n") ?? "");
+  const [providerOptionsInput, setProviderOptionsInput] = useState(() =>
+    model.options?.provider_options ? JSON.stringify(model.options.provider_options, null, 2) : "",
+  );
+
+  const numberErrors = new Map(
+    modelNumberFields.map((field) => [field.key, getOptionalNumberError(numberInputs[field.key], field.validate)]),
+  );
+  const providerOptionsResult = parseProviderOptions(providerOptionsInput);
+  const hasErrors = [...numberErrors.values()].some(Boolean) || Boolean(providerOptionsResult.error);
+  const providerLabel = providerTypes.find(({ value }) => value === providerType)?.label ?? providerType;
+
+  function resetOptions() {
+    setNumberInputs(
+      Object.fromEntries(modelNumberFields.map(({ key }) => [key, ""])) as Record<ModelNumberOptionKey, string>,
+    );
+    setReasoning("unset");
+    setStopSequences("");
+    setProviderOptionsInput("");
+  }
+
+  function submitOptions() {
+    if (hasErrors) return;
+
+    const options: ModelOptions = {};
+    for (const { key } of modelNumberFields) {
+      const value = numberInputs[key].trim();
+      if (value) options[key] = Number(value);
+    }
+
+    if (reasoning !== "unset") options.reasoning = reasoning;
+    const sequences = stopSequences
+      .split(/\r?\n/)
+      .map((sequence) => sequence.trim())
+      .filter(Boolean);
+    if (sequences.length) options.stop_sequences = sequences;
+    if (providerOptionsResult.value) options.provider_options = providerOptionsResult.value;
+
+    onSave(Object.keys(options).length ? options : undefined);
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        className="flex max-h-[calc(100svh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
+      >
+        <DialogHeader className="border-b px-4 py-4 sm:px-5">
+          <DialogTitle>模型参数</DialogTitle>
+          <DialogDescription>
+            为 {model.alias || model.id || "当前模型"} 设置默认生成参数，调用时显式传入的参数优先。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto p-4 sm:p-5">
+          <section className="flex flex-col gap-4" aria-labelledby={`${fieldId}-generation-title`}>
+            <div className="flex flex-col gap-1">
+              <h3 id={`${fieldId}-generation-title`} className="text-sm font-medium">
+                通用生成参数
+              </h3>
+              <p className="text-xs text-muted-foreground">留空的字段不会写入配置，由模型或调用方决定。</p>
+            </div>
+            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+              {modelNumberFields.map((field) => {
+                const id = `${fieldId}-${field.key}`;
+                const error = numberErrors.get(field.key);
+                return (
+                  <Field key={field.key} data-invalid={Boolean(error)}>
+                    <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
+                    <Input
+                      id={id}
+                      type="number"
+                      step={field.step ?? "any"}
+                      aria-invalid={Boolean(error)}
+                      value={numberInputs[field.key]}
+                      placeholder="未设置"
+                      onChange={(event) =>
+                        setNumberInputs((current) => ({ ...current, [field.key]: event.target.value }))
+                      }
+                    />
+                    {error ? (
+                      <FieldError>{error}</FieldError>
+                    ) : (
+                      <FieldDescription>{field.description}</FieldDescription>
+                    )}
+                  </Field>
+                );
+              })}
+              <Field>
+                <FieldLabel htmlFor={`${fieldId}-reasoning`}>推理强度</FieldLabel>
+                <Select value={reasoning} onValueChange={(value) => setReasoning(value as ReasoningLevel | "unset")}>
+                  <SelectTrigger id={`${fieldId}-reasoning`} className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="unset">未设置</SelectItem>
+                      {reasoningLevels.map(({ value, label }) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FieldDescription>统一的推理强度，实际支持程度由模型决定。</FieldDescription>
+              </Field>
+            </FieldGroup>
+          </section>
+
+          <section className="flex flex-col gap-4" aria-labelledby={`${fieldId}-advanced-title`}>
+            <div className="flex flex-col gap-1">
+              <h3 id={`${fieldId}-advanced-title`} className="text-sm font-medium">
+                高级参数
+              </h3>
+              <p className="text-xs text-muted-foreground">停止序列和 {providerLabel} 专属请求选项。</p>
+            </div>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor={`${fieldId}-stop-sequences`}>停止序列</FieldLabel>
+                <Textarea
+                  id={`${fieldId}-stop-sequences`}
+                  rows={4}
+                  value={stopSequences}
+                  placeholder={"每行一个停止序列\n例如：<END>"}
+                  onChange={(event) => setStopSequences(event.target.value)}
+                />
+                <FieldDescription>每行填写一个值，空行会被忽略。</FieldDescription>
+              </Field>
+              <Field data-invalid={Boolean(providerOptionsResult.error)}>
+                <FieldLabel htmlFor={`${fieldId}-provider-options`}>供应商专属选项</FieldLabel>
+                <Textarea
+                  id={`${fieldId}-provider-options`}
+                  rows={7}
+                  spellCheck={false}
+                  aria-invalid={Boolean(providerOptionsResult.error)}
+                  className="font-mono text-xs"
+                  value={providerOptionsInput}
+                  placeholder={'{\n  "reasoningEffort": "high"\n}'}
+                  onChange={(event) => setProviderOptionsInput(event.target.value)}
+                />
+                {providerOptionsResult.error ? (
+                  <FieldError>{providerOptionsResult.error}</FieldError>
+                ) : (
+                  <FieldDescription>填写 JSON 对象，字段名保持供应商原始格式。</FieldDescription>
+                )}
+              </Field>
+            </FieldGroup>
+          </section>
+        </div>
+        <DialogFooter className="mx-0 mb-0 flex-row flex-wrap items-center justify-end gap-3 px-4 py-4 sm:px-5">
+          <Button variant="ghost" className="sm:mr-auto" onClick={resetOptions}>
+            清空全部
+          </Button>
+          <Button variant="outline" onClick={onClose}>
+            取消
+          </Button>
+          <Button onClick={submitOptions} disabled={hasErrors}>
+            应用参数
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

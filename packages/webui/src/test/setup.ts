@@ -5,6 +5,8 @@ import { vi } from "vitest";
 configure({ asyncUtilTimeout: 5_000 });
 
 // jsdom 不执行布局；尺寸变化在组件测试中按需单独模拟。
+Element.prototype.scrollIntoView = vi.fn();
+
 Object.defineProperty(window, "ResizeObserver", {
   writable: true,
   value: class {
