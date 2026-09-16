@@ -115,7 +115,6 @@ export async function runMain(
       instructions: system,
       messages: toModelMessages([...historyMessages, ...runtimeMessages]),
       tools,
-      maxOutputTokens: 4096,
       async onLanguageModelCallEnd({ content, usage }) {
         const reasoningText = content
           .filter((part) => part.type === "reasoning")

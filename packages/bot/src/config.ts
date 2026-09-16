@@ -130,6 +130,27 @@ const modelScheduleSchema = z.object({
   rules: z.array(modelScheduleRuleSchema).max(50, "最多配置 50 条时段规则").default([]).describe("模型时段规则"),
 });
 
+const modelOptionsSchema = z
+  .object({
+    max_output_tokens: z.number().int().positive().optional().describe("默认最大输出 token 数"),
+    temperature: z.number().optional().describe("默认采样温度，具体范围由模型供应商决定"),
+    top_p: z.number().min(0).max(1).optional().describe("默认 nucleus sampling 参数"),
+    top_k: z.number().int().positive().optional().describe("默认 top-k sampling 参数"),
+    presence_penalty: z.number().optional().describe("默认 presence penalty"),
+    frequency_penalty: z.number().optional().describe("默认 frequency penalty"),
+    stop_sequences: z.array(z.string().min(1, "停止序列不能为空")).optional().describe("默认停止序列"),
+    seed: z.number().int().optional().describe("默认随机种子"),
+    reasoning: z
+      .enum(["provider-default", "none", "minimal", "low", "medium", "high", "xhigh"])
+      .optional()
+      .describe("默认推理强度"),
+    provider_options: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe("传递给当前模型供应商的专属选项，字段名保持原样"),
+  })
+  .strict();
+
 const providerSchema = z.object({
   name: z.string().trim().min(1, "供应商名称不能为空").describe("供应商名称"),
   type: providerType.describe("供应商端点类型"),
@@ -147,6 +168,7 @@ const providerSchema = z.object({
       z.object({
         id: z.string().trim().min(1, "模型 ID 不能为空").describe("模型ID"),
         alias: z.string().trim().min(1, "模型别名不能为空").describe("模型别名，用于防止模型id冲突"),
+        options: modelOptionsSchema.optional().describe("模型调用的默认选项"),
       }),
     )
     .min(1, "至少需要配置一个模型")

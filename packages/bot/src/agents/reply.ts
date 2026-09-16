@@ -107,7 +107,6 @@ export async function createReplySession(
         model,
         instructions: system,
         messages: [...toModelMessages(historyMessages), { role: "user", content: planContent }],
-        maxOutputTokens: 4096,
       });
 
       log.info({ reasoningText: result.finalStep.reasoningText, text: result.text }, "助手响应");

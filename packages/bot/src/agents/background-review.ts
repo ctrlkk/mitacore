@@ -41,7 +41,6 @@ export function memoryReview(
           tools: branchTools,
           stopWhen: isStepCount(20),
           runtimeContext: { inSubagent: true },
-          maxOutputTokens: 4096,
           onToolExecutionStart({ toolCall }) {
             log.info(
               { toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input },

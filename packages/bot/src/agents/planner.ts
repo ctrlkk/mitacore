@@ -118,7 +118,6 @@ export async function runPlanner(
     messages: toModelMessages([...historyMessages, ...runtimeMessages]),
     tools,
     stopWhen: isStepCount(10),
-    maxOutputTokens: 4096,
     async onLanguageModelCallEnd({ content, usage }) {
       const reasoningText = content
         .filter((part) => part.type === "reasoning")

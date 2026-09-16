@@ -38,7 +38,6 @@ export async function imageToText(image: Blob): Promise<string> {
         ],
       },
     ],
-    maxOutputTokens: 1024,
   });
   return text;
 }
@@ -68,7 +67,6 @@ export async function audioToText(audio: Blob): Promise<string> {
         ],
       },
     ],
-    maxOutputTokens: 2048,
   });
 
   return text;
@@ -124,7 +122,6 @@ export async function videoToText(blob: Blob): Promise<string> {
           ],
         },
       ],
-      maxOutputTokens: 2024,
     });
     return text;
   }

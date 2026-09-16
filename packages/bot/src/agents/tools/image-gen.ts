@@ -78,7 +78,6 @@ export function imageGen(
         tools: branchTools,
         abortSignal,
         runtimeContext: { inSubagent: true },
-        maxOutputTokens: 4096,
       });
       logUsage(log, usage);
       log.debug({ reasoningText: finalStep.reasoningText, text }, "图像生成分支输出");

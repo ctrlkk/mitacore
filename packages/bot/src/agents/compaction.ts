@@ -130,7 +130,6 @@ export async function compactHistory(
     system,
     messages: [...toModelMessages(head), { role: "user", content: userContent }],
     tools,
-    maxOutputTokens: 4096,
   });
 
   log.info({ reasoningText, summary }, "压缩摘要生成完毕");
