@@ -9,6 +9,7 @@ import openaiIcon from "@/assets/provider-icons/openai.svg";
 import zhipuIcon from "@/assets/provider-icons/zhipu.svg";
 import {
   BrainCircuitIcon,
+  CheckIcon,
   Clock3Icon,
   LoaderCircleIcon,
   PencilIcon,
@@ -332,11 +333,13 @@ function getProviderEndpoint(baseUrl: string) {
 
 export function ModelConfigPage() {
   const [config, setConfig] = useState<BotConfig>();
+  const [savedConfig, setSavedConfig] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [editor, setEditor] = useState<{ index: number | null; provider: ModelProvider }>();
   const [isPresetPickerOpen, setIsPresetPickerOpen] = useState(false);
   const [providerToDelete, setProviderToDelete] = useState<{ index: number; name: string }>();
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -345,7 +348,9 @@ export function ModelConfigPage() {
       try {
         const response = await fetch("/api/config", { signal: controller.signal });
         if (!response.ok) throw new Error(await getResponseError(response, "无法加载配置"));
-        setConfig((await response.json()) as BotConfig);
+        const loadedConfig = (await response.json()) as BotConfig;
+        setConfig(loadedConfig);
+        setSavedConfig(JSON.stringify(loadedConfig));
       } catch (error) {
         if (!controller.signal.aborted) {
           toast.error(error instanceof Error ? error.message : "无法加载配置");
@@ -362,6 +367,8 @@ export function ModelConfigPage() {
   const modelAliases = [
     ...new Set(config?.providers.flatMap((provider) => provider.models.map((model) => model.alias)) ?? []),
   ].filter(Boolean);
+  const serializedConfig = config ? JSON.stringify(config) : undefined;
+  const hasUnsavedChanges = savedConfig !== undefined && serializedConfig !== savedConfig;
 
   function updateConfig(update: (current: BotConfig) => BotConfig) {
     setConfig((current) => (current ? update(current) : current));
@@ -383,14 +390,16 @@ export function ModelConfigPage() {
 
   async function saveConfig() {
     if (!config) return;
+    const configToSave = JSON.stringify(config);
     setIsSaving(true);
     try {
       const response = await fetch("/api/config", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(config),
+        body: configToSave,
       });
       if (!response.ok) throw new Error(await getResponseError(response, "保存配置失败"));
+      setSavedConfig(configToSave);
       toast.success("模型配置已保存");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "保存配置失败");
@@ -423,14 +432,33 @@ export function ModelConfigPage() {
           <h1 className="text-2xl font-semibold tracking-tight">模型配置</h1>
           <p className="text-sm text-muted-foreground">为各职责、时段和供应商配置可用模型。</p>
         </div>
-        <Button onClick={saveConfig} disabled={isSaving}>
-          {isSaving ? (
-            <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
-          ) : (
-            <SaveIcon data-icon="inline-start" />
-          )}
-          保存配置
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge
+            variant={hasUnsavedChanges ? "outline" : "secondary"}
+            className={
+              hasUnsavedChanges
+                ? "h-7 border-amber-500/50 bg-amber-500/10 px-2.5 text-amber-700 dark:text-amber-400"
+                : "h-7 px-2.5 text-muted-foreground"
+            }
+            role="status"
+            aria-live="polite"
+          >
+            {hasUnsavedChanges ? (
+              <span className="size-2 rounded-full bg-amber-500" />
+            ) : (
+              <CheckIcon data-icon="inline-start" />
+            )}
+            {hasUnsavedChanges ? "有未保存的更改" : "配置已保存"}
+          </Badge>
+          <Button ref={saveButtonRef} onClick={saveConfig} disabled={isSaving || !hasUnsavedChanges}>
+            {isSaving ? (
+              <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
+            ) : (
+              <SaveIcon data-icon="inline-start" />
+            )}
+            {isSaving ? "正在保存" : "保存配置"}
+          </Button>
+        </div>
       </div>
 
       <section aria-labelledby="model-roles-title" className="rounded-xl border bg-card">
@@ -627,6 +655,25 @@ export function ModelConfigPage() {
           ) : null}
         </div>
       </section>
+      {hasUnsavedChanges ? (
+        <div className="pointer-events-none fixed right-4 bottom-4 z-40">
+          <Button
+            variant="outline"
+            className="pointer-events-auto border-amber-500/50 bg-background/95 text-amber-700 shadow-lg backdrop-blur hover:bg-amber-500/10 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+            aria-label="有未保存的更改，前往保存按钮"
+            onClick={() => saveButtonRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
+          >
+            {isSaving ? (
+              <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
+            ) : (
+              <span className="size-2 rounded-full bg-amber-500" />
+            )}
+            <span role="status" aria-live="polite">
+              {isSaving ? "正在保存" : "未保存"}
+            </span>
+          </Button>
+        </div>
+      ) : null}
       <ProviderPresetPicker
         open={isPresetPickerOpen}
         onClose={() => setIsPresetPickerOpen(false)}
