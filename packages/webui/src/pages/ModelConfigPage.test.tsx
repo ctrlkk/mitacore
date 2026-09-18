@@ -55,8 +55,14 @@ describe("ModelConfigPage", () => {
     expect(await screen.findByRole("heading", { name: "模型参数" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("最大输出 Tokens"), { target: { value: "4096" } });
     fireEvent.change(screen.getByLabelText("Temperature"), { target: { value: "0.6" } });
+    expect(screen.queryByLabelText("Top P")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /高级参数/ }));
     fireEvent.change(screen.getByLabelText("Top P"), { target: { value: "0.9" } });
     fireEvent.change(screen.getByLabelText("停止序列"), { target: { value: "<END>\n\nDONE" } });
+    expect(screen.getByRole("button", { name: /高级参数/ })).toHaveTextContent("已设置 2 项");
+    fireEvent.click(screen.getByRole("button", { name: /高级参数/ }));
+    fireEvent.click(screen.getByRole("button", { name: /高级参数/ }));
+    expect(screen.getByLabelText("Top P")).toHaveValue(0.9);
 
     fireEvent.click(screen.getByLabelText("推理强度"));
     fireEvent.click(await screen.findByRole("option", { name: "高 (high)" }));
@@ -65,6 +71,8 @@ describe("ModelConfigPage", () => {
     fireEvent.change(providerOptions, { target: { value: "[]" } });
     expect(screen.getByText("请输入 JSON 对象")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "应用参数" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /高级参数/ }));
+    expect(screen.getByRole("button", { name: /高级参数/ })).toHaveAttribute("aria-expanded", "true");
     fireEvent.change(providerOptions, { target: { value: '{"reasoningEffort":"high"}' } });
     fireEvent.click(screen.getByRole("button", { name: "应用参数" }));
 
@@ -114,7 +122,7 @@ describe("ModelConfigPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "编辑供应商 测试供应商" }));
     expect(screen.getByRole("button", { name: "配置模型参数 test-model" })).toHaveTextContent("参数 · 2");
     fireEvent.click(screen.getByRole("button", { name: "配置模型参数 test-model" }));
-    fireEvent.click(await screen.findByRole("button", { name: "清空全部" }));
+    fireEvent.click(await screen.findByRole("button", { name: "恢复默认" }));
     fireEvent.click(screen.getByRole("button", { name: "应用参数" }));
 
     expect(screen.getByRole("button", { name: "配置模型参数 test-model" })).toHaveTextContent("参数");

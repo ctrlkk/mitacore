@@ -10,7 +10,10 @@ import zhipuIcon from "@/assets/provider-icons/zhipu.svg";
 import {
   BrainCircuitIcon,
   CheckIcon,
+  ChevronRightIcon,
   Clock3Icon,
+  EyeIcon,
+  EyeOffIcon,
   LoaderCircleIcon,
   PencilIcon,
   PlusIcon,
@@ -20,6 +23,7 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Collapsible } from "radix-ui";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,8 +61,19 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@/components/ui/combobox";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
+import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -803,6 +818,7 @@ function ProviderEditor({
   onSave: () => void;
 }) {
   const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [isApiKeyVisible, setIsApiKeyVisible] = useState(false);
   const [fetchedModelIds, setFetchedModelIds] = useState<string[]>([]);
   const [modelOptionsIndex, setModelOptionsIndex] = useState<number>();
   const dialogContentRef = useRef<HTMLDivElement>(null);
@@ -906,17 +922,35 @@ function ProviderEditor({
             </Field>
             <Field className="sm:col-span-2">
               <FieldLabel htmlFor="provider-api-key">API Key</FieldLabel>
-              <Input
-                id="provider-api-key"
-                type="text"
-                name="api-key"
-                autoComplete="off"
-                className="[-webkit-text-security:disc]"
-                value={provider.options.api_key}
-                onChange={(event) =>
-                  onChange({ ...provider, options: { ...provider.options, api_key: event.target.value } })
-                }
-              />
+              <InputGroup>
+                {/* 保持文本输入，避免密码框行为；使用拉丁字体，避免中文字体的遮罩圆点过小、间距过宽。 */}
+                <InputGroupInput
+                  id="provider-api-key"
+                  type="text"
+                  name="api-key"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder="输入 API Key"
+                  data-masked={!isApiKeyVisible}
+                  className="font-[Arial,sans-serif] data-[masked=true]:[-webkit-text-security:disc]"
+                  value={provider.options.api_key}
+                  onChange={(event) =>
+                    onChange({ ...provider, options: { ...provider.options, api_key: event.target.value } })
+                  }
+                />
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton
+                    size="icon-sm"
+                    aria-label={isApiKeyVisible ? "隐藏 API Key" : "显示 API Key"}
+                    aria-controls="provider-api-key"
+                    onClick={() => setIsApiKeyVisible((visible) => !visible)}
+                  >
+                    {isApiKeyVisible ? <EyeOffIcon /> : <EyeIcon />}
+                  </InputGroupButton>
+                </InputGroupAddon>
+              </InputGroup>
             </Field>
           </FieldGroup>
 
@@ -1057,6 +1091,7 @@ function ModelOptionsEditor({
       >,
   );
   const [reasoning, setReasoning] = useState<ReasoningLevel | "unset">(model.options?.reasoning ?? "unset");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [stopSequences, setStopSequences] = useState(model.options?.stop_sequences?.join("\n") ?? "");
   const [providerOptionsInput, setProviderOptionsInput] = useState(() =>
     model.options?.provider_options ? JSON.stringify(model.options.provider_options, null, 2) : "",
@@ -1068,6 +1103,13 @@ function ModelOptionsEditor({
   const providerOptionsResult = parseProviderOptions(providerOptionsInput);
   const hasErrors = [...numberErrors.values()].some(Boolean) || Boolean(providerOptionsResult.error);
   const providerLabel = providerTypes.find(({ value }) => value === providerType)?.label ?? providerType;
+  const advancedFields = modelNumberFields.filter(({ key }) => key !== "max_output_tokens" && key !== "temperature");
+  const hasAdvancedErrors =
+    advancedFields.some(({ key }) => Boolean(numberErrors.get(key))) || Boolean(providerOptionsResult.error);
+  const advancedCount =
+    advancedFields.filter(({ key }) => numberInputs[key].trim()).length +
+    Number(Boolean(stopSequences.trim())) +
+    Number(Boolean(providerOptionsInput.trim()));
 
   function resetOptions() {
     setNumberInputs(
@@ -1076,6 +1118,33 @@ function ModelOptionsEditor({
     setReasoning("unset");
     setStopSequences("");
     setProviderOptionsInput("");
+    setAdvancedOpen(false);
+  }
+
+  function renderNumberField(field: (typeof modelNumberFields)[number]) {
+    const id = `${fieldId}-${field.key}`;
+    const error = numberErrors.get(field.key);
+    return (
+      <Field key={field.key} orientation="responsive" data-invalid={Boolean(error)} className="gap-3">
+        <FieldContent>
+          <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
+          <FieldDescription id={`${id}-description`}>{field.description}</FieldDescription>
+        </FieldContent>
+        <div className="flex flex-col gap-2 @md/field-group:w-44 @md/field-group:shrink-0">
+          <Input
+            id={id}
+            type="number"
+            step={field.step ?? "any"}
+            aria-invalid={Boolean(error)}
+            aria-describedby={`${id}-description${error ? ` ${id}-error` : ""}`}
+            value={numberInputs[field.key]}
+            placeholder="默认"
+            onChange={(event) => setNumberInputs((current) => ({ ...current, [field.key]: event.target.value }))}
+          />
+          {error ? <FieldError id={`${id}-error`}>{error}</FieldError> : null}
+        </div>
+      </Field>
+    );
   }
 
   function submitOptions() {
@@ -1100,122 +1169,136 @@ function ModelOptionsEditor({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent
-        showCloseButton={false}
-        className="flex max-h-[calc(100svh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
-      >
-        <DialogHeader className="border-b px-4 py-4 sm:px-5">
+      <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
+        <DialogHeader className="shrink-0 border-b p-4 pr-12 text-left sm:p-5 sm:pr-12">
           <DialogTitle>模型参数</DialogTitle>
-          <DialogDescription>
-            为 {model.alias || model.id || "当前模型"} 设置默认生成参数，调用时显式传入的参数优先。
+          <DialogDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="min-w-0 break-all">{model.alias || model.id || "当前模型"}</span>
+            <span aria-hidden>·</span>
+            <span>{providerLabel}</span>
           </DialogDescription>
         </DialogHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto p-4 sm:p-5">
-          <section className="flex flex-col gap-4" aria-labelledby={`${fieldId}-generation-title`}>
-            <div className="flex flex-col gap-1">
-              <h3 id={`${fieldId}-generation-title`} className="text-sm font-medium">
-                通用生成参数
-              </h3>
-              <p className="text-xs text-muted-foreground">留空的字段不会写入配置，由模型或调用方决定。</p>
-            </div>
-            <FieldGroup className="grid gap-4 sm:grid-cols-2">
-              {modelNumberFields.map((field) => {
-                const id = `${fieldId}-${field.key}`;
-                const error = numberErrors.get(field.key);
-                return (
-                  <Field key={field.key} data-invalid={Boolean(error)}>
-                    <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
-                    <Input
-                      id={id}
-                      type="number"
-                      step={field.step ?? "any"}
-                      aria-invalid={Boolean(error)}
-                      value={numberInputs[field.key]}
-                      placeholder="未设置"
-                      onChange={(event) =>
-                        setNumberInputs((current) => ({ ...current, [field.key]: event.target.value }))
-                      }
-                    />
-                    {error ? (
-                      <FieldError>{error}</FieldError>
-                    ) : (
-                      <FieldDescription>{field.description}</FieldDescription>
-                    )}
-                  </Field>
-                );
-              })}
-              <Field>
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-5">
+          <FieldGroup>
+            {modelNumberFields
+              .filter(({ key }) => key === "max_output_tokens" || key === "temperature")
+              .map(renderNumberField)}
+            <Field orientation="responsive" className="gap-3">
+              <FieldContent>
                 <FieldLabel htmlFor={`${fieldId}-reasoning`}>推理强度</FieldLabel>
-                <Select value={reasoning} onValueChange={(value) => setReasoning(value as ReasoningLevel | "unset")}>
-                  <SelectTrigger id={`${fieldId}-reasoning`} className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="unset">未设置</SelectItem>
-                      {reasoningLevels.map(({ value, label }) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                <FieldDescription>统一的推理强度，实际支持程度由模型决定。</FieldDescription>
-              </Field>
-            </FieldGroup>
-          </section>
-
-          <section className="flex flex-col gap-4" aria-labelledby={`${fieldId}-advanced-title`}>
-            <div className="flex flex-col gap-1">
-              <h3 id={`${fieldId}-advanced-title`} className="text-sm font-medium">
+                <FieldDescription id={`${fieldId}-reasoning-description`}>实际支持程度由模型决定。</FieldDescription>
+              </FieldContent>
+              <Select value={reasoning} onValueChange={(value) => setReasoning(value as ReasoningLevel | "unset")}>
+                <SelectTrigger
+                  id={`${fieldId}-reasoning`}
+                  aria-describedby={`${fieldId}-reasoning-description`}
+                  className="w-full @md/field-group:w-44 @md/field-group:shrink-0"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="unset">默认</SelectItem>
+                    {reasoningLevels.map(({ value, label }) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          </FieldGroup>
+          <Separator />
+          <Collapsible.Root
+            open={advancedOpen || hasAdvancedErrors}
+            onOpenChange={(open) => setAdvancedOpen(open || hasAdvancedErrors)}
+          >
+            <Collapsible.Trigger asChild>
+              <Button variant="ghost" className="group h-auto w-full justify-start px-0 py-2">
+                <ChevronRightIcon
+                  data-icon="inline-start"
+                  className="transition-transform group-data-[state=open]:rotate-90"
+                />
                 高级参数
-              </h3>
-              <p className="text-xs text-muted-foreground">停止序列和 {providerLabel} 专属请求选项。</p>
-            </div>
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor={`${fieldId}-stop-sequences`}>停止序列</FieldLabel>
-                <Textarea
-                  id={`${fieldId}-stop-sequences`}
-                  rows={4}
-                  value={stopSequences}
-                  placeholder={"每行一个停止序列\n例如：<END>"}
-                  onChange={(event) => setStopSequences(event.target.value)}
-                />
-                <FieldDescription>每行填写一个值，空行会被忽略。</FieldDescription>
-              </Field>
-              <Field data-invalid={Boolean(providerOptionsResult.error)}>
-                <FieldLabel htmlFor={`${fieldId}-provider-options`}>供应商专属选项</FieldLabel>
-                <Textarea
-                  id={`${fieldId}-provider-options`}
-                  rows={7}
-                  spellCheck={false}
-                  aria-invalid={Boolean(providerOptionsResult.error)}
-                  className="font-mono text-xs"
-                  value={providerOptionsInput}
-                  placeholder={'{\n  "reasoningEffort": "high"\n}'}
-                  onChange={(event) => setProviderOptionsInput(event.target.value)}
-                />
-                {providerOptionsResult.error ? (
-                  <FieldError>{providerOptionsResult.error}</FieldError>
-                ) : (
-                  <FieldDescription>填写 JSON 对象，字段名保持供应商原始格式。</FieldDescription>
-                )}
-              </Field>
-            </FieldGroup>
-          </section>
+                <span className="ml-auto">
+                  <Badge variant="secondary">{advancedCount ? `已设置 ${advancedCount} 项` : "可选"}</Badge>
+                </span>
+              </Button>
+            </Collapsible.Trigger>
+            <Collapsible.Content className="pt-5">
+              <FieldGroup className="gap-6">
+                <FieldSet>
+                  <FieldLegend variant="label">采样</FieldLegend>
+                  <FieldGroup>
+                    {advancedFields.filter(({ key }) => key === "top_p" || key === "top_k").map(renderNumberField)}
+                  </FieldGroup>
+                </FieldSet>
+                <Separator />
+                <FieldSet>
+                  <FieldLegend variant="label">重复控制</FieldLegend>
+                  <FieldGroup>
+                    {advancedFields
+                      .filter(({ key }) => key === "presence_penalty" || key === "frequency_penalty")
+                      .map(renderNumberField)}
+                  </FieldGroup>
+                </FieldSet>
+                <Separator />
+                <FieldSet>
+                  <FieldLegend variant="label">其他选项</FieldLegend>
+                  <FieldGroup>
+                    {advancedFields.filter(({ key }) => key === "seed").map(renderNumberField)}
+                    <Field>
+                      <FieldLabel htmlFor={`${fieldId}-stop-sequences`}>停止序列</FieldLabel>
+                      <Textarea
+                        id={`${fieldId}-stop-sequences`}
+                        rows={3}
+                        className="max-h-40 resize-y overflow-y-auto"
+                        value={stopSequences}
+                        placeholder={"每行一个停止序列\n例如：<END>"}
+                        onChange={(event) => setStopSequences(event.target.value)}
+                      />
+                      <FieldDescription>每行填写一个值，空行会被忽略。</FieldDescription>
+                    </Field>
+                    <Field data-invalid={Boolean(providerOptionsResult.error)}>
+                      <FieldLabel htmlFor={`${fieldId}-provider-options`}>供应商专属选项</FieldLabel>
+                      <Textarea
+                        id={`${fieldId}-provider-options`}
+                        rows={5}
+                        spellCheck={false}
+                        aria-invalid={Boolean(providerOptionsResult.error)}
+                        className="max-h-48 resize-y overflow-y-auto font-mono"
+                        value={providerOptionsInput}
+                        placeholder={'{\n  "选项名称": "值"\n}'}
+                        onChange={(event) => setProviderOptionsInput(event.target.value)}
+                      />
+                      {providerOptionsResult.error ? (
+                        <FieldError>{providerOptionsResult.error}</FieldError>
+                      ) : (
+                        <FieldDescription>填写 {providerLabel} 支持的 JSON 对象，字段名保持原始格式。</FieldDescription>
+                      )}
+                    </Field>
+                  </FieldGroup>
+                </FieldSet>
+              </FieldGroup>
+            </Collapsible.Content>
+          </Collapsible.Root>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            未设置的参数由模型或调用方决定，调用时传入的值优先。
+          </p>
         </div>
-        <DialogFooter className="mx-0 mb-0 flex-row flex-wrap items-center justify-end gap-3 px-4 py-4 sm:px-5">
-          <Button variant="ghost" className="sm:mr-auto" onClick={resetOptions}>
-            清空全部
-          </Button>
-          <Button variant="outline" onClick={onClose}>
-            取消
-          </Button>
-          <Button onClick={submitOptions} disabled={hasErrors}>
-            应用参数
-          </Button>
+        <DialogFooter className="mx-0 mb-0 shrink-0 flex-col gap-3 px-4 py-4 sm:flex-col sm:px-5">
+          <div className="flex w-full flex-wrap items-center justify-end gap-2">
+            <Button variant="ghost" className="mr-auto" onClick={resetOptions}>
+              恢复默认
+            </Button>
+            <Button variant="outline" onClick={onClose}>
+              取消
+            </Button>
+            <Button onClick={submitOptions} disabled={hasErrors}>
+              应用参数
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
