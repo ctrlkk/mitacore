@@ -15,6 +15,25 @@ const outDir = join(root, "dist");
 
 const exeExt = process.platform === "win32" ? ".exe" : "";
 
+/** 仅清理由本脚本管理的顶层产物，避免影响运行时数据。 */
+async function cleanBuildOutputs() {
+  const outputNames = [
+    "bin",
+    "prompts",
+    "references",
+    "scripts",
+    "webui",
+    ".env.example",
+    "app",
+    "app.exe",
+    "app.mjs",
+    "config.example.jsonc",
+    "config.schema.json",
+    "main.mjs",
+  ];
+  await Promise.all(outputNames.map((name) => rm(join(outDir, name), { recursive: true, force: true })));
+}
+
 /**
  * 执行子进程，如果退出码非 0 则抛出异常
  */
@@ -70,6 +89,11 @@ async function buildApp() {
   await mkdir(manifestOutputDir, { recursive: true });
   await copyFile(join(root, "references", "default-data", "manifest.json"), join(manifestOutputDir, "manifest.json"));
   await copyFile(join(root, "scripts", "main.mjs"), join(outDir, "main.mjs"));
+}
+
+/** 从运行时配置定义生成随应用发布的编辑器 Schema；失败时中止构建。 */
+async function buildConfigSchema() {
+  await runCmd([packageManager, "--filter", "bot", "run", "config:schema", join(outDir, "config.schema.json")], root);
 }
 
 /** 构建负责约束 NapCat 进程树生命周期的原生 supervisor。 */
@@ -167,11 +191,6 @@ async function copyBin() {
 async function copyAssets() {
   const targets = [
     { src: join(root, "prompts"), dest: join(outDir, "prompts"), label: "prompts/" },
-    {
-      src: join(root, "config.example.jsonc"),
-      dest: join(outDir, "config.example.jsonc"),
-      label: "config.example.jsonc",
-    },
     { src: join(root, ".env.example"), dest: join(outDir, ".env.example"), label: ".env.example" },
     {
       src: join(root, "scripts", "install.sh"),
@@ -208,11 +227,12 @@ async function copyAssets() {
 }
 
 console.log("==> 开始并行构建...\n");
-await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
+await cleanBuildOutputs();
 
 await Promise.all([
   buildApp(),
+  buildConfigSchema(),
   buildSupervisor(),
   buildLinuxInjector(),
   buildLauncher(),

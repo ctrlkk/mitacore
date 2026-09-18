@@ -1,7 +1,8 @@
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parse, type ParseError } from "jsonc-parser";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { defaultConfig, loadConfig, saveConfig, validateConfig } from "@/config";
 import { projectPath } from "@/utils/path";
@@ -192,7 +193,7 @@ describe("配置文件", () => {
 
     await expect(loadConfig(jsoncPath, jsonPath, tomlPath)).resolves.toMatchObject({ max_queue: 24 });
     await expect(readFile(jsoncPath, "utf8")).resolves.toBe(
-      `${JSON.stringify(validateConfig({ max_queue: 24 }), null, 2)}\n`,
+      `${JSON.stringify({ $schema: "./config.schema.json", ...validateConfig({ max_queue: 24 }) }, null, 2)}\n`,
     );
     await expect(readFile(tomlPath, "utf8")).resolves.toBe(toml);
   });
@@ -309,7 +310,9 @@ describe("配置文件", () => {
     const { jsonPath } = await createConfigPaths();
     const saved = await saveConfig({ max_queue: 28 }, jsonPath);
 
-    await expect(readFile(jsonPath, "utf8")).resolves.toBe(`${JSON.stringify(saved, null, 2)}\n`);
+    await expect(readFile(jsonPath, "utf8")).resolves.toBe(
+      `${JSON.stringify({ $schema: "./config.schema.json", ...saved }, null, 2)}\n`,
+    );
   });
 
   it("保存 JSONC 时移除注释并保持内容有效", async () => {
@@ -320,8 +323,9 @@ describe("配置文件", () => {
     const saved = await saveConfig({ max_queue: 32 });
     const content = await readFile(jsoncPath, "utf8");
 
-    expect(content).toBe(`${JSON.stringify(saved, null, 2)}\n`);
-    expect(() => JSON.parse(content)).not.toThrow();
+    expect(content).toBe(`${JSON.stringify({ $schema: "./config.schema.json", ...saved }, null, 2)}\n`);
+    await expect(loadConfig(jsoncPath, jsonPath, tomlPath)).resolves.toEqual(saved);
+    expect(saved).not.toHaveProperty("$schema");
   });
 
   it("provider_options 嵌套值可往返保存和加载", async () => {
@@ -348,13 +352,28 @@ describe("配置文件", () => {
     await expect(loadConfig(jsoncPath, jsonPath, tomlPath)).resolves.toEqual(saved);
   });
 
-  it("示例 JSONC 不含尾随逗号且符合当前配置 schema", async () => {
-    const errors: ParseError[] = [];
-    const example = parse(await readFile(projectPath("config.example.jsonc"), "utf8"), errors, {
-      allowTrailingComma: false,
-    });
+  it("生成可独立使用的输入 Schema，保留说明、示例与约束", async () => {
+    const { jsonPath } = await createConfigPaths();
+    const generate = () =>
+      promisify(execFile)(
+        process.execPath,
+        ["--import", "tsx", projectPath("packages/bot/scripts/generate-config-schema.ts"), jsonPath],
+        { cwd: projectPath("packages/bot") },
+      );
+    await generate();
+    const content = await readFile(jsonPath, "utf8");
+    const schema = JSON.parse(content);
 
-    expect(errors).toEqual([]);
-    expect(() => validateConfig(example)).not.toThrow();
+    expect(schema.required ?? []).toEqual([]);
+    expect(schema.properties.$schema.type).toBe("string");
+    expect(schema.properties.max_queue).toMatchObject({ type: "integer", minimum: 1, default: 10 });
+    expect(schema.properties.max_queue.description).toBeTruthy();
+    expect(schema.properties.napcat.properties.enabled.default).toBe(false);
+    expect(schema.properties.providers.items.properties.type.enum).toContain("deepseek");
+    expect(schema.properties.model_schedule.properties.rules.maxItems).toBe(50);
+    expect(content).toContain('"examples"');
+
+    await generate();
+    await expect(readFile(jsonPath, "utf8")).resolves.toBe(content);
   });
 });

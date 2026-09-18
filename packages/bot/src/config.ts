@@ -64,23 +64,57 @@ const defaultProviders = [
 ];
 
 const scopeSchema = z.object({
-  mode: z.enum(["whitelist", "blacklist"]).default("blacklist").describe("范围控制模式"),
-  ids: z.array(z.string()).default([]).describe("范围控制的 ID 列表"),
+  mode: z
+    .enum(["whitelist", "blacklist"])
+    .default("blacklist")
+    .describe("范围控制模式：whitelist 仅允许列表内对象，blacklist 排除列表内对象")
+    .meta({ examples: ["whitelist", "blacklist"] }),
+  ids: z
+    .array(z.string())
+    .default([])
+    .describe("范围控制的 ID 列表，使用字符串格式")
+    .meta({ examples: [["your-id"]] }),
 });
 
 const napcatSchema = z.object({
   enabled: z.boolean().default(false).describe("是否启用 NapCat 渠道"),
-  ws_url: z.string().optional().describe("外部 NapCat WebSocket 地址"),
-  token: z.string().optional().describe("外部 NapCat token"),
-  qq_id: z.string().optional().describe("内置服务登录的 QQ ID"),
+  ws_url: z
+    .string()
+    .optional()
+    .describe("外部 NapCat WebSocket 地址；省略时使用内置服务，不清楚用途时建议保持省略")
+    .meta({ examples: ["ws://localhost:3001"] }),
+  token: z
+    .string()
+    .optional()
+    .describe("外部 NapCat 服务令牌，与 ws_url 配套使用")
+    .meta({ examples: ["your-napcat-token"] }),
+  qq_id: z
+    .string()
+    .optional()
+    .describe("内置 NapCat 启动器登录的机器人 QQ 号，不是日常使用的个人 QQ 号")
+    .meta({ examples: ["your-qq-id"] }),
   wake_keywords: z
     .array(z.string().trim().min(1, "唤醒关键词不能为空"))
     .default([])
-    .describe("群聊中用于唤醒机器人的关键词"),
-  groups: scopeSchema.default(defaultScopeConfig).describe("群聊范围控制"),
-  private_chats: scopeSchema.default(defaultScopeConfig).describe("私聊范围控制"),
-  group_members: scopeSchema.default({ mode: "blacklist", ids: [] }).describe("群内用户范围控制"),
-  admins: z.array(z.string()).default([]).describe("管理员 QQ 号列表"),
+    .describe("群聊消息包含任一关键词时可无需 @ 机器人触发回复；空数组表示只通过 @ 唤醒")
+    .meta({ examples: [["aliya", "阿丽亚"]] }),
+  groups: scopeSchema
+    .default(defaultScopeConfig)
+    .describe("群聊范围控制；可用群号白名单或黑名单")
+    .meta({ examples: [{ mode: "whitelist", ids: ["your-group-id"] }] }),
+  private_chats: scopeSchema
+    .default(defaultScopeConfig)
+    .describe("私聊范围控制；通常将自己使用的 QQ 号加入白名单")
+    .meta({ examples: [{ mode: "whitelist", ids: ["your-qq-id"] }] }),
+  group_members: scopeSchema
+    .default({ mode: "blacklist", ids: [] })
+    .describe("在已允许的群内，进一步控制可触发机器人的成员")
+    .meta({ examples: [{ mode: "blacklist", ids: [] }] }),
+  admins: z
+    .array(z.string())
+    .default([])
+    .describe("管理员 QQ 号列表；只有管理员可使用 /help、/ping 和 /undo 指令")
+    .meta({ examples: [["your-qq-id"]] }),
   receive_image: z.boolean().default(true).describe("是否接收图片消息"),
   receive_video: z.boolean().default(false).describe("是否接收视频消息"),
   receive_audio: z.boolean().default(false).describe("是否接收音频消息"),
@@ -88,35 +122,102 @@ const napcatSchema = z.object({
 
 const weixinSchema = z.object({
   enabled: z.boolean().default(false).describe("是否启用微信渠道"),
-  account_id: z.string().trim().optional().describe("扫码后获得的微信 Bot 账号 ID"),
-  token: z.string().trim().optional().describe("扫码后获得的微信 Bot token"),
+  account_id: z
+    .string()
+    .trim()
+    .optional()
+    .describe("微信 Bot 账号 ID；启用且未填写凭据时会引导登录，登录成功后自动写回配置")
+    .meta({ examples: ["your-weixin-account-id"] }),
+  token: z
+    .string()
+    .trim()
+    .optional()
+    .describe("微信 Bot token；启用且未填写凭据时会引导登录，登录成功后自动写回配置")
+    .meta({ examples: ["your-weixin-token"] }),
 });
 
 const qqbotSchema = z.object({
   enabled: z.boolean().default(false).describe("是否启用 QQ Bot 渠道"),
-  app_id: z.string().trim().optional().describe("QQ Bot AppID"),
-  app_secret: z.string().trim().optional().describe("QQ Bot AppSecret"),
-  admins: z.array(z.string()).default([]).describe("管理员用户 openid 列表"),
+  app_id: z
+    .string()
+    .trim()
+    .optional()
+    .describe("QQ Bot AppID；启用且未填写凭据时会输出扫码链接，登录成功后自动写回配置")
+    .meta({ examples: ["your-qqbot-app-id"] }),
+  app_secret: z
+    .string()
+    .trim()
+    .optional()
+    .describe("QQ Bot AppSecret；启用且未填写凭据时会输出扫码链接，登录成功后自动写回配置")
+    .meta({ examples: ["your-qqbot-app-secret"] }),
+  admins: z
+    .array(z.string())
+    .default([])
+    .describe("管理员用户 openid 列表")
+    .meta({ examples: [["your-user-openid"]] }),
 });
 
 const modelSchema = z.object({
-  plan: z.string().trim().default("").describe("规划层使用的模型"),
-  reply: z.string().trim().default("").describe("执行层使用的模型"),
-  main: z.string().trim().default("").describe("单 agent 模式的主模型，未配置时不可用"),
-  task_explore: z.string().trim().default("").describe("task explore 子代理使用的模型"),
-  task_general: z.string().trim().default("").describe("task general 子代理使用的模型"),
-  multimodal_image: z.string().trim().default("").describe("用于图像理解的外挂模型"),
-  multimodal_video: z.string().trim().default("").describe("用于视频理解的外挂模型"),
-  multimodal_audio: z.string().trim().default("").describe("用于音频处理的外挂模型"),
+  plan: z
+    .string()
+    .trim()
+    .default("")
+    .describe("规划层使用的模型别名，应在 providers.models 中定义")
+    .meta({ examples: ["deepseek-v4-flash"] }),
+  reply: z
+    .string()
+    .trim()
+    .default("")
+    .describe("回复层使用的模型别名，应在 providers.models 中定义")
+    .meta({ examples: ["deepseek-v4-pro"] }),
+  main: z
+    .string()
+    .trim()
+    .default("")
+    .describe("单 agent 模式的主模型别名；启用后取代 plan 与 reply，同时承担规划和回复")
+    .meta({ examples: ["deepseek-v4-flash"] }),
+  task_explore: z
+    .string()
+    .trim()
+    .default("")
+    .describe("task 工具中只读 explore 子代理使用的模型别名")
+    .meta({ examples: ["deepseek-v4-flash"] }),
+  task_general: z
+    .string()
+    .trim()
+    .default("")
+    .describe("task 工具中可读写 general 子代理使用的模型别名")
+    .meta({ examples: ["deepseek-v4-pro"] }),
+  multimodal_image: z
+    .string()
+    .trim()
+    .default("")
+    .describe("用于图像理解的模型别名")
+    .meta({ examples: ["mimo-v2.5"] }),
+  multimodal_video: z
+    .string()
+    .trim()
+    .default("")
+    .describe("用于视频理解的模型别名")
+    .meta({ examples: ["mimo-v2.5"] }),
+  multimodal_audio: z
+    .string()
+    .trim()
+    .default("")
+    .describe("用于音频理解的模型别名")
+    .meta({ examples: ["mimo-v2.5"] }),
 });
 
 const timeOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "时间必须为 HH:mm 格式");
 
 const modelScheduleRuleSchema = z
   .object({
-    start: timeOfDay.describe("生效开始时间"),
-    end: timeOfDay.describe("生效结束时间"),
-    models: modelSchema.partial().describe("在此时段覆盖的模型"),
+    start: timeOfDay.describe("按服务器本地时间生效的开始时间，使用 HH:mm 格式").meta({ examples: ["00:00"] }),
+    end: timeOfDay.describe("按服务器本地时间生效的结束时间，使用 HH:mm 格式").meta({ examples: ["08:00"] }),
+    models: modelSchema
+      .partial()
+      .describe("在此时段临时覆盖的模型职责")
+      .meta({ examples: [{ reply: "deepseek-v4-flash" }] }),
   })
   .superRefine((rule, ctx) => {
     if (rule.start === rule.end) {
@@ -128,7 +229,12 @@ const modelScheduleRuleSchema = z
   });
 
 const modelScheduleSchema = z.object({
-  rules: z.array(modelScheduleRuleSchema).max(50, "最多配置 50 条时段规则").default([]).describe("模型时段规则"),
+  rules: z
+    .array(modelScheduleRuleSchema)
+    .max(50, "最多配置 50 条时段规则")
+    .default([])
+    .describe("按服务器本地时间临时覆盖模型职责的时段规则，最多 50 条")
+    .meta({ examples: [[{ start: "00:00", end: "08:00", models: { reply: "deepseek-v4-flash" } }]] }),
 });
 
 const modelOptionsSchema = z
@@ -148,42 +254,84 @@ const modelOptionsSchema = z
     provider_options: z
       .record(z.string(), z.json())
       .optional()
-      .describe("传递给当前模型供应商的专属选项，字段名保持原样"),
+      .describe("传递给当前模型供应商的专属 JSON 选项，字段名保持供应商原始格式")
+      .meta({ examples: [{ example_option: true }] }),
   })
   .strict();
 
 const providerSchema = z.object({
   name: z.string().trim().min(1, "供应商名称不能为空").describe("供应商名称"),
-  type: providerType.describe("供应商端点类型"),
+  type: providerType
+    .describe(
+      "供应商端点类型，决定底层 API 协议：anthropic 为 Messages API，google 为 Gemini 原生 API，deepseek 为支持 reasoning_content 的 OpenAI 兼容接口，openai-compatible 为 Chat Completions 兼容接口，openai-responses 为 Responses API",
+    )
+    .meta({ examples: ["deepseek", "openai-compatible"] }),
   options: z
     .object({
       base_url: z
         .url()
         .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "仅支持 HTTP 或 HTTPS 地址")
-        .describe("供应商 API 基础 URL"),
-      api_key: z.string().trim().min(1, "API 密钥不能为空").describe("供应商 API 密钥"),
+        .describe("供应商 API 基础 URL")
+        .meta({ examples: ["https://api.deepseek.com", "https://api.xiaomimimo.com/v1"] }),
+      api_key: z
+        .string()
+        .trim()
+        .min(1, "API 密钥不能为空")
+        .describe("供应商 API 密钥")
+        .meta({ examples: ["your-api-key"] }),
     })
     .describe("供应商选项"),
   models: z
     .array(
       z.object({
-        id: z.string().trim().min(1, "模型 ID 不能为空").describe("模型ID"),
-        alias: z.string().trim().min(1, "模型别名不能为空").describe("模型别名，用于防止模型id冲突"),
-        options: modelOptionsSchema.optional().describe("模型调用的默认选项"),
+        id: z
+          .string()
+          .trim()
+          .min(1, "模型 ID 不能为空")
+          .describe("供应商 API 使用的真实模型 ID")
+          .meta({ examples: ["deepseek-v4-flash"] }),
+        alias: z
+          .string()
+          .trim()
+          .min(1, "模型别名不能为空")
+          .describe("其他配置引用的稳定模型别名，也可避免多供应商模型重名")
+          .meta({ examples: ["deepseek-v4-flash"] }),
+        options: modelOptionsSchema
+          .optional()
+          .describe("模型调用的默认参数；调用方显式传入的同名参数优先")
+          .meta({
+            examples: [{ max_output_tokens: 4096, temperature: 0.7, top_p: 0.95, reasoning: "provider-default" }],
+          }),
       }),
     )
     .min(1, "至少需要配置一个模型")
     .describe("供应商提供的模型列表"),
 });
 
-const schema = z
+export const configSchema = z
   .object({
     napcat: napcatSchema.default(defaultNapcatConfig),
     weixin: weixinSchema.default(defaultWeixinConfig),
     qqbot: qqbotSchema.default(defaultQQBotConfig),
-    max_queue: z.number().int().min(1).default(10).describe("单个会话单次处理前的消息等待队列上限"),
-    debounce_ms: z.number().int().min(1000).max(10000).default(1000).describe("消息合并等待时间（毫秒）"),
-    providers: z.array(providerSchema).default(defaultProviders).describe("供应商配置"),
+    max_queue: z
+      .number()
+      .int()
+      .min(1)
+      .default(10)
+      .describe("单个会话单次处理前最多暂存并合并的消息数，不是模型上下文长度；超出时会丢弃最早的消息")
+      .meta({ examples: [10] }),
+    debounce_ms: z
+      .number()
+      .int()
+      .min(1000)
+      .max(10000)
+      .default(1000)
+      .describe("收到最后一条消息后等待多久再判断是否处理（毫秒），用于合并连续消息")
+      .meta({ examples: [1000] }),
+    providers: z
+      .array(providerSchema)
+      .default(defaultProviders)
+      .describe("供应商配置，可配置多个供应商，每个供应商至少包含一个模型"),
     models: modelSchema.default(defaultModelConfig).describe("各模块使用的模型配置"),
     model_schedule: modelScheduleSchema.default(defaultModelSchedule).describe("按时段切换模型的配置"),
   })
@@ -219,8 +367,8 @@ const schema = z
     }
   });
 
-export type Config = z.infer<typeof schema>;
-export const defaultConfig: Config = schema.parse({});
+export type Config = z.infer<typeof configSchema>;
+export const defaultConfig: Config = configSchema.parse({});
 export let config = structuredClone(defaultConfig);
 let activeConfigPath = projectPath("config.jsonc");
 
@@ -235,7 +383,7 @@ export class ConfigValidationError extends Error {
 }
 
 export function validateConfig(input: unknown): Config {
-  const result = schema.safeParse(input);
+  const result = configSchema.safeParse(input);
   if (!result.success) throw new ConfigValidationError("配置校验失败", result.error.issues);
   return result.data;
 }
@@ -243,7 +391,7 @@ export function validateConfig(input: unknown): Config {
 async function writeConfigFile(validated: Config, path: string): Promise<void> {
   const temporaryPath = `${path}.tmp-${process.pid}-${crypto.randomUUID()}`;
   try {
-    await writeFile(temporaryPath, `${JSON.stringify(validated, null, 2)}\n`, {
+    await writeFile(temporaryPath, `${JSON.stringify({ $schema: "./config.schema.json", ...validated }, null, 2)}\n`, {
       encoding: "utf8",
       mode: 0o600,
     });

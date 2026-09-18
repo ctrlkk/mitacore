@@ -9,6 +9,7 @@
     "dev": "pnpm --workspace-root dev",
     "start": "pnpm --workspace-root start",
     "build": "vite build",
+    "config:schema": "tsx scripts/generate-config-schema.ts",
     "db": "drizzle-kit",
     "migration": "tsx scripts/migration.ts",
     "migration:check": "tsx scripts/migration.ts --check",
