@@ -9,11 +9,11 @@ export interface WebUIConnection {
   credential: string;
 }
 
-/** NapCat WebUI API 响应外层结构：{ code, message?, data } */
+/** NapCat WebUI API 响应外层结构；失败响应可能不包含 data。 */
 export const WebUIEnvelopeSchema = z.object({
   code: z.number(),
   message: z.string().optional(),
-  data: z.unknown(),
+  data: z.unknown().optional(),
 });
 
 /** 登录响应 data 结构：{ Credential: string } */
@@ -48,10 +48,18 @@ export type NapCatLoginStatus = {
 };
 
 class NapCatApiError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly apiCode?: number,
+    readonly apiMessage?: string,
+  ) {
     super(message);
     this.name = "NapCatApiError";
   }
+}
+
+function isUnauthorizedError(error: unknown): error is NapCatApiError {
+  return error instanceof NapCatApiError && error.apiMessage?.toLowerCase() === "unauthorized";
 }
 
 function describeNapCatError(error: unknown): string {
@@ -63,7 +71,7 @@ function describeNapCatError(error: unknown): string {
 }
 
 /**
- * 底层 fetch 封装：自动带 Authorization、zod 验证外层 code+data
+ * 底层 fetch 封装：自动带 Authorization、zod 验证外层响应
  * @param conn - WebUI 连接凭证
  * @param method - HTTP 方法
  * @param path - API 路径
@@ -110,6 +118,8 @@ async function webuiFetch<T>(
   if (!resp.ok || envelope.data.code !== 0) {
     throw new NapCatApiError(
       `${method} ${path} 失败 (HTTP ${resp.status}, API ${envelope.data.code}): ${envelope.data.message ?? "未知错误"}`,
+      envelope.data.code,
+      envelope.data.message,
     );
   }
   if (dataSchema) return dataSchema.parse(envelope.data.data);
@@ -158,6 +168,37 @@ export async function createNapCatApi(
   timeoutMs = 30_000,
 ) {
   const conn = await loginWebUI(port, token, timeoutMs);
+  let refreshPromise: Promise<void> | undefined;
+
+  const authenticatedFetch = async <T>(
+    method: string,
+    path: string,
+    options?: {
+      body?: unknown;
+      dataSchema?: z.ZodType<T>;
+      timeoutMs?: number;
+    },
+  ): Promise<T> => {
+    const credential = conn.credential;
+    try {
+      return await webuiFetch(conn, method, path, options);
+    } catch (error) {
+      if (!isUnauthorizedError(error)) throw error;
+
+      if (conn.credential === credential) {
+        refreshPromise ??= loginWebUI(port, token, timeoutMs)
+          .then((refreshed) => {
+            conn.credential = refreshed.credential;
+          })
+          .finally(() => {
+            refreshPromise = undefined;
+          });
+        await refreshPromise;
+      }
+
+      return await webuiFetch(conn, method, path, options);
+    }
+  };
 
   return {
     conn,
@@ -166,7 +207,7 @@ export async function createNapCatApi(
      * @returns NapCat 版本号
      */
     async getNapCatVersion(): Promise<string> {
-      return await webuiFetch(conn, "GET", "/api/base/GetNapCatVersion", {
+      return await authenticatedFetch("GET", "/api/base/GetNapCatVersion", {
         dataSchema: VersionDataSchema,
       }).then((d) => d.version);
     },
@@ -176,7 +217,7 @@ export async function createNapCatApi(
      * @returns 登录状态与当前二维码内容
      */
     async getLoginStatus(): Promise<NapCatLoginStatus> {
-      const data = await webuiFetch(conn, "POST", "/api/QQLogin/CheckLoginStatus", {
+      const data = await authenticatedFetch("POST", "/api/QQLogin/CheckLoginStatus", {
         dataSchema: LoginStatusDataSchema,
       });
       if (typeof data === "boolean") return { isLoggedIn: data };
@@ -190,14 +231,14 @@ export async function createNapCatApi(
 
     /** 获取 QQ 登录二维码内容。 */
     async getQQLoginQrcode(): Promise<string> {
-      return await webuiFetch(conn, "POST", "/api/QQLogin/GetQQLoginQrcode", {
+      return await authenticatedFetch("POST", "/api/QQLogin/GetQQLoginQrcode", {
         dataSchema: LoginQrcodeDataSchema,
       }).then((data) => data.qrcode);
     },
 
     /** 获取当前 QQ 账号的 OB11 配置。 */
     async getOB11Config(): Promise<Record<string, unknown>> {
-      return await webuiFetch(conn, "POST", "/api/OB11Config/GetConfig", {
+      return await authenticatedFetch("POST", "/api/OB11Config/GetConfig", {
         dataSchema: OB11ConfigSchema,
       });
     },
@@ -207,7 +248,7 @@ export async function createNapCatApi(
      * @param config - OB11 配置 JSON 字符串
      */
     async setOB11Config(config: Record<string, unknown>): Promise<void> {
-      await webuiFetch(conn, "POST", "/api/OB11Config/SetConfig", {
+      await authenticatedFetch("POST", "/api/OB11Config/SetConfig", {
         body: { config: JSON.stringify(config) },
       });
     },

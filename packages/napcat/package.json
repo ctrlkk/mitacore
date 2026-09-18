@@ -8,6 +8,7 @@
     "node": ">=24"
   },
   "scripts": {
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "exports": {
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^4.0.0"
   }
 }

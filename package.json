@@ -25,7 +25,7 @@
     "package:default-data": "tsx scripts/default-data.ts",
     "obfuscate": "node scripts/obfuscate.mjs",
     "build": "tsx scripts/build.ts",
-    "test": "pnpm --filter bot test && pnpm --filter channels test"
+    "test": "pnpm --filter bot test && pnpm --filter channels test && pnpm --filter napcat test"
   },
   "devDependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
