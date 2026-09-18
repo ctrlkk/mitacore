@@ -20,7 +20,8 @@ interface UnifiedAudioMessage {
 }
 interface UnifiedReplyMessage {
   type: "reply";
-  data: { userId: string; nickname: string; segments: UnifiedInboundMessage[] }; // userId 为用户短号 u1、u2…
+  // 助手自身省略身份信息，避免随渠道账号或昵称变化；普通用户使用短号 u1、u2…。
+  data: { segments: UnifiedInboundMessage[] } | { userId: string; nickname: string; segments: UnifiedInboundMessage[] };
 }
 export type UnifiedInboundMessage =
   | UnifiedTextMessage

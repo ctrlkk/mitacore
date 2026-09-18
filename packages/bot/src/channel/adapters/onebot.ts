@@ -49,6 +49,7 @@ async function parseOneBotMessage(
   getRecordDataUrl: (file: string) => Promise<string | undefined>,
   allowVideo: boolean,
   media: MediaSettings,
+  selfId: string,
 ) {
   const messages: UnifiedInboundMessage[] = [];
   for (const seg of segments) {
@@ -103,8 +104,13 @@ async function parseOneBotMessage(
         getRecordDataUrl,
         allowVideo,
         media,
+        selfId,
       );
       if (inner.length === 0) continue;
+      if (String(result.userId) === selfId) {
+        messages.push({ type: "reply", data: { segments: inner } });
+        continue;
+      }
       const nickname = await getNickname(result.userId);
       const alias = ensureUserAlias("onebot", String(result.userId), nickname);
       messages.push({ type: "reply", data: { userId: shortIdFor(alias.id), nickname, segments: inner } });
@@ -275,7 +281,6 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
 
     const user = await bot.getLoginInfo();
     selfId = String(user.user_id);
-    ensureUserAlias("onebot", selfId, user.nickname);
     if (config.napcat.qq_id) {
       oneBotReady = true;
       channelController.updateNapcat({
@@ -382,6 +387,7 @@ async function startNapCatChannel(getBot: (sessionId: string) => ReturnType<type
         },
         isAt,
         config.napcat,
+        selfId,
       );
 
       if (unified.length === 0) {

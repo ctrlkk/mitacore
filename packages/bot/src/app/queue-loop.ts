@@ -190,9 +190,10 @@ function buildPrompt(batch: PendingMessage[], mediaMap: MediaMap) {
         const inner = formatMessage(seg.data.segments);
         if (inner.length === 0) return [];
 
+        const identity = "userId" in seg.data ? ` user_id="${seg.data.userId}" nickname="${seg.data.nickname}"` : "";
         return [
           {
-            content: `<reply user_id="${seg.data.userId}" nickname="${seg.data.nickname}">${inner}</reply>`,
+            content: `<reply${identity}>${inner}</reply>`,
             standalone: true,
           },
         ];

@@ -101,7 +101,6 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
   }
 
   channelController.updateWeixin({ status: "ready", qrcode_content: undefined, error: undefined });
-  ensureUserAlias("weixin", credentials.accountId, "微信 Bot");
   const userAlias = ensureUserAlias("weixin", WEIXIN_USER_KEY, WEIXIN_USER_NICKNAME);
   const userId = shortIdFor(userAlias.id);
 
