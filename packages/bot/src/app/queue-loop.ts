@@ -383,19 +383,22 @@ export function createBot(sessionId: string) {
         const onReply = (output: Parameters<typeof deliverReply>[0]) => {
           return deliverReply(output, ctx, speechContextText, log);
         };
-        // const replied = await runPlanner(prompt, onReply, log);
-        // if (!replied) {
-        //   log.info("规划层未调用 submit_plan，跳过回复");
-        // }
-        await runMain(prompt, onReply, log, async () => {
-          // 只提升已经通过原有防抖和触发判定的消息，未 armed 的消息继续留给后续批次。
+        const takeSteeringPrompt = async () => {
           const next = scheduler.takeArmed();
           if (!next) return;
           speechContextText = getLatestUserText(next.batch);
           const steeringPrompt = await preparePrompt(next.batch);
           log.info({ prompt: steeringPrompt }, "工具循环中插入用户输入");
           return steeringPrompt;
-        });
+        };
+        if (true) {
+          const replied = await runPlanner(prompt, onReply, log, takeSteeringPrompt);
+          if (!replied) {
+            log.info("规划层未调用 submit_plan，跳过回复");
+          }
+        } else {
+          await runMain(prompt, onReply, log, takeSteeringPrompt);
+        }
       } finally {
         await cancelTyping();
       }

@@ -40,12 +40,14 @@ async function saveHistory(history: ChatHistory, log: PinoLogger = logger) {
  * 运行允许 submit_plan 返回后继续工具循环的规划层。
  * @param userInputMessage 已用 <user_input> 标签包好的用户消息
  * @param onReply 实际发送消息的回调
+ * @param takeSteeringPrompt 在每个后续模型调用前提取工具循环期间新到达的用户消息
  * @returns 本轮是否通过 submit_plan 向用户发送过消息
  */
 export async function runPlanner(
   userInputMessage: string,
   onReply: (output: ReplyOutput) => Promise<void>,
   log: PinoLogger = logger,
+  takeSteeringPrompt?: () => Promise<string | undefined>,
 ): Promise<boolean> {
   const model = getModelForRole("plan");
   const historyMessages: ChatHistory = await loadHistory();
@@ -118,6 +120,20 @@ export async function runPlanner(
     messages: toModelMessages([...historyMessages, ...runtimeMessages]),
     tools,
     stopWhen: isStepCount(10),
+    async prepareStep({ stepNumber }) {
+      if (stepNumber === 0) return;
+
+      const steeringPrompt = await takeSteeringPrompt?.();
+      if (steeringPrompt === undefined) return;
+
+      const { records: steeringRecords } = await injectSystemContext(
+        [...historyMessages, ...runtimeMessages],
+        steeringPrompt,
+        log,
+      );
+      runtimeMessages.push(...steeringRecords);
+      return { messages: toModelMessages([...historyMessages, ...runtimeMessages]) };
+    },
     async onLanguageModelCallEnd({ content, usage }) {
       const reasoningText = content
         .filter((part) => part.type === "reasoning")
@@ -153,7 +169,7 @@ export async function runPlanner(
   }
   await saveHistory(finalHistory, log);
 
-  const userTurn = records.findLast((record) => record.user_turn !== undefined)?.user_turn;
+  const userTurn = runtimeMessages.findLast((record) => record.user_turn !== undefined)?.user_turn;
   if (replyCount > 0 && userTurn !== undefined && userTurn % MEMORY_REVIEW_INTERVAL === 0) {
     startMemoryReview(finalHistory);
   }
