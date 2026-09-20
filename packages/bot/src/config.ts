@@ -45,6 +45,11 @@ const defaultModelConfig = {
   multimodal_audio: "mimo-v2.5",
 };
 const defaultModelSchedule = { rules: [] };
+const defaultContextConfig = {
+  plan: { max_tokens: 108000 },
+  reply: { max_tokens: 108000 },
+  main: { max_tokens: 108000 },
+};
 const defaultProviders = [
   {
     name: "deepseek官网",
@@ -237,6 +242,16 @@ const modelScheduleSchema = z.object({
     .meta({ examples: [[{ start: "00:00", end: "08:00", models: { reply: "deepseek-v4-flash" } }]] }),
 });
 
+const contextPolicySchema = z.object({
+  max_tokens: z.number().int().positive().default(108000).describe("触发上下文压缩的 token 数"),
+});
+
+const contextSchema = z.object({
+  plan: contextPolicySchema.default(defaultContextConfig.plan).describe("规划层历史的上下文管理策略"),
+  reply: contextPolicySchema.default(defaultContextConfig.reply).describe("回复层历史的上下文管理策略"),
+  main: contextPolicySchema.default(defaultContextConfig.main).describe("单 agent 模式历史的上下文管理策略"),
+});
+
 const modelOptionsSchema = z
   .object({
     max_output_tokens: z.number().int().positive().optional().describe("默认最大输出 token 数"),
@@ -334,6 +349,7 @@ export const configSchema = z
       .describe("供应商配置，可配置多个供应商，每个供应商至少包含一个模型"),
     models: modelSchema.default(defaultModelConfig).describe("各模块使用的模型配置"),
     model_schedule: modelScheduleSchema.default(defaultModelSchedule).describe("按时段切换模型的配置"),
+    context: contextSchema.default(defaultContextConfig).describe("各持久化会话的上下文管理策略"),
   })
   .superRefine((config, ctx) => {
     const hasEnabledChannel = config.napcat.enabled || config.weixin.enabled || config.qqbot.enabled;

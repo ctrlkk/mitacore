@@ -8,13 +8,14 @@ import { logger, type PinoLogger } from "@/logger";
 import { task } from "./tools/task";
 import { webfetch } from "./tools/web-fetch";
 import { websearch } from "./tools/web-search";
-import { compactHistory, isOverflow } from "./compaction";
+import { compactHistory } from "./compaction";
 import { injectSystemContext } from "./system-context";
 import { logUsage } from "@/utils/format";
 import { workspaceTools } from "@/workspace/tool";
 import { memoryReview } from "./background-review";
 import { createReplySession } from "./reply";
 import type { ReplyOutput } from "@/message/parts";
+import { config } from "@/config";
 
 const MEMORY_REVIEW_INTERVAL = 10;
 
@@ -163,7 +164,7 @@ export async function runPlanner(
   });
 
   let finalHistory: ChatHistory = [...historyMessages, ...runtimeMessages];
-  if (isOverflow(result.finalStep.usage)) {
+  if ((result.finalStep.usage.totalTokens ?? 0) >= config.context.plan.max_tokens) {
     log.info("检测到上下文溢出，开始执行压缩...");
     finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
   }

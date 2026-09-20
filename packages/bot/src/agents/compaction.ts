@@ -1,6 +1,8 @@
 import { toModelMessages, type ChatHistory, type ChatRecord } from "./chat-history";
-import { generateText, type LanguageModel, type LanguageModelUsage, type ToolSet } from "ai";
+import { generateText, type LanguageModel, type ToolSet } from "ai";
 import { logger, type PinoLogger } from "@/logger";
+
+const PRESERVE_BUDGET = 8000;
 
 /**
  * 获取某条记录的累计 token (即如果再发一轮对话，此时历史的总 input token)
@@ -17,13 +19,13 @@ function getCumulativeTokens(record: ChatRecord): number | undefined {
 /**
  * 退回方案：当历史中完全没有 usage 信息时，用字符长度粗略估算
  */
-function splitHistoryByEstimate(history: ChatHistory, preserveBudget: number) {
+function splitHistoryByEstimate(history: ChatHistory) {
   let tailTokens = 0;
   let splitIndex = history.length;
 
   for (let i = history.length - 1; i >= 0; i--) {
     const tokens = Math.ceil(JSON.stringify(history[i]!.message).length / 4);
-    if (tailTokens + tokens > preserveBudget) {
+    if (tailTokens + tokens > PRESERVE_BUDGET) {
       break;
     }
     tailTokens += tokens;
@@ -41,7 +43,7 @@ function splitHistoryByEstimate(history: ChatHistory, preserveBudget: number) {
  * 将历史记录切分为需要被压缩的 [head] 和需要被保留的 [tail]
  * 优先利用 ChatRecord 中的真实 usage 信息进行精准切分
  */
-export function splitHistory(history: ChatHistory, preserveBudget = 8000): { head: ChatHistory; tail: ChatHistory } {
+export function splitHistory(history: ChatHistory): { head: ChatHistory; tail: ChatHistory } {
   if (history.length === 0) {
     return { head: [], tail: [] };
   }
@@ -60,11 +62,11 @@ export function splitHistory(history: ChatHistory, preserveBudget = 8000): { hea
 
   // 如果历史中完全没有 usage 信息（比如旧版本数据），退回到字符估算
   if (!lastContextTokens) {
-    return splitHistoryByEstimate(history, preserveBudget);
+    return splitHistoryByEstimate(history);
   }
 
   // 2. 计算目标切分阈值：希望 head 的大小 <= targetTokens
-  const targetTokens = lastContextTokens - preserveBudget;
+  const targetTokens = lastContextTokens - PRESERVE_BUDGET;
 
   // 3. 正序遍历寻找切分点
   // 我们要找的是最后一个满足条件 (cumulativeTokens <= targetTokens) 的 assistant，
@@ -104,8 +106,8 @@ export function splitHistory(history: ChatHistory, preserveBudget = 8000): { hea
  * @param model 用于生成摘要的模型实例
  * @param system 调用方构建的系统提示词
  * @param messages 完整的历史记录 (ChatHistory，需包含 usage 以进行精准切分)
- * @param summaryPrompt 摘要提示词模板
  * @param tools 可能使用到的工具集
+ * @param log 日志实例
  */
 export async function compactHistory(
   model: LanguageModel,
@@ -150,13 +152,4 @@ export async function compactHistory(
     },
     ...tail,
   ];
-}
-
-/**
- * 判断是否溢出（需要压缩）
- */
-export function isOverflow(usage?: LanguageModelUsage): boolean {
-  if (!usage) return false;
-  const totalTokens = usage.totalTokens || 0;
-  return totalTokens >= 108000;
 }

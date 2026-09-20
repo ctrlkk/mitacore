@@ -22,6 +22,11 @@ const config = {
     multimodal_video: "test-model",
     multimodal_audio: "test-model",
   },
+  context: {
+    plan: { max_tokens: 108000 },
+    reply: { max_tokens: 108000 },
+    main: { max_tokens: 108000 },
+  },
   model_schedule: { rules: [] },
 };
 
@@ -39,6 +44,98 @@ afterEach(() => {
 });
 
 describe("ModelConfigPage", () => {
+  it("默认聚焦核心流程，并可展开和保存专用模型", async () => {
+    const configWithSpecializedModel = {
+      ...config,
+      providers: [
+        {
+          ...config.providers[0],
+          models: [...config.providers[0].models, { id: "special-model", alias: "special-model" }],
+        },
+      ],
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/config" && init?.method === "PUT") {
+        return Promise.resolve(new Response(JSON.stringify({ saved: true }), { status: 200 }));
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify(configWithSpecializedModel), { headers: { "content-type": "application/json" } }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderPage();
+
+    expect(await screen.findByRole("combobox", { name: "规划模型" })).toHaveValue("test-model");
+    expect(screen.getByRole("combobox", { name: "回复模型" })).toHaveValue("test-model");
+    expect(screen.getByRole("combobox", { name: "主代理模型" })).toHaveValue("test-model");
+    expect(screen.queryByRole("combobox", { name: "探索子代理模型" })).not.toBeInTheDocument();
+
+    const specializedModelsTrigger = screen.getByRole("button", { name: /专用模型/ });
+    fireEvent.click(specializedModelsTrigger);
+
+    expect(screen.getByRole("combobox", { name: "探索子代理模型" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "图像理解模型" })).toBeInTheDocument();
+
+    const generalAgentModel = screen.getByRole("combobox", { name: "通用子代理模型" });
+    fireEvent.keyDown(generalAgentModel, { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "special-model" }));
+    expect(generalAgentModel).toHaveValue("special-model");
+
+    fireEvent.click(specializedModelsTrigger);
+    expect(screen.queryByRole("combobox", { name: "通用子代理模型" })).not.toBeInTheDocument();
+    fireEvent.click(specializedModelsTrigger);
+    expect(screen.getByRole("combobox", { name: "通用子代理模型" })).toHaveValue("special-model");
+
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+
+    await waitFor(() => {
+      const [, init] = fetchMock.mock.calls.find(([, requestInit]) => requestInit?.method === "PUT")!;
+      expect(JSON.parse(init!.body as string).models.task_general).toBe("special-model");
+    });
+  });
+
+  it("保存各层的上下文管理策略", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/config" && init?.method === "PUT") {
+        return Promise.resolve(new Response(JSON.stringify({ saved: true }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(config), { headers: { "content-type": "application/json" } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderPage();
+
+    fireEvent.change(await screen.findByLabelText("规划层上下文窗口"), { target: { value: "100000" } });
+    fireEvent.change(screen.getByLabelText("回复层上下文窗口"), { target: { value: "90000" } });
+    fireEvent.change(screen.getByLabelText("主代理上下文窗口"), { target: { value: "80000" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+
+    await waitFor(() => {
+      const [, init] = fetchMock.mock.calls.find(([, requestInit]) => requestInit?.method === "PUT")!;
+      expect(JSON.parse(init!.body as string).context).toEqual({
+        plan: { max_tokens: 100000 },
+        reply: { max_tokens: 90000 },
+        main: { max_tokens: 80000 },
+      });
+    });
+  });
+
+  it("上下文 token 配置无效时禁止保存", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify(config), { headers: { "content-type": "application/json" } })),
+    );
+    renderPage();
+
+    fireEvent.change(await screen.findByLabelText("规划层上下文窗口"), {
+      target: { value: "31999" },
+    });
+
+    expect(screen.getByText("上下文窗口不能小于 32,000 Tokens")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+  });
+
   it("保存模型默认参数", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input) === "/api/config" && init?.method === "PUT") {

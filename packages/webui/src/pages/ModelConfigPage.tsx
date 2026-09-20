@@ -87,6 +87,12 @@ type ModelRole =
   | "multimodal_video"
   | "multimodal_audio";
 
+type ContextRole = "plan" | "reply" | "main";
+
+type ContextPolicy = {
+  max_tokens: number;
+};
+
 type ProviderType = "anthropic" | "google" | "openai-responses" | "openai-compatible" | "deepseek";
 
 type ReasoningLevel = "provider-default" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -123,6 +129,7 @@ type BotConfig = Record<string, unknown> & {
   providers: ModelProvider[];
   models: Record<ModelRole, string>;
   model_schedule: { rules: ScheduleRule[] };
+  context: Record<ContextRole, ContextPolicy>;
 };
 
 const roleDefinitions: Array<{ key: ModelRole; label: string; description: string }> = [
@@ -135,6 +142,35 @@ const roleDefinitions: Array<{ key: ModelRole; label: string; description: strin
   { key: "multimodal_video", label: "视频理解", description: "将视频转为文字描述" },
   { key: "multimodal_audio", label: "音频理解", description: "转写并理解音频内容" },
 ];
+
+const coreRoleDefinitions = roleDefinitions.filter(({ key }) => key === "plan" || key === "reply" || key === "main");
+
+const specializedRoleGroups = [
+  {
+    label: "子代理",
+    description: "仅在主流程委派任务时使用。",
+    roles: roleDefinitions.filter(({ key }) => key === "task_explore" || key === "task_general"),
+  },
+  {
+    label: "多模态理解",
+    description: "收到对应类型的媒体时使用。",
+    roles: roleDefinitions.filter(({ key }) => key.startsWith("multimodal_")),
+  },
+];
+
+const contextDefinitions: Array<{ key: ContextRole; label: string; description: string }> = [
+  { key: "plan", label: "规划层", description: "planner.json 中保存的规划与工具调用历史" },
+  { key: "reply", label: "回复层", description: "chat.json 中保存的用户对话历史" },
+  { key: "main", label: "主代理", description: "history.json 中保存的单代理模式历史" },
+];
+
+const minContextWindowTokens = 32000;
+
+function getContextPolicyError(policy: ContextPolicy): string | undefined {
+  if (!Number.isSafeInteger(policy.max_tokens)) return "上下文窗口必须是有效整数";
+  if (policy.max_tokens < minContextWindowTokens) return "上下文窗口不能小于 32,000 Tokens";
+  return undefined;
+}
 
 const providerTypes: Array<{ value: ProviderType; label: string }> = [
   { value: "anthropic", label: "Anthropic" },
@@ -353,6 +389,7 @@ export function ModelConfigPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [editor, setEditor] = useState<{ index: number | null; provider: ModelProvider }>();
   const [isPresetPickerOpen, setIsPresetPickerOpen] = useState(false);
+  const [areSpecializedRolesOpen, setAreSpecializedRolesOpen] = useState(false);
   const [providerToDelete, setProviderToDelete] = useState<{ index: number; name: string }>();
   const saveButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -384,6 +421,9 @@ export function ModelConfigPage() {
   ].filter(Boolean);
   const serializedConfig = config ? JSON.stringify(config) : undefined;
   const hasUnsavedChanges = savedConfig !== undefined && serializedConfig !== savedConfig;
+  const hasContextErrors = contextDefinitions.some(({ key }) =>
+    config ? getContextPolicyError(config.context[key]) !== undefined : false,
+  );
 
   function updateConfig(update: (current: BotConfig) => BotConfig) {
     setConfig((current) => (current ? update(current) : current));
@@ -391,6 +431,16 @@ export function ModelConfigPage() {
 
   function updateModel(role: ModelRole, alias: string) {
     updateConfig((current) => ({ ...current, models: { ...current.models, [role]: alias } }));
+  }
+
+  function updateContext(role: ContextRole, key: keyof ContextPolicy, value: number) {
+    updateConfig((current) => ({
+      ...current,
+      context: {
+        ...current.context,
+        [role]: { ...current.context[role], [key]: value },
+      },
+    }));
   }
 
   function updateScheduleRule(index: number, update: (rule: ScheduleRule) => ScheduleRule) {
@@ -445,7 +495,7 @@ export function ModelConfigPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">模型配置</h1>
-          <p className="text-sm text-muted-foreground">为各职责、时段和供应商配置可用模型。</p>
+          <p className="text-sm text-muted-foreground">为各职责配置模型、上下文管理策略与时段覆盖。</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Badge
@@ -465,7 +515,11 @@ export function ModelConfigPage() {
             )}
             {hasUnsavedChanges ? "有未保存的更改" : "配置已保存"}
           </Badge>
-          <Button ref={saveButtonRef} onClick={saveConfig} disabled={isSaving || !hasUnsavedChanges}>
+          <Button
+            ref={saveButtonRef}
+            onClick={saveConfig}
+            disabled={isSaving || !hasUnsavedChanges || hasContextErrors}
+          >
             {isSaving ? (
               <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
             ) : (
@@ -484,20 +538,109 @@ export function ModelConfigPage() {
               模型分工
             </h2>
           </div>
-          <p className="text-sm text-muted-foreground">设置每个系统职责默认使用的模型别名。</p>
+          <p className="text-sm text-muted-foreground">优先设置日常对话流程，按需展开专用能力。</p>
         </div>
-        <div className="grid divide-y sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
-          {roleDefinitions.map((role) => (
-            <label key={role.key} className="flex min-w-0 flex-col gap-1.5 p-3 sm:p-4">
-              <span className="text-sm font-medium">{role.label}</span>
-              <span className="text-xs leading-5 text-muted-foreground">{role.description}</span>
-              <ModelAliasCombobox
-                value={config.models[role.key]}
-                aliases={modelAliases}
-                onChange={(value) => updateModel(role.key, value)}
-              />
-            </label>
-          ))}
+        <div className="flex flex-col gap-5 p-4 sm:p-5">
+          <FieldSet>
+            <FieldLegend variant="label">核心流程</FieldLegend>
+            <FieldDescription>分别配置“规划 + 回复”双模型流程和单代理流程使用的模型。</FieldDescription>
+            <FieldGroup className="grid gap-4 md:grid-cols-3">
+              {coreRoleDefinitions.map((role) => (
+                <Field key={role.key} className="rounded-lg border p-3">
+                  <FieldLabel>{role.label}</FieldLabel>
+                  <FieldDescription className="text-xs">{role.description}</FieldDescription>
+                  <ModelAliasCombobox
+                    value={config.models[role.key]}
+                    aliases={modelAliases}
+                    ariaLabel={`${role.label}模型`}
+                    onChange={(value) => updateModel(role.key, value)}
+                  />
+                </Field>
+              ))}
+            </FieldGroup>
+          </FieldSet>
+          <Separator />
+          <Collapsible.Root open={areSpecializedRolesOpen} onOpenChange={setAreSpecializedRolesOpen}>
+            <Collapsible.Trigger asChild>
+              <Button variant="ghost" className="group h-auto w-full justify-start px-0 py-2">
+                <ChevronRightIcon
+                  data-icon="inline-start"
+                  className="transition-transform group-data-[state=open]:rotate-90"
+                />
+                专用模型
+                <span className="ml-auto">
+                  <Badge variant="secondary">按需配置</Badge>
+                </span>
+              </Button>
+            </Collapsible.Trigger>
+            <Collapsible.Content className="pt-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                {specializedRoleGroups.map((group) => (
+                  <FieldSet key={group.label} className="min-w-0 rounded-lg border p-4">
+                    <FieldLegend variant="label">{group.label}</FieldLegend>
+                    <FieldDescription className="text-xs">{group.description}</FieldDescription>
+                    <FieldGroup className="gap-4">
+                      {group.roles.map((role) => (
+                        <Field key={role.key}>
+                          <FieldLabel>{role.label}</FieldLabel>
+                          <FieldDescription className="text-xs">{role.description}</FieldDescription>
+                          <ModelAliasCombobox
+                            value={config.models[role.key]}
+                            aliases={modelAliases}
+                            ariaLabel={`${role.label}模型`}
+                            onChange={(value) => updateModel(role.key, value)}
+                          />
+                        </Field>
+                      ))}
+                    </FieldGroup>
+                  </FieldSet>
+                ))}
+              </div>
+            </Collapsible.Content>
+          </Collapsible.Root>
+        </div>
+      </section>
+
+      <section aria-labelledby="context-policy-title" className="rounded-xl border bg-card">
+        <div className="flex flex-col gap-1 border-b px-4 py-4 sm:px-5">
+          <div className="flex items-center gap-2">
+            <Settings2Icon className="size-4" />
+            <h2 id="context-policy-title" className="font-semibold">
+              上下文管理
+            </h2>
+          </div>
+          <p className="text-sm text-muted-foreground">按独立历史设置上下文压缩的触发窗口。</p>
+        </div>
+        <div className="grid divide-y lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+          {contextDefinitions.map((definition) => {
+            const policy = config.context[definition.key];
+            const error = getContextPolicyError(policy);
+            return (
+              <div key={definition.key} className="flex min-w-0 flex-col gap-4 p-4 sm:p-5">
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-sm font-medium">{definition.label}</h3>
+                  <p className="text-xs leading-5 text-muted-foreground">{definition.description}</p>
+                </div>
+                <FieldGroup>
+                  <Field data-invalid={error !== undefined}>
+                    <FieldLabel htmlFor={`context-${definition.key}-max-tokens`}>上下文窗口</FieldLabel>
+                    <Input
+                      id={`context-${definition.key}-max-tokens`}
+                      aria-label={`${definition.label}上下文窗口`}
+                      aria-invalid={error !== undefined}
+                      type="number"
+                      min={minContextWindowTokens}
+                      step={1}
+                      value={policy.max_tokens}
+                      onChange={(event) => updateContext(definition.key, "max_tokens", Number(event.target.value))}
+                    />
+                    <FieldDescription>达到该值后触发压缩</FieldDescription>
+                  </Field>
+                </FieldGroup>
+                {error ? <FieldError>{error}</FieldError> : null}
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -1382,11 +1525,13 @@ function ModelAliasCombobox({
   value,
   aliases,
   emptyLabel = "请选择模型",
+  ariaLabel = emptyLabel,
   onChange,
 }: {
   value: string;
   aliases: string[];
   emptyLabel?: string;
+  ariaLabel?: string;
   onChange: (value: string) => void;
 }) {
   const hasUnknownValue = Boolean(value) && !aliases.includes(value);
@@ -1394,7 +1539,7 @@ function ModelAliasCombobox({
 
   return (
     <Combobox items={items} value={value || null} onValueChange={(nextValue) => onChange(nextValue ?? "")}>
-      <ComboboxInput aria-label={emptyLabel} placeholder={emptyLabel} className="w-full" showClear={Boolean(value)} />
+      <ComboboxInput aria-label={ariaLabel} placeholder={emptyLabel} className="w-full" showClear={Boolean(value)} />
       <ComboboxContent>
         <ComboboxEmpty>未找到匹配的模型</ComboboxEmpty>
         <ComboboxList>

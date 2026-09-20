@@ -11,7 +11,8 @@ import { imageGen } from "./tools/image-gen";
 import { task } from "./tools/task";
 import { webfetch } from "./tools/web-fetch";
 import { websearch } from "./tools/web-search";
-import { compactHistory, isOverflow } from "./compaction";
+import { compactHistory } from "./compaction";
+import { config } from "@/config";
 import { injectSystemContext } from "./system-context";
 import { workspaceTools } from "@/workspace/tool";
 
@@ -187,7 +188,7 @@ export async function runMain(
     if (result.toolCalls.length === 0 && steeringPrompt === undefined) {
       let finalHistory: ChatHistory = [...historyMessages, ...savedMessages];
 
-      if (isOverflow(result.finalStep.usage)) {
+      if ((result.finalStep.usage.totalTokens ?? 0) >= config.context.main.max_tokens) {
         log.info("检测到上下文溢出，开始执行压缩...");
         finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
       }

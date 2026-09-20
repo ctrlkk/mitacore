@@ -34,6 +34,42 @@ describe("配置校验", () => {
     });
   });
 
+  it("为各持久化会话提供独立的默认上下文策略", () => {
+    const config = validateConfig({});
+
+    expect(config.context).toEqual({
+      plan: { max_tokens: 108000 },
+      reply: { max_tokens: 108000 },
+      main: { max_tokens: 108000 },
+    });
+  });
+
+  it("接受各持久化会话的独立上下文策略", () => {
+    const config = validateConfig({
+      context: {
+        plan: { max_tokens: 100000 },
+        reply: { max_tokens: 90000 },
+        main: { max_tokens: 80000 },
+      },
+    });
+
+    expect(config.context).toEqual({
+      plan: { max_tokens: 100000 },
+      reply: { max_tokens: 90000 },
+      main: { max_tokens: 80000 },
+    });
+  });
+
+  it("后端允许低于前端限制的上下文窗口", () => {
+    const config = validateConfig({
+      context: {
+        plan: { max_tokens: 31999 },
+      },
+    });
+
+    expect(config.context.plan.max_tokens).toBe(31999);
+  });
+
   it("允许单独关闭 OneBot 媒体消息", () => {
     const config = validateConfig({
       napcat: {
@@ -371,6 +407,12 @@ describe("配置文件", () => {
     expect(schema.properties.napcat.properties.enabled.default).toBe(false);
     expect(schema.properties.providers.items.properties.type.enum).toContain("deepseek");
     expect(schema.properties.model_schedule.properties.rules.maxItems).toBe(50);
+    expect(schema.properties.context.properties.plan.properties.max_tokens).toMatchObject({
+      type: "integer",
+      exclusiveMinimum: 0,
+      default: 108000,
+    });
+    expect(schema.properties.context.properties.plan.properties).not.toHaveProperty("preserve_tokens");
     expect(content).toContain('"examples"');
 
     await generate();

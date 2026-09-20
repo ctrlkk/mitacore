@@ -6,7 +6,8 @@ import { parseMarkdown, resolveMessageParts, type ParsedMessagePart, type ReplyO
 import { cleanMessage, splitMessage } from "@/message/splitter";
 import { dataPath, projectPath } from "@/utils/path";
 import { logger, type PinoLogger } from "@/logger";
-import { compactHistory, isOverflow } from "./compaction";
+import { compactHistory } from "./compaction";
+import { config } from "@/config";
 import { injectSystemContext } from "./system-context";
 import { logUsage } from "@/utils/format";
 
@@ -126,7 +127,7 @@ export async function createReplySession(
         });
       }
 
-      if (isOverflow(result.usage)) {
+      if ((result.usage.totalTokens ?? 0) >= config.context.reply.max_tokens) {
         log.info("检测到上下文溢出，开始执行压缩...");
         finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
       }
