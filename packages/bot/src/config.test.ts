@@ -129,7 +129,6 @@ describe("配置校验", () => {
                 top_k: 40,
                 presence_penalty: 0.1,
                 frequency_penalty: -0.1,
-                stop_sequences: ["</answer>"],
                 seed: 42,
                 reasoning: "high",
                 provider_options: {
@@ -150,7 +149,6 @@ describe("配置校验", () => {
       top_k: 40,
       presence_penalty: 0.1,
       frequency_penalty: -0.1,
-      stop_sequences: ["</answer>"],
       seed: 42,
       reasoning: "high",
       provider_options: {
@@ -388,7 +386,7 @@ describe("配置文件", () => {
     await expect(loadConfig(jsoncPath, jsonPath, tomlPath)).resolves.toEqual(saved);
   });
 
-  it("生成可独立使用的输入 Schema，保留说明、示例与约束", async () => {
+  it("生成可独立使用的输入 Schema，保留说明、复杂示例与约束", async () => {
     const { jsonPath } = await createConfigPaths();
     const generate = () =>
       promisify(execFile)(
@@ -413,7 +411,10 @@ describe("配置文件", () => {
       default: 108000,
     });
     expect(schema.properties.context.properties.plan.properties).not.toHaveProperty("preserve_tokens");
-    expect(content).toContain('"examples"');
+    expect(schema.properties.model_schedule.properties.rules.examples).toEqual([
+      [{ start: "00:00", end: "08:00", models: { reply: "deepseek-v4-flash" } }],
+    ]);
+    expect(content.match(/"examples":/g)).toHaveLength(1);
 
     await generate();
     await expect(readFile(jsonPath, "utf8")).resolves.toBe(content);

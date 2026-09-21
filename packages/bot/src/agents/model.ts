@@ -83,7 +83,6 @@ function applyModelOptions(
         topK: options.top_k,
         presencePenalty: options.presence_penalty,
         frequencyPenalty: options.frequency_penalty,
-        stopSequences: options.stop_sequences,
         seed: options.seed,
         providerOptions: options.provider_options
           ? ({ [providerOptionsKey[type]]: options.provider_options } as ProviderOptions)

@@ -104,13 +104,12 @@ type ModelOptions = {
   top_k?: number;
   presence_penalty?: number;
   frequency_penalty?: number;
-  stop_sequences?: string[];
   seed?: number;
   reasoning?: ReasoningLevel;
   provider_options?: Record<string, unknown>;
 };
 
-type ModelNumberOptionKey = Exclude<keyof ModelOptions, "stop_sequences" | "reasoning" | "provider_options">;
+type ModelNumberOptionKey = Exclude<keyof ModelOptions, "reasoning" | "provider_options">;
 
 type ModelProvider = {
   name: string;
@@ -1235,7 +1234,6 @@ function ModelOptionsEditor({
   );
   const [reasoning, setReasoning] = useState<ReasoningLevel | "unset">(model.options?.reasoning ?? "unset");
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [stopSequences, setStopSequences] = useState(model.options?.stop_sequences?.join("\n") ?? "");
   const [providerOptionsInput, setProviderOptionsInput] = useState(() =>
     model.options?.provider_options ? JSON.stringify(model.options.provider_options, null, 2) : "",
   );
@@ -1250,16 +1248,13 @@ function ModelOptionsEditor({
   const hasAdvancedErrors =
     advancedFields.some(({ key }) => Boolean(numberErrors.get(key))) || Boolean(providerOptionsResult.error);
   const advancedCount =
-    advancedFields.filter(({ key }) => numberInputs[key].trim()).length +
-    Number(Boolean(stopSequences.trim())) +
-    Number(Boolean(providerOptionsInput.trim()));
+    advancedFields.filter(({ key }) => numberInputs[key].trim()).length + Number(Boolean(providerOptionsInput.trim()));
 
   function resetOptions() {
     setNumberInputs(
       Object.fromEntries(modelNumberFields.map(({ key }) => [key, ""])) as Record<ModelNumberOptionKey, string>,
     );
     setReasoning("unset");
-    setStopSequences("");
     setProviderOptionsInput("");
     setAdvancedOpen(false);
   }
@@ -1300,11 +1295,6 @@ function ModelOptionsEditor({
     }
 
     if (reasoning !== "unset") options.reasoning = reasoning;
-    const sequences = stopSequences
-      .split(/\r?\n/)
-      .map((sequence) => sequence.trim())
-      .filter(Boolean);
-    if (sequences.length) options.stop_sequences = sequences;
     if (providerOptionsResult.value) options.provider_options = providerOptionsResult.value;
 
     onSave(Object.keys(options).length ? options : undefined);
@@ -1391,18 +1381,6 @@ function ModelOptionsEditor({
                   <FieldLegend variant="label">其他选项</FieldLegend>
                   <FieldGroup>
                     {advancedFields.filter(({ key }) => key === "seed").map(renderNumberField)}
-                    <Field>
-                      <FieldLabel htmlFor={`${fieldId}-stop-sequences`}>停止序列</FieldLabel>
-                      <Textarea
-                        id={`${fieldId}-stop-sequences`}
-                        rows={3}
-                        className="max-h-40 resize-y overflow-y-auto"
-                        value={stopSequences}
-                        placeholder={"每行一个停止序列\n例如：<END>"}
-                        onChange={(event) => setStopSequences(event.target.value)}
-                      />
-                      <FieldDescription>每行填写一个值，空行会被忽略。</FieldDescription>
-                    </Field>
                     <Field data-invalid={Boolean(providerOptionsResult.error)}>
                       <FieldLabel htmlFor={`${fieldId}-provider-options`}>供应商专属选项</FieldLabel>
                       <Textarea
@@ -1418,7 +1396,9 @@ function ModelOptionsEditor({
                       {providerOptionsResult.error ? (
                         <FieldError>{providerOptionsResult.error}</FieldError>
                       ) : (
-                        <FieldDescription>填写 {providerLabel} 支持的 JSON 对象，字段名保持原始格式。</FieldDescription>
+                        <FieldDescription>
+                          填写传递给模型供应商的 JSON 对象，字段名保持供应商原始格式。
+                        </FieldDescription>
                       )}
                     </Field>
                   </FieldGroup>

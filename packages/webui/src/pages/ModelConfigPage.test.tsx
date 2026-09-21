@@ -150,12 +150,20 @@ describe("ModelConfigPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "配置模型参数 test-model" }));
 
     expect(await screen.findByRole("heading", { name: "模型参数" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("供应商专属选项")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("最大输出 Tokens"), { target: { value: "4096" } });
     fireEvent.change(screen.getByLabelText("Temperature"), { target: { value: "0.6" } });
     expect(screen.queryByLabelText("Top P")).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: /高级参数/ }));
+    const providerOptions = screen.getByLabelText("供应商专属选项");
+    expect(screen.getByText("填写传递给模型供应商的 JSON 对象，字段名保持供应商原始格式。")).toBeInTheDocument();
+    fireEvent.change(providerOptions, { target: { value: "[]" } });
+    expect(screen.getByText("请输入 JSON 对象")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "应用参数" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /高级参数/ })).toHaveAttribute("aria-expanded", "true");
+    fireEvent.change(providerOptions, { target: { value: '{"reasoningEffort":"high"}' } });
     fireEvent.change(screen.getByLabelText("Top P"), { target: { value: "0.9" } });
-    fireEvent.change(screen.getByLabelText("停止序列"), { target: { value: "<END>\n\nDONE" } });
     expect(screen.getByRole("button", { name: /高级参数/ })).toHaveTextContent("已设置 2 项");
     fireEvent.click(screen.getByRole("button", { name: /高级参数/ }));
     fireEvent.click(screen.getByRole("button", { name: /高级参数/ }));
@@ -163,14 +171,6 @@ describe("ModelConfigPage", () => {
 
     fireEvent.click(screen.getByLabelText("推理强度"));
     fireEvent.click(await screen.findByRole("option", { name: "高 (high)" }));
-
-    const providerOptions = screen.getByLabelText("供应商专属选项");
-    fireEvent.change(providerOptions, { target: { value: "[]" } });
-    expect(screen.getByText("请输入 JSON 对象")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "应用参数" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: /高级参数/ }));
-    expect(screen.getByRole("button", { name: /高级参数/ })).toHaveAttribute("aria-expanded", "true");
-    fireEvent.change(providerOptions, { target: { value: '{"reasoningEffort":"high"}' } });
     fireEvent.click(screen.getByRole("button", { name: "应用参数" }));
 
     fireEvent.click(screen.getByRole("button", { name: "完成编辑" }));
@@ -187,7 +187,6 @@ describe("ModelConfigPage", () => {
               temperature: 0.6,
               top_p: 0.9,
               reasoning: "high",
-              stop_sequences: ["<END>", "DONE"],
               provider_options: { reasoningEffort: "high" },
             },
           },
