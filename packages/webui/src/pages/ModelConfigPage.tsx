@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Collapsible } from "radix-ui";
+import { NumericFormat } from "react-number-format";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -381,6 +382,41 @@ function getProviderEndpoint(baseUrl: string) {
   }
 }
 
+function ContextTokenInput({
+  id,
+  value,
+  ariaLabel,
+  invalid,
+  onChange,
+}: {
+  id: string;
+  value: number;
+  ariaLabel: string;
+  invalid: boolean;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <InputGroup>
+      <NumericFormat
+        customInput={InputGroupInput}
+        id={id}
+        inputMode="numeric"
+        thousandSeparator=","
+        decimalScale={0}
+        allowNegative={false}
+        className="tabular-nums"
+        aria-label={ariaLabel}
+        aria-invalid={invalid}
+        value={Number.isFinite(value) ? value : ""}
+        onValueChange={({ floatValue }, { source }) => {
+          if (source === "event") onChange(floatValue ?? 0);
+        }}
+      />
+      <InputGroupAddon align="inline-end">Tokens</InputGroupAddon>
+    </InputGroup>
+  );
+}
+
 export function ModelConfigPage() {
   const [config, setConfig] = useState<BotConfig>();
   const [savedConfig, setSavedConfig] = useState<string>();
@@ -623,17 +659,13 @@ export function ModelConfigPage() {
                 <FieldGroup>
                   <Field data-invalid={error !== undefined}>
                     <FieldLabel htmlFor={`context-${definition.key}-max-tokens`}>上下文窗口</FieldLabel>
-                    <Input
+                    <ContextTokenInput
                       id={`context-${definition.key}-max-tokens`}
-                      aria-label={`${definition.label}上下文窗口`}
-                      aria-invalid={error !== undefined}
-                      type="number"
-                      min={minContextWindowTokens}
-                      step={1}
+                      ariaLabel={`${definition.label}上下文窗口`}
+                      invalid={error !== undefined}
                       value={policy.max_tokens}
-                      onChange={(event) => updateContext(definition.key, "max_tokens", Number(event.target.value))}
+                      onChange={(value) => updateContext(definition.key, "max_tokens", value)}
                     />
-                    <FieldDescription>达到该值后触发压缩</FieldDescription>
                   </Field>
                 </FieldGroup>
                 {error ? <FieldError>{error}</FieldError> : null}

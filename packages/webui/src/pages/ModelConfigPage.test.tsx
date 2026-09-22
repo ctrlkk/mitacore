@@ -119,6 +119,25 @@ describe("ModelConfigPage", () => {
     });
   });
 
+  it("在输入过程中以千位分隔展示上下文窗口", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify(config), { headers: { "content-type": "application/json" } })),
+    );
+    renderPage();
+
+    const input = await screen.findByLabelText("规划层上下文窗口");
+    expect(input).toHaveValue("108,000");
+    expect(screen.getAllByText("Tokens")).toHaveLength(3);
+
+    fireEvent.focus(input);
+    expect(input).toHaveValue("108,000");
+    fireEvent.change(input, { target: { value: "96000" } });
+    expect(input).toHaveValue("96,000");
+  });
+
   it("上下文 token 配置无效时禁止保存", async () => {
     vi.stubGlobal(
       "fetch",
