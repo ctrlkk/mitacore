@@ -3,18 +3,21 @@ import { GaugeIcon, LoaderCircleIcon, RefreshCwIcon, SaveIcon } from "lucide-rea
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Switch } from "@/components/ui/switch";
 import { QueueLoopVisualizer } from "@/components/QueueLoopVisualizer";
 
 type BotConfig = Record<string, unknown> & {
   max_queue: number;
   debounce_ms: number;
+  preprocess_group_media: boolean;
 };
 
 type RuntimeSettings = {
   maxQueue: string;
   debounceMs: string;
+  preprocessGroupMedia: boolean;
 };
 
 function getErrorMessage(data: unknown, fallback: string) {
@@ -56,7 +59,11 @@ export function RuntimeSettingsPage() {
 
         const nextConfig = data as BotConfig;
         setConfig(nextConfig);
-        setSettings({ maxQueue: String(nextConfig.max_queue), debounceMs: String(nextConfig.debounce_ms) });
+        setSettings({
+          maxQueue: String(nextConfig.max_queue),
+          debounceMs: String(nextConfig.debounce_ms),
+          preprocessGroupMedia: nextConfig.preprocess_group_media ?? true,
+        });
       } catch (error) {
         if (!controller.signal.aborted) toast.error(error instanceof Error ? error.message : "无法加载消息循环设置");
       } finally {
@@ -79,6 +86,7 @@ export function RuntimeSettingsPage() {
       ...config,
       max_queue: Number(settings.maxQueue),
       debounce_ms: Number(settings.debounceMs),
+      preprocess_group_media: settings.preprocessGroupMedia,
     };
     setIsSaving(true);
     try {
@@ -156,7 +164,7 @@ export function RuntimeSettingsPage() {
             <GaugeIcon className="size-4" />
             循环参数
           </CardTitle>
-          <CardDescription>修改后立即应用到下方模拟器；保存后的服务配置需重启生效。</CardDescription>
+          <CardDescription>队列上限与等待时间会立即应用到下方模拟器；保存后的服务配置需重启生效。</CardDescription>
         </CardHeader>
         <CardContent>
           <FieldGroup className="grid gap-3 md:grid-cols-2">
@@ -207,6 +215,20 @@ export function RuntimeSettingsPage() {
                 收到最后一条消息后等待多久再评估处理，1秒~10秒。
               </FieldDescription>
               <FieldError className="sm:col-span-2">{debounceMsError}</FieldError>
+            </Field>
+
+            <Field orientation="horizontal" className="rounded-lg border p-3 md:col-span-2">
+              <FieldContent>
+                <FieldLabel htmlFor="preprocess-group-media">群聊媒体即时预处理</FieldLabel>
+                <FieldDescription className="text-xs">
+                  关闭后，群聊中的图片、视频和音频仅在消息触发回复时下载并转述；私聊不受影响。
+                </FieldDescription>
+              </FieldContent>
+              <Switch
+                id="preprocess-group-media"
+                checked={settings.preprocessGroupMedia}
+                onCheckedChange={(checked) => setSettings({ ...settings, preprocessGroupMedia: checked })}
+              />
             </Field>
           </FieldGroup>
         </CardContent>

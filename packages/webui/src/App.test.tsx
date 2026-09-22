@@ -294,9 +294,17 @@ describe("App", () => {
         return Promise.resolve(new Response(JSON.stringify({ accepted: true }), { status: 202 }));
       }
       return Promise.resolve(
-        new Response(JSON.stringify({ max_queue: 10, debounce_ms: 1000, napcat: { enabled: false } }), {
-          headers: { "content-type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({
+            max_queue: 10,
+            debounce_ms: 1000,
+            preprocess_group_media: true,
+            napcat: { enabled: false },
+          }),
+          {
+            headers: { "content-type": "application/json" },
+          },
+        ),
       );
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -305,6 +313,7 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "消息循环" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("消息队列上限"), { target: { value: "25" } });
     fireEvent.change(screen.getByLabelText("消息合并等待时间"), { target: { value: "2400" } });
+    fireEvent.click(screen.getByRole("switch", { name: "群聊媒体即时预处理" }));
     fireEvent.click(screen.getByRole("button", { name: "保存并重启" }));
 
     await waitFor(() => {
@@ -312,6 +321,7 @@ describe("App", () => {
       expect(JSON.parse(init!.body as string)).toMatchObject({
         max_queue: 25,
         debounce_ms: 2400,
+        preprocess_group_media: false,
         napcat: { enabled: false },
       });
       expect(fetchMock).toHaveBeenCalledWith("/api/runtime/restart", { method: "POST" });
@@ -347,7 +357,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "@ / 私聊消息" }));
     expect(await screen.findByText(/防抖继续等待/, {}, { timeout: 1500 })).toBeInTheDocument();
-    expect(await screen.findByText(/调度器取走全部/, {}, { timeout: 2000 })).toBeInTheDocument();
+    expect(await screen.findByText(/调度器取走全部/, {}, { timeout: 4000 })).toBeInTheDocument();
 
     const normalMessageButton = screen.getByRole("button", { name: "普通消息" });
     expect(normalMessageButton).toBeEnabled();

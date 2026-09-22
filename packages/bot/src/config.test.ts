@@ -24,6 +24,11 @@ afterEach(async () => {
 });
 
 describe("配置校验", () => {
+  it("默认立即预处理群聊媒体，并允许关闭", () => {
+    expect(validateConfig({}).preprocess_group_media).toBe(true);
+    expect(validateConfig({ preprocess_group_media: false }).preprocess_group_media).toBe(false);
+  });
+
   it("默认只接收 OneBot 图片消息", () => {
     const config = validateConfig({});
 
@@ -402,6 +407,8 @@ describe("配置文件", () => {
     expect(schema.properties.$schema.type).toBe("string");
     expect(schema.properties.max_queue).toMatchObject({ type: "integer", minimum: 1, default: 10 });
     expect(schema.properties.max_queue.description).toBeTruthy();
+    expect(schema.properties.preprocess_group_media).toMatchObject({ type: "boolean", default: true });
+    expect(schema.properties.preprocess_group_media.description).toBeTruthy();
     expect(schema.properties.napcat.properties.enabled.default).toBe(false);
     expect(schema.properties.providers.items.properties.type.enum).toContain("deepseek");
     expect(schema.properties.model_schedule.properties.rules.maxItems).toBe(50);

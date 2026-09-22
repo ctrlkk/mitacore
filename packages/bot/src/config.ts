@@ -240,6 +240,10 @@ export const configSchema = z
       .max(10000)
       .default(1000)
       .describe("收到最后一条消息后等待多久再判断是否处理（毫秒），用于合并连续消息"),
+    preprocess_group_media: z
+      .boolean()
+      .default(true)
+      .describe("是否在群聊媒体消息入队时立即下载并转述；关闭后仅在消息触发回复时处理，私聊不受影响"),
     providers: z
       .array(providerSchema)
       .default(defaultProviders)
