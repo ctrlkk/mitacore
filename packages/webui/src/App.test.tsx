@@ -356,8 +356,7 @@ describe("App", () => {
     expect(screen.getByLabelText("已淘汰消息数")).toHaveTextContent("1");
 
     fireEvent.click(screen.getByRole("button", { name: "@ / 私聊消息" }));
-    expect(await screen.findByText(/防抖继续等待/, {}, { timeout: 1500 })).toBeInTheDocument();
-    expect(await screen.findByText(/调度器取走全部/, {}, { timeout: 4000 })).toBeInTheDocument();
+    await waitFor(() => expect(within(queue).queryAllByRole("listitem")).toHaveLength(0), { timeout: 5000 });
 
     const normalMessageButton = screen.getByRole("button", { name: "普通消息" });
     expect(normalMessageButton).toBeEnabled();

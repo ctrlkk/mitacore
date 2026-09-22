@@ -618,15 +618,12 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
   const [compact, setCompact] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [flow, setFlow] = useState<ReactFlowInstance<LoopNode, LoopEdge> | null>(null);
-  const [history, setHistory] = useState<{ id: number; time: number; text: string }[]>([]);
-  const historyIdRef = useRef(0);
   const [processingProgress, setProcessingProgress] = useState(0);
   const processingProgressTimerRef = useRef<number | undefined>(undefined);
   const [messages, setMessages] = useState<DemoMessage[]>([]);
   const [phase, setPhase] = useState<LoopPhase>("idle");
   const [path, setPath] = useState<FlowPath>("idle");
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
-  const [status, updateStatus] = useState("从「完整演示」开始，或手动加入消息，观察两条并行支线如何汇合。");
   const [cycle, setCycle] = useState(0);
   const [discarded, setDiscarded] = useState(0);
   const [processed, setProcessed] = useState(0);
@@ -649,12 +646,6 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
   const preprocessDurationsRef = useRef(new Set<number>());
   const preprocessTasksRef = useRef(new Map<number, { startedAt: number; duration: number }>());
   const demoTimerRefs = useRef<number[]>([]);
-
-  function setStatus(text: string) {
-    updateStatus(text);
-    const entry = { id: ++historyIdRef.current, time: clock.now(), text };
-    setHistory((current) => (current.at(-1)?.text === text ? current : [...current.slice(-19), entry]));
-  }
 
   useEffect(() => {
     if (paused) return;
@@ -745,8 +736,6 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
     setProcessingCount(batchSize);
     setPhase("processing");
     setPath("process");
-    setStatus(`硬触发成立，调度器取走全部 ${batchSize} 条消息并构建 prompt。`);
-
     const startedAt = clock.now();
     setProcessingProgress(0);
     processingProgressTimerRef.current = clock.setInterval(
@@ -766,7 +755,6 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
         clearCycleTimers();
         setRemainingMs(0);
         commitMessages([]);
-        setStatus(`上一批处理完成，调度器立即取走等待中的 ${queued.length} 条消息。`);
         startProcessing(queued.length);
         return;
       }
@@ -774,9 +762,6 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
       pendingTriggerRef.current = false;
       setPhase((current) => (current === "processing" ? "complete" : current));
       setPath((current) => (current === "process" ? "complete" : current));
-      if (queued.length === 0) {
-        setStatus(`本批次 ${batchSize} 条消息处理完成，循环返回队列等待下一批。`);
-      }
       setIsDemoRunning(false);
       processingPathTimerRef.current = clock.setTimeout(() => {
         setPhase((current) => (current === "complete" ? "idle" : current));
@@ -800,7 +785,6 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
 
       if (shouldWaitForResources && pendingResources > 0) {
         setPath("resources");
-        setStatus(`静默窗口已结束，仍有 ${pendingResources} 条消息在预处理；防抖继续等待。`);
         evaluationTimerRef.current = clock.setTimeout(continueEvaluation, 50);
         return;
       }
@@ -808,11 +792,6 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
       if (!decisionDelayStarted) {
         decisionDelayStarted = true;
         setPath("evaluate");
-        setStatus(
-          shouldWaitForResources
-            ? `静默窗口和异步预处理均已完成，正在判断 ${latestUnprocessed.length} 条新消息。`
-            : `静默窗口结束，正在判断 ${latestUnprocessed.length} 条新消息是否满足触发条件。`,
-        );
         evaluationTimerRef.current = clock.setTimeout(continueEvaluation, evaluationDuration);
         return;
       }
@@ -820,11 +799,6 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
       if (latestUnprocessed.length === 0 || (!latestHasForceTrigger && latestUnprocessed.length < 5)) {
         setPhase("collecting");
         setPath("return");
-        setStatus(
-          latestUnprocessed.length === 0
-            ? "没有新的待评估消息，循环返回收集状态。"
-            : `普通群聊累计 ${latestUnprocessed.length} 条，未满 5 条，返回队列继续收集。`,
-        );
         setIsDemoRunning(false);
         pathTimerRef.current = clock.setTimeout(() => setPath("idle"), returnPathDuration);
         return;
@@ -836,7 +810,6 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
         );
         setPhase("collecting");
         setPath("return");
-        setStatus("普通群聊已完成评估；主动插话当前关闭，整批消息返回队列等待硬触发。");
         setIsDemoRunning(false);
         pathTimerRef.current = clock.setTimeout(() => setPath("idle"), returnPathDuration);
         return;
@@ -849,7 +822,6 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
         pendingTriggerRef.current = true;
         setPhase("collecting");
         setPath("return");
-        setStatus("当前批次仍在处理；新批次已触发并在调度器中等待，不会阻塞后续输入。");
         setIsDemoRunning(false);
         return;
       }
@@ -894,7 +866,6 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
     commitMessages(next);
     setPhase("debouncing");
     setPath("preprocess");
-    setStatus(`${force ? "@ / 私聊硬触发消息" : "普通群聊消息"}已启动异步资源预处理，并立即进入队列重新计时。`);
     setCycle((value) => value + 1);
     const countdownEndsAt = clock.now() + debounceMs;
     setRemainingMs(debounceMs);
@@ -921,7 +892,6 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
     setPhase("idle");
     setPath("idle");
     setRemainingMs(null);
-    setStatus("循环已重置。加入消息后，活动路径会显示数据的实际流向。");
     setDiscarded(0);
     setProcessed(0);
     setProcessingCount(0);
@@ -930,7 +900,6 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
     setPreprocessingProgress(0);
     setIsDemoRunning(false);
     setPaused(false);
-    setHistory([]);
     nextMessageIdRef.current = 1;
   }
 
@@ -948,48 +917,44 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
     <MotionConfig reducedMotion="user">
       <Card className="overflow-hidden py-0">
         <CardContent className="flex flex-col gap-0 px-0">
-          <div className="flex flex-col gap-3 border-b p-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={runDemo}>
-                <PlayIcon data-icon="inline-start" />
-                完整演示
+          <div className="flex flex-wrap items-center gap-2 border-b p-4">
+            <Button onClick={runDemo}>
+              <PlayIcon data-icon="inline-start" />
+              完整演示
+            </Button>
+            <Button variant="secondary" onClick={() => addMessage(false)}>
+              <MessageCircleMoreIcon data-icon="inline-start" />
+              普通消息
+            </Button>
+            <Button variant="secondary" onClick={() => addMessage(true)}>
+              <AtSignIcon data-icon="inline-start" />@ / 私聊消息
+            </Button>
+            <div className="flex flex-wrap items-center gap-1 sm:ml-auto">
+              <Button variant="ghost" onClick={() => setPaused(!paused)} aria-pressed={paused}>
+                {paused ? <PlayIcon data-icon="inline-start" /> : <PauseIcon data-icon="inline-start" />}
+                {paused ? "继续" : "暂停"}
               </Button>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="secondary" onClick={() => addMessage(false)}>
-                <MessageCircleMoreIcon data-icon="inline-start" />
-                普通消息
+              <Button
+                variant="ghost"
+                disabled={!paused}
+                onClick={() => clock.advance(250)}
+                title="暂停时推进 0.25 秒"
+              >
+                <StepForwardIcon data-icon="inline-start" />
+                单步
               </Button>
-              <Button variant="secondary" onClick={() => addMessage(true)}>
-                <AtSignIcon data-icon="inline-start" />@ / 私聊消息
+              <Button
+                variant="ghost"
+                onClick={() => setSpeed(speed === 0.5 ? 1 : speed === 1 ? 2 : 0.5)}
+                aria-label={`播放速度 ${speed} 倍，点击切换`}
+              >
+                <GaugeIcon data-icon="inline-start" />
+                {speed}×
               </Button>
-              <div className="flex flex-wrap items-center gap-1 sm:ml-auto">
-                <Button variant="ghost" onClick={() => setPaused(!paused)} aria-pressed={paused}>
-                  {paused ? <PlayIcon data-icon="inline-start" /> : <PauseIcon data-icon="inline-start" />}
-                  {paused ? "继续" : "暂停"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  disabled={!paused}
-                  onClick={() => clock.advance(250)}
-                  title="暂停时推进 0.25 秒"
-                >
-                  <StepForwardIcon data-icon="inline-start" />
-                  单步
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => setSpeed(speed === 0.5 ? 1 : speed === 1 ? 2 : 0.5)}
-                  aria-label={`播放速度 ${speed} 倍，点击切换`}
-                >
-                  <GaugeIcon data-icon="inline-start" />
-                  {speed}×
-                </Button>
-                <Button variant="ghost" onClick={resetVisualizer}>
-                  <RotateCcwIcon data-icon="inline-start" />
-                  重置
-                </Button>
-              </div>
+              <Button variant="ghost" onClick={resetVisualizer}>
+                <RotateCcwIcon data-icon="inline-start" />
+                重置
+              </Button>
             </div>
           </div>
           <section role="region" aria-label="会话队列" className="sr-only">
@@ -1086,90 +1051,6 @@ export function QueueLoopVisualizer({ maxQueue, debounceMs }: { maxQueue: number
             <span className="sm:ml-auto">拖动平移 · 右下角缩放与适应画布</span>
           </div>
 
-          <div className="flex items-start gap-2 border-t px-3 py-2">
-            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
-            <p role="status" className="text-xs leading-5 text-muted-foreground">
-              {status}
-            </p>
-          </div>
-          <div className="grid border-t md:grid-cols-2">
-            <section className="flex flex-col gap-2 p-3" aria-label="当前消息状态">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-sm font-medium">队列快照</h3>
-                <Badge variant="outline">{messages.filter((message) => !message.evaluated).length} 条待评估</Badge>
-                <Badge variant="secondary">
-                  <LoaderCircleIcon data-icon="inline-start" />
-                  资源准备中
-                </Badge>
-                <Badge variant="outline">● 资源就绪</Badge>
-                <Badge variant="outline">
-                  <CheckIcon data-icon="inline-start" />
-                  已评估，仍保留
-                </Badge>
-              </div>
-              <div className="flex min-h-8 flex-wrap items-start gap-1.5" aria-label="消息状态快照">
-                <AnimatePresence initial={false} mode="popLayout">
-                  {messages.slice(-8).map((message) => (
-                    <motion.div
-                      key={message.id}
-                      layout
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.8 }}
-                    >
-                      <Badge variant={message.force ? "default" : "outline"}>
-                        {message.force ? <AtSignIcon data-icon="inline-start" /> : null}#{message.id} ·{" "}
-                        {message.evaluated ? "已评估" : message.preprocessed ? "就绪" : "准备中"}
-                      </Badge>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-                {messages.length > 8 ? <Badge variant="secondary">另有 {messages.length - 8} 条</Badge> : null}
-                {messages.length === 0 ? (
-                  <p className="text-xs leading-5 text-muted-foreground">队列为空，等待新消息进入。</p>
-                ) : null}
-              </div>
-              <p className="text-xs leading-5 text-muted-foreground">
-                @ / 私聊跳过数量门槛，但仍等待静默与资源完成。普通消息攒够 5 条才评估；当前主动插话关闭，不会自动回复。
-              </p>
-              {processingCount > 0 ? (
-                <p className="text-xs leading-5 text-primary">
-                  代理正在处理 {processingCount} 条；新消息继续进入下一批队列。
-                </p>
-              ) : null}
-            </section>
-            <section className="min-w-0 border-t p-3 md:border-t-0 md:border-l" aria-label="运行轨迹">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h3 className="text-sm font-medium">运行轨迹</h3>
-                <span className="text-xs text-muted-foreground">最近 20 个事件 · 模拟时间</span>
-              </div>
-              <ol
-                className="flex h-32 flex-col gap-2 overflow-y-auto overscroll-contain text-xs"
-                tabIndex={0}
-                aria-label="历史事件"
-              >
-                {history.length < 2 ? (
-                  <li className="text-muted-foreground">加入消息后，这里会记录每次等待与触发的原因。</li>
-                ) : null}
-                {history
-                  .slice(0, -1)
-                  .toReversed()
-                  .map((entry) => (
-                    <motion.li
-                      key={entry.id}
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="flex items-start gap-2"
-                    >
-                      <span className="shrink-0 font-mono text-muted-foreground">
-                        {(entry.time / 1000).toFixed(2)}s
-                      </span>
-                      <span className="leading-5 text-muted-foreground">{entry.text}</span>
-                    </motion.li>
-                  ))}
-              </ol>
-            </section>
-          </div>
         </CardContent>
       </Card>
     </MotionConfig>

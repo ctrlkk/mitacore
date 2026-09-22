@@ -50,7 +50,6 @@ describe("消息循环实验台", () => {
     act(() => vi.advanceTimersByTime(5000));
     expect(within(screen.getByRole("region", { name: "会话队列" })).queryAllByRole("listitem")).toHaveLength(0);
     expect(screen.getByLabelText("异步预处理消息数")).toHaveTextContent("0");
-    expect(screen.getByRole("status")).toHaveTextContent("循环已重置");
   });
 
   it("普通消息评估后保留，硬触发取走整批，处理中继续接收新消息", () => {
@@ -59,11 +58,9 @@ describe("消息循环实验台", () => {
     act(() => vi.advanceTimersByTime(4000));
     const queue = screen.getByRole("region", { name: "会话队列" });
     expect(within(queue).getAllByRole("listitem")).toHaveLength(5);
-    expect(screen.getByRole("status")).toHaveTextContent("主动插话当前关闭");
     click("@ / 私聊消息");
     act(() => vi.advanceTimersByTime(4000));
     expect(within(queue).queryAllByRole("listitem")).toHaveLength(0);
-    expect(screen.getByRole("status")).toHaveTextContent("取走全部 6 条");
     click("普通消息");
     expect(within(queue).getAllByRole("listitem")).toHaveLength(1);
     act(() => vi.advanceTimersByTime(1500));
