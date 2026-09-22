@@ -424,7 +424,8 @@ export function createBot(sessionId: string) {
           log.info({ prompt: steeringPrompt }, "工具循环中插入用户输入");
           return steeringPrompt;
         };
-        if (true) {
+        // 单AGENT模式目前只用来开发，暂时用env控制
+        if (!process.env.AGENT) {
           const replied = await runPlanner(prompt, onReply, log, takeSteeringPrompt);
           if (!replied) {
             log.info("规划层未调用 submit_plan，跳过回复");
