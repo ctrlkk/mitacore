@@ -1,6 +1,6 @@
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
@@ -352,6 +352,19 @@ describe("配置文件", () => {
     await expect(readFile(jsonPath, "utf8")).resolves.toBe(
       `${JSON.stringify({ $schema: "./config.schema.json", ...saved }, null, 2)}\n`,
     );
+  });
+
+  it("同进程并发保存时依次写入并清理临时文件", async () => {
+    const { jsoncPath } = await createConfigPaths();
+    const [, lastSaved] = await Promise.all([
+      saveConfig({ max_queue: 33 }, jsoncPath),
+      saveConfig({ max_queue: 34 }, jsoncPath),
+    ]);
+
+    await expect(readFile(jsoncPath, "utf8")).resolves.toBe(
+      `${JSON.stringify({ $schema: "./config.schema.json", ...lastSaved }, null, 2)}\n`,
+    );
+    await expect(readdir(dirname(jsoncPath))).resolves.toEqual(["config.jsonc"]);
   });
 
   it("保存 JSONC 时移除注释并保持内容有效", async () => {

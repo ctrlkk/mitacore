@@ -1,8 +1,9 @@
 import { readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { extname } from "node:path";
 import { parse as parseJsonc, type ParseError } from "jsonc-parser";
-import { parse } from "smol-toml";
 import { z } from "zod";
-import { projectPath } from "./utils/path";
+import { migrateLegacyTomlConfig } from "./migration";
+import { projectPath } from "../utils/path";
 
 const providerType = z.enum(["anthropic", "google", "openai-responses", "openai-compatible", "deepseek"]);
 
@@ -288,6 +289,7 @@ export type Config = z.infer<typeof configSchema>;
 export const defaultConfig: Config = configSchema.parse({});
 export let config = structuredClone(defaultConfig);
 let activeConfigPath = projectPath("config.jsonc");
+let pendingConfigWrite: Promise<void> = Promise.resolve();
 
 export class ConfigValidationError extends Error {
   constructor(
@@ -305,18 +307,30 @@ export function validateConfig(input: unknown): Config {
   return result.data;
 }
 
-async function writeConfigFile(validated: Config, path: string): Promise<void> {
-  const temporaryPath = `${path}.tmp-${process.pid}-${crypto.randomUUID()}`;
-  try {
-    await writeFile(temporaryPath, `${JSON.stringify({ $schema: "./config.schema.json", ...validated }, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
+function writeConfigFile(validated: Config, path: string): Promise<void> {
+  const extension = extname(path);
+  const temporaryPath = `${path.slice(0, path.length - extension.length)}.tmp${extension}`;
+  // 固定临时文件名需要在进程内串行写入，避免同时保存时互相覆盖临时文件。
+  const write = pendingConfigWrite
+    .catch(() => undefined)
+    .then(async () => {
+      try {
+        await writeFile(
+          temporaryPath,
+          `${JSON.stringify({ $schema: "./config.schema.json", ...validated }, null, 2)}\n`,
+          {
+            encoding: "utf8",
+            mode: 0o600,
+          },
+        );
+        await rename(temporaryPath, path);
+      } catch (error) {
+        await unlink(temporaryPath).catch(() => undefined);
+        throw error;
+      }
     });
-    await rename(temporaryPath, path);
-  } catch (error) {
-    await unlink(temporaryPath).catch(() => undefined);
-    throw error;
-  }
+  pendingConfigWrite = write;
+  return write;
 }
 
 function isNotFound(error: unknown): boolean {
@@ -370,20 +384,7 @@ export async function loadConfig(
 
   const toml = await readOptionalConfigFile(legacyTomlPath, "旧 TOML");
   if (toml !== undefined) {
-    let parsed: unknown;
-    try {
-      parsed = parse(toml);
-    } catch {
-      throw new Error(`旧 TOML 配置文件解析失败：${legacyTomlPath}`);
-    }
-
-    const validated = validateConfig(parsed);
-    try {
-      await writeConfigFile(validated, jsoncPath);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`迁移配置写入失败 ${jsoncPath}：${message}`);
-    }
+    const validated = await migrateLegacyTomlConfig(toml, legacyTomlPath, jsoncPath, validateConfig, writeConfigFile);
     activeConfigPath = jsoncPath;
     config = validated;
     return config;
