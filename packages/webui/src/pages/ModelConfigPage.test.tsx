@@ -155,6 +155,43 @@ describe("ModelConfigPage", () => {
     expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
   });
 
+  it("保存校验失败时展示所有字段的具体原因，并在修改配置后清除旧错误", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/config" && init?.method === "PUT") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: {
+                message: "配置校验失败",
+                fields: [
+                  { path: "providers.0.options.api_key", message: "API 密钥不能为空" },
+                  { path: "models.reply", message: '模型别名 "unknown" 不存在' },
+                  { path: "model_schedule.rules.0.models", message: "至少需要覆盖一个模型职责" },
+                ],
+              },
+            }),
+            { status: 400, headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(config), { headers: { "content-type": "application/json" } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "添加时段" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("配置校验失败");
+    expect(alert).toHaveTextContent("providers.0.options.api_key：API 密钥不能为空");
+    expect(alert).toHaveTextContent('models.reply：模型别名 "unknown" 不存在');
+    expect(alert).toHaveTextContent("model_schedule.rules.0.models：至少需要覆盖一个模型职责");
+
+    fireEvent.click(screen.getByRole("button", { name: "删除时段" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("保存模型默认参数", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input) === "/api/config" && init?.method === "PUT") {

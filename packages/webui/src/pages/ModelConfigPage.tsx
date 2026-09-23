@@ -132,6 +132,8 @@ type BotConfig = Record<string, unknown> & {
   context: Record<ContextRole, ContextPolicy>;
 };
 
+type ValidationField = { path: string; message: string };
+
 const roleDefinitions: Array<{ key: ModelRole; label: string; description: string }> = [
   { key: "plan", label: "规划", description: "调用工具并制定回复策略" },
   { key: "reply", label: "回复", description: "根据规划生成并发送回复" },
@@ -329,6 +331,19 @@ function getErrorMessage(data: unknown, fallback: string) {
   return error.message;
 }
 
+function getErrorFields(data: unknown): ValidationField[] {
+  if (!data || typeof data !== "object" || !("error" in data)) return [];
+  const error = data.error;
+  if (!error || typeof error !== "object" || !("fields" in error) || !Array.isArray(error.fields)) return [];
+  return error.fields.filter(
+    (field): field is ValidationField =>
+      field !== null &&
+      typeof field === "object" &&
+      typeof field.path === "string" &&
+      typeof field.message === "string",
+  );
+}
+
 async function getResponseError(response: Response, fallback: string) {
   return getErrorMessage(await response.json().catch(() => undefined), fallback);
 }
@@ -422,6 +437,7 @@ export function ModelConfigPage() {
   const [savedConfig, setSavedConfig] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveValidationError, setSaveValidationError] = useState<{ message: string; fields: ValidationField[] }>();
   const [editor, setEditor] = useState<{ index: number | null; provider: ModelProvider }>();
   const [isPresetPickerOpen, setIsPresetPickerOpen] = useState(false);
   const [areSpecializedRolesOpen, setAreSpecializedRolesOpen] = useState(false);
@@ -461,6 +477,7 @@ export function ModelConfigPage() {
   );
 
   function updateConfig(update: (current: BotConfig) => BotConfig) {
+    setSaveValidationError(undefined);
     setConfig((current) => (current ? update(current) : current));
   }
 
@@ -492,13 +509,20 @@ export function ModelConfigPage() {
     if (!config) return;
     const configToSave = JSON.stringify(config);
     setIsSaving(true);
+    setSaveValidationError(undefined);
     try {
       const response = await fetch("/api/config", {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: configToSave,
       });
-      if (!response.ok) throw new Error(await getResponseError(response, "保存配置失败"));
+      if (!response.ok) {
+        const data: unknown = await response.json().catch(() => undefined);
+        const message = getErrorMessage(data, "保存配置失败");
+        const fields = getErrorFields(data);
+        if (fields.length) setSaveValidationError({ message, fields });
+        throw new Error(fields.length ? `${message}，请查看下方错误详情` : message);
+      }
       setSavedConfig(configToSave);
       toast.success("模型配置已保存");
     } catch (error) {
@@ -564,6 +588,20 @@ export function ModelConfigPage() {
           </Button>
         </div>
       </div>
+
+      {saveValidationError ? (
+        <div role="alert" className="rounded-lg border border-destructive/50 bg-destructive/5 p-4 text-sm">
+          <p className="font-medium text-destructive">{saveValidationError.message}</p>
+          <ul className="mt-2 max-h-64 list-disc space-y-1 overflow-y-auto pl-5">
+            {saveValidationError.fields.map((field, index) => (
+              <li key={`${field.path}-${index}`} className="wrap-break-word">
+                {field.path ? <span className="font-medium">{field.path}：</span> : null}
+                {field.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <section aria-labelledby="model-roles-title" className="rounded-xl border bg-card">
         <div className="flex flex-col gap-1 border-b px-4 py-4 sm:px-5">
