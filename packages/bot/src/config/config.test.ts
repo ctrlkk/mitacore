@@ -225,16 +225,21 @@ describe("配置文件", () => {
     await expect(loadConfig(jsoncPath, jsonPath, tomlPath)).resolves.toMatchObject({ max_queue: 23 });
   });
 
-  it("仅存在 TOML 时迁移为 JSONC 并保留旧文件", async () => {
+  it("仅存在 TOML 时迁移为 JSON 并清理旧配置及示例文件", async () => {
     const { jsoncPath, jsonPath, tomlPath } = await createConfigPaths();
-    const toml = "max_queue = 24\n";
-    await writeFile(tomlPath, toml);
+    const exampleTomlPath = join(dirname(tomlPath), "config.example.toml");
+    await writeFile(tomlPath, "max_queue = 24\n");
+    await writeFile(exampleTomlPath, "max_queue = 10\n");
 
     await expect(loadConfig(jsoncPath, jsonPath, tomlPath)).resolves.toMatchObject({ max_queue: 24 });
-    await expect(readFile(jsoncPath, "utf8")).resolves.toBe(
+    await expect(readFile(jsonPath, "utf8")).resolves.toBe(
       `${JSON.stringify({ $schema: "./config.schema.json", ...validateConfig({ max_queue: 24 }) }, null, 2)}\n`,
     );
-    await expect(readFile(tomlPath, "utf8")).resolves.toBe(toml);
+    await expect(access(jsoncPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(tomlPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(exampleTomlPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await saveConfig({ max_queue: 25 });
+    await expect(readFile(jsonPath, "utf8")).resolves.toContain('"max_queue": 25');
   });
 
   it("迁移成功后不再读取旧 TOML", async () => {
@@ -289,15 +294,16 @@ describe("配置文件", () => {
     await expect(loadConfig(jsoncPath, jsonPath, tomlPath)).rejects.toThrow("配置校验失败");
   });
 
-  it("TOML 损坏时不生成 JSONC", async () => {
+  it("TOML 损坏时不生成 JSON", async () => {
     const { jsoncPath, jsonPath, tomlPath } = await createConfigPaths();
     await writeFile(tomlPath, "[broken");
 
     await expect(loadConfig(jsoncPath, jsonPath, tomlPath)).rejects.toThrow("旧 TOML 配置文件解析失败");
-    await expect(access(jsoncPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(jsonPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(tomlPath, "utf8")).resolves.toBe("[broken");
   });
 
-  it("TOML 包含非 JSON 值时不生成 JSONC", async () => {
+  it("TOML 包含非 JSON 值时不生成 JSON", async () => {
     const { jsoncPath, jsonPath, tomlPath } = await createConfigPaths();
     await writeFile(
       tomlPath,
@@ -318,16 +324,30 @@ describe("配置文件", () => {
     );
 
     await expect(loadConfig(jsoncPath, jsonPath, tomlPath)).rejects.toThrow("配置校验失败");
-    await expect(access(jsoncPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(jsonPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(tomlPath)).resolves.toBeUndefined();
   });
 
-  it("三种配置文件都不存在时使用默认配置，默认保存写入 JSONC", async () => {
+  it("迁移写入 JSON 失败时保留旧 TOML 及示例文件", async () => {
+    const { jsoncPath, jsonPath, tomlPath } = await createConfigPaths();
+    const unavailableJsonPath = join(dirname(jsonPath), "missing", "config.json");
+    const exampleTomlPath = join(dirname(tomlPath), "config.example.toml");
+    await writeFile(tomlPath, "max_queue = 24\n");
+    await writeFile(exampleTomlPath, "max_queue = 10\n");
+
+    await expect(loadConfig(jsoncPath, unavailableJsonPath, tomlPath)).rejects.toThrow("迁移配置写入失败");
+    await expect(readFile(tomlPath, "utf8")).resolves.toBe("max_queue = 24\n");
+    await expect(readFile(exampleTomlPath, "utf8")).resolves.toBe("max_queue = 10\n");
+  });
+
+  it("三种配置文件都不存在时使用默认配置，默认保存写入 JSON", async () => {
     const { jsoncPath, jsonPath, tomlPath } = await createConfigPaths();
 
     await expect(loadConfig(jsoncPath, jsonPath, tomlPath)).resolves.toEqual(defaultConfig);
     await expect(access(jsoncPath)).rejects.toMatchObject({ code: "ENOENT" });
     await saveConfig({ max_queue: 28 });
-    await expect(readFile(jsoncPath, "utf8")).resolves.toContain('"max_queue": 28');
+    await expect(readFile(jsonPath, "utf8")).resolves.toContain('"max_queue": 28');
+    await expect(access(jsoncPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("仅加载 JSON 后默认保存仍写入 JSON", async () => {

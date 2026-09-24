@@ -288,7 +288,7 @@ export const configSchema = z
 export type Config = z.infer<typeof configSchema>;
 export const defaultConfig: Config = configSchema.parse({});
 export let config = structuredClone(defaultConfig);
-let activeConfigPath = projectPath("config.jsonc");
+let activeConfigPath = projectPath("config.json");
 let pendingConfigWrite: Promise<void> = Promise.resolve();
 
 export class ConfigValidationError extends Error {
@@ -384,13 +384,13 @@ export async function loadConfig(
 
   const toml = await readOptionalConfigFile(legacyTomlPath, "旧 TOML");
   if (toml !== undefined) {
-    const validated = await migrateLegacyTomlConfig(toml, legacyTomlPath, jsoncPath, validateConfig, writeConfigFile);
-    activeConfigPath = jsoncPath;
+    const validated = await migrateLegacyTomlConfig(toml, legacyTomlPath, jsonPath, validateConfig, writeConfigFile);
+    activeConfigPath = jsonPath;
     config = validated;
     return config;
   }
 
-  activeConfigPath = jsoncPath;
+  activeConfigPath = jsonPath;
   config = structuredClone(defaultConfig);
   return config;
 }
