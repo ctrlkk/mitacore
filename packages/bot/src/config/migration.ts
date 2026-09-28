@@ -1,5 +1,3 @@
-import { unlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
 import { parse } from "smol-toml";
 import type { Config } from "./index";
 
@@ -23,21 +21,6 @@ export async function migrateLegacyTomlConfig(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`迁移配置写入失败 ${jsonPath}：${message}`);
-  }
-  try {
-    await unlink(legacyTomlPath);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`迁移后删除旧 TOML 配置文件失败 ${legacyTomlPath}：${message}`);
-  }
-  const exampleTomlPath = join(dirname(legacyTomlPath), "config.example.toml");
-  try {
-    await unlink(exampleTomlPath);
-  } catch (error) {
-    if (!(error instanceof Error && (error as NodeJS.ErrnoException).code === "ENOENT")) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`迁移后删除旧 TOML 示例文件失败 ${exampleTomlPath}：${message}`);
-    }
   }
   return validated;
 }

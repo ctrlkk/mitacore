@@ -225,7 +225,7 @@ describe("配置文件", () => {
     await expect(loadConfig(jsoncPath, jsonPath, tomlPath)).resolves.toMatchObject({ max_queue: 23 });
   });
 
-  it("仅存在 TOML 时迁移为 JSON 并清理旧配置及示例文件", async () => {
+  it("仅存在 TOML 时迁移为 JSON 并保留旧配置及示例文件", async () => {
     const { jsoncPath, jsonPath, tomlPath } = await createConfigPaths();
     const exampleTomlPath = join(dirname(tomlPath), "config.example.toml");
     await writeFile(tomlPath, "max_queue = 24\n");
@@ -236,8 +236,8 @@ describe("配置文件", () => {
       `${JSON.stringify({ $schema: "./config.schema.json", ...validateConfig({ max_queue: 24 }) }, null, 2)}\n`,
     );
     await expect(access(jsoncPath)).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(access(tomlPath)).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(access(exampleTomlPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(tomlPath, "utf8")).resolves.toBe("max_queue = 24\n");
+    await expect(readFile(exampleTomlPath, "utf8")).resolves.toBe("max_queue = 10\n");
     await saveConfig({ max_queue: 25 });
     await expect(readFile(jsonPath, "utf8")).resolves.toContain('"max_queue": 25');
   });
