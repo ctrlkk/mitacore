@@ -2,6 +2,7 @@ import {
   BrainCircuitIcon,
   FileText,
   HouseIcon,
+  MessagesSquareIcon,
   ImagesIcon,
   NetworkIcon,
   Settings2Icon,
@@ -80,6 +81,14 @@ export function AppSidebarContent() {
                   <Link to="/persona" onClick={handleNavigation}>
                     <FileText />
                     <span>人设编辑器</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={pathname === "/history"}>
+                  <Link to="/history" onClick={handleNavigation}>
+                    <MessagesSquareIcon />
+                    <span>对话历史</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

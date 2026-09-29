@@ -21,6 +21,13 @@ import {
 import { streamStickerFormSuggestion } from "@/agents/stickers";
 import { z } from "zod";
 import { channelController } from "@/app/channel-controller";
+import { HistoryBusyError } from "@/app/history-access";
+import {
+  clearConversation,
+  getConversationHistory,
+  HistoryConflictError,
+  rollbackConversation,
+} from "@/app/history-management";
 
 const MEDIA_KIND_BY_EXTENSION = new Map<string, MediaKind>([
   [".jpg", "image"],
@@ -196,6 +203,9 @@ const verifyCodeSchema = z.object({
 });
 
 function errorResponse(error: unknown) {
+  if (error instanceof HistoryBusyError || error instanceof HistoryConflictError) {
+    return { status: 409 as const, body: { error: { message: error.message } } };
+  }
   if (error instanceof WebUiValidationError) {
     return { status: 400 as const, body: { error: { message: error.message } } };
   }
@@ -231,6 +241,38 @@ export function createApp() {
   const app = new Hono();
 
   app.get("/api/health", (c) => c.json({ status: "ok" }));
+
+  app.get("/api/conversation-history", async (c) => {
+    try {
+      c.header("cache-control", "no-store");
+      return c.json(await getConversationHistory());
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
+
+  app.post("/api/conversation-history/rollback", async (c) => {
+    try {
+      const { user_index, version } = z
+        .object({ user_index: z.number().int().min(0), version: z.string() })
+        .parse(await c.req.json());
+      return c.json(await rollbackConversation(user_index, version));
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
+
+  app.post("/api/conversation-history/clear", async (c) => {
+    try {
+      const { version } = z.object({ version: z.string() }).parse(await c.req.json());
+      return c.json(await clearConversation(version));
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
 
   app.get("/api/runtime", (c) => c.json(channelController.getSnapshot()));
 

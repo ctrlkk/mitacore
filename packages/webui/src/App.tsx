@@ -13,6 +13,9 @@ const QQBotChannelPage = lazyPage(async () => (await import("./pages/QQBotChanne
 const ModelConfigPage = lazyPage(async () => (await import("./pages/ModelConfigPage.tsx")).ModelConfigPage);
 const RuntimeSettingsPage = lazyPage(async () => (await import("./pages/RuntimeSettingsPage.tsx")).RuntimeSettingsPage);
 const PersonaPage = lazyPage(async () => (await import("./pages/PersonaPage.tsx")).PersonaPage);
+const ConversationHistoryPage = lazyPage(
+  async () => (await import("./pages/ConversationHistoryPage.tsx")).ConversationHistoryPage,
+);
 const KnowledgeGraphPage = lazyPage(async () => (await import("./pages/KnowledgeGraphPage.tsx")).KnowledgeGraphPage);
 const MediaCachePage = lazyPage(async () => (await import("./pages/MediaCachePage.tsx")).MediaCachePage);
 const StickersPage = lazyPage(async () => (await import("./pages/StickersPage.tsx")).StickersPage);
@@ -29,6 +32,7 @@ function App() {
         <Route path="models" element={<ModelConfigPage />} />
         <Route path="settings" element={<RuntimeSettingsPage />} />
         <Route path="persona" element={<PersonaPage />} />
+        <Route path="history" element={<ConversationHistoryPage />} />
         <Route path="knowledge" element={<KnowledgeGraphPage />} />
         <Route path="media" element={<MediaCachePage />} />
         <Route path="stickers" element={<StickersPage />} />

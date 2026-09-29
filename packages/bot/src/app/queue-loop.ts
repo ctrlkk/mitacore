@@ -14,6 +14,7 @@ import { compressImage } from "@/utils/image-resize";
 import { compressVideo } from "@/utils/video-resize";
 import { runMain } from "@/agents/agent";
 import { deliverReply, getLatestUserText } from "./reply-delivery";
+import { withHistoryRun } from "./history-access";
 
 type MediaResource = {
   url: string;
@@ -425,14 +426,14 @@ export function createBot(sessionId: string) {
           return steeringPrompt;
         };
         // 单AGENT模式目前只用来开发，暂时用env控制
-        if (!process.env.AGENT) {
-          const replied = await runPlanner(prompt, onReply, log, takeSteeringPrompt);
-          if (!replied) {
-            log.info("规划层未调用 submit_plan，跳过回复");
+        await withHistoryRun(async () => {
+          if (!process.env.AGENT) {
+            const replied = await runPlanner(prompt, onReply, log, takeSteeringPrompt);
+            if (!replied) log.info("规划层未调用 submit_plan，跳过回复");
+          } else {
+            await runMain(prompt, onReply, log, takeSteeringPrompt);
           }
-        } else {
-          await runMain(prompt, onReply, log, takeSteeringPrompt);
-        }
+        });
       } finally {
         await cancelTyping();
       }

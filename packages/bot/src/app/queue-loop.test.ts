@@ -45,6 +45,8 @@ vi.mock("@/logger", () => {
 import { createBot } from "@/app/queue-loop";
 import { config } from "@/config";
 
+const originalAgentMode = process.env.AGENT;
+
 function createContext(conversationType: ChannelReplyContext["conversationType"]): ChannelReplyContext {
   return {
     platform: "onebot",
@@ -80,12 +82,15 @@ async function advanceEvaluationLoop() {
 
 describe("群聊媒体预处理", () => {
   beforeEach(() => {
+    delete process.env.AGENT;
     vi.useFakeTimers();
     vi.clearAllMocks();
     config.preprocess_group_media = true;
   });
 
   afterEach(() => {
+    if (originalAgentMode === undefined) delete process.env.AGENT;
+    else process.env.AGENT = originalAgentMode;
     config.preprocess_group_media = true;
     vi.clearAllTimers();
     vi.useRealTimers();
