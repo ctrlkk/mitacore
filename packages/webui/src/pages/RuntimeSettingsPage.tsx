@@ -374,7 +374,7 @@ export function RuntimeSettingsPage() {
                 />
                 <InputGroupAddon align="inline-end">段</InputGroupAddon>
               </InputGroup>
-              <FieldDescription className="text-xs sm:col-span-2">单 agent 和回复层共用的分段上限。</FieldDescription>
+              <FieldDescription className="text-xs sm:col-span-2">回复时的分段上限。</FieldDescription>
               <FieldError className="sm:col-span-2">{maxSplitNumError}</FieldError>
             </Field>
 
