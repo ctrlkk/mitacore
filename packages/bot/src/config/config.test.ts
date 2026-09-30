@@ -24,6 +24,49 @@ afterEach(async () => {
 });
 
 describe("配置校验", () => {
+  it("默认使用统一的回复拆分段数上限", () => {
+    expect(validateConfig({}).splitter).toEqual({
+      enable: true,
+      max_length: 512,
+      max_sentence_num: 10,
+      max_split_num: 3,
+      remove_bracketed_narration: true,
+      enable_overflow_return_all: true,
+    });
+    expect(validateConfig({ splitter: {} }).splitter.max_split_num).toBe(3);
+  });
+
+  it("接受部分或完整的回复拆分配置", () => {
+    expect(validateConfig({ splitter: { max_split_num: 6 } }).splitter).toMatchObject({
+      max_length: 512,
+      max_split_num: 6,
+    });
+    expect(
+      validateConfig({
+        splitter: {
+          enable: false,
+          max_length: 128,
+          max_sentence_num: 4,
+          max_split_num: 6,
+          remove_bracketed_narration: false,
+          enable_overflow_return_all: false,
+        },
+      }).splitter,
+    ).toEqual({
+      enable: false,
+      max_length: 128,
+      max_sentence_num: 4,
+      max_split_num: 6,
+      remove_bracketed_narration: false,
+      enable_overflow_return_all: false,
+    });
+  });
+
+  it.each(["max_length", "max_sentence_num", "max_split_num"] as const)("拒绝无效的 %s", (key) => {
+    expect(() => validateConfig({ splitter: { [key]: 0 } })).toThrow("配置校验失败");
+    expect(() => validateConfig({ splitter: { [key]: 1.5 } })).toThrow("配置校验失败");
+  });
+
   it("默认立即预处理群聊媒体，并允许关闭", () => {
     expect(validateConfig({}).preprocess_group_media).toBe(true);
     expect(validateConfig({ preprocess_group_media: false }).preprocess_group_media).toBe(false);

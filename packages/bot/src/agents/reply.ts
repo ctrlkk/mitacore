@@ -30,14 +30,22 @@ async function saveHistory(history: ChatHistory, log: PinoLogger = logger) {
 }
 
 function cleanReply(chunk: string): ParsedMessagePart[] {
-  return parseMarkdown(chunk).map((part) => (typeof part === "string" ? cleanMessage(part) : part));
+  return parseMarkdown(chunk).map((part) =>
+    typeof part === "string" ? cleanMessage(part, config.splitter.remove_bracketed_narration) : part,
+  );
 }
 
 function sliceReply(parts: ParsedMessagePart[]): ParsedMessagePart[] {
   const result: ParsedMessagePart[] = [];
   for (const part of parts) {
     if (typeof part === "string") {
-      for (const seg of splitMessage(part, { maxSplitNum: 10 })) {
+      for (const seg of splitMessage(part, {
+        enable: config.splitter.enable,
+        maxLength: config.splitter.max_length,
+        maxSentenceNum: config.splitter.max_sentence_num,
+        maxSplitNum: config.splitter.max_split_num,
+        enableOverflowReturnAll: config.splitter.enable_overflow_return_all,
+      })) {
         if (seg.trim()) result.push(seg);
       }
     } else {

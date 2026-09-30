@@ -51,6 +51,14 @@ const defaultContextConfig = {
   reply: { max_tokens: 108000 },
   main: { max_tokens: 108000 },
 };
+const defaultSplitterConfig = {
+  enable: true,
+  max_length: 512,
+  max_sentence_num: 10,
+  max_split_num: 3,
+  remove_bracketed_narration: true,
+  enable_overflow_return_all: true,
+};
 const defaultProviders = [
   {
     name: "deepseek官网",
@@ -173,6 +181,18 @@ const contextSchema = z.object({
   main: contextPolicySchema.default(defaultContextConfig.main).describe("单 agent 模式历史的上下文管理策略"),
 });
 
+const splitterSchema = z.object({
+  enable: z.boolean().default(true).describe("是否拆分回复文本"),
+  max_length: z.number().int().positive().default(512).describe("分段长度基准；主要为中文且超过两倍长度时返回默认短句"),
+  max_sentence_num: z.number().int().positive().default(10).describe("允许拆分的最多句数，超出时按溢出策略处理"),
+  max_split_num: z.number().int().positive().default(3).describe("回复文本最多拆分段数"),
+  remove_bracketed_narration: z
+    .boolean()
+    .default(true)
+    .describe("是否移除包含中文的括号旁白（全角圆括号或方括号）；颜文字自动保护"),
+  enable_overflow_return_all: z.boolean().default(true).describe("句数超限时是否返回完整文本；关闭后返回默认短句"),
+});
+
 const modelOptionsSchema = z
   .object({
     max_output_tokens: z.number().int().positive().optional().describe("默认最大输出 token 数"),
@@ -252,6 +272,7 @@ export const configSchema = z
     models: modelSchema.default(defaultModelConfig).describe("各模块使用的模型配置"),
     model_schedule: modelScheduleSchema.default(defaultModelSchedule).describe("按时段切换模型的配置"),
     context: contextSchema.default(defaultContextConfig).describe("各持久化会话的上下文管理策略"),
+    splitter: splitterSchema.default(defaultSplitterConfig).describe("回复文本拆分策略"),
   })
   .superRefine((config, ctx) => {
     const hasEnabledChannel = config.napcat.enabled || config.weixin.enabled || config.qqbot.enabled;

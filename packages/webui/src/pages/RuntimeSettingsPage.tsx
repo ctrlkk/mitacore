@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { GaugeIcon, LoaderCircleIcon, RefreshCwIcon, SaveIcon } from "lucide-react";
+import { GaugeIcon, LoaderCircleIcon, RefreshCwIcon, SaveIcon, ScissorsIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,12 +12,36 @@ type BotConfig = Record<string, unknown> & {
   max_queue: number;
   debounce_ms: number;
   preprocess_group_media: boolean;
+  splitter?: SplitterConfig;
+};
+
+type SplitterConfig = {
+  enable: boolean;
+  max_length: number;
+  max_sentence_num: number;
+  max_split_num: number;
+  remove_bracketed_narration: boolean;
+  enable_overflow_return_all: boolean;
 };
 
 type RuntimeSettings = {
   maxQueue: string;
   debounceMs: string;
   preprocessGroupMedia: boolean;
+  splitter: Omit<SplitterConfig, "max_length" | "max_sentence_num" | "max_split_num"> & {
+    maxLength: string;
+    maxSentenceNum: string;
+    maxSplitNum: string;
+  };
+};
+
+const defaultSplitterConfig: SplitterConfig = {
+  enable: true,
+  max_length: 512,
+  max_sentence_num: 10,
+  max_split_num: 3,
+  remove_bracketed_narration: true,
+  enable_overflow_return_all: true,
 };
 
 function getErrorMessage(data: unknown, fallback: string) {
@@ -58,11 +82,20 @@ export function RuntimeSettingsPage() {
         if (!data || typeof data !== "object") throw new Error("配置格式不正确");
 
         const nextConfig = data as BotConfig;
+        const splitter = nextConfig.splitter ?? defaultSplitterConfig;
         setConfig(nextConfig);
         setSettings({
           maxQueue: String(nextConfig.max_queue),
           debounceMs: String(nextConfig.debounce_ms),
           preprocessGroupMedia: nextConfig.preprocess_group_media ?? true,
+          splitter: {
+            enable: splitter.enable,
+            maxLength: String(splitter.max_length),
+            maxSentenceNum: String(splitter.max_sentence_num),
+            maxSplitNum: String(splitter.max_split_num),
+            remove_bracketed_narration: splitter.remove_bracketed_narration ?? true,
+            enable_overflow_return_all: splitter.enable_overflow_return_all,
+          },
         });
       } catch (error) {
         if (!controller.signal.aborted) toast.error(error instanceof Error ? error.message : "无法加载消息循环设置");
@@ -77,7 +110,12 @@ export function RuntimeSettingsPage() {
 
   const maxQueueError = settings ? getIntegerError(settings.maxQueue, 1) : undefined;
   const debounceMsError = settings ? getIntegerError(settings.debounceMs, 1000, 10000) : undefined;
-  const isInvalid = Boolean(maxQueueError || debounceMsError);
+  const maxLengthError = settings ? getIntegerError(settings.splitter.maxLength, 1) : undefined;
+  const maxSentenceNumError = settings ? getIntegerError(settings.splitter.maxSentenceNum, 1) : undefined;
+  const maxSplitNumError = settings ? getIntegerError(settings.splitter.maxSplitNum, 1) : undefined;
+  const isInvalid = Boolean(
+    maxQueueError || debounceMsError || maxLengthError || maxSentenceNumError || maxSplitNumError,
+  );
 
   async function saveConfig(restart = false) {
     if (!config || !settings || isInvalid || isSaving) return;
@@ -87,6 +125,14 @@ export function RuntimeSettingsPage() {
       max_queue: Number(settings.maxQueue),
       debounce_ms: Number(settings.debounceMs),
       preprocess_group_media: settings.preprocessGroupMedia,
+      splitter: {
+        enable: settings.splitter.enable,
+        max_length: Number(settings.splitter.maxLength),
+        max_sentence_num: Number(settings.splitter.maxSentenceNum),
+        max_split_num: Number(settings.splitter.maxSplitNum),
+        remove_bracketed_narration: settings.splitter.remove_bracketed_narration,
+        enable_overflow_return_all: settings.splitter.enable_overflow_return_all,
+      },
     };
     setIsSaving(true);
     try {
@@ -140,7 +186,7 @@ export function RuntimeSettingsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">消息循环</h1>
-          <p className="text-sm text-muted-foreground">观察消息如何被收集、评估并合并成一次代理调用。</p>
+          <p className="text-sm text-muted-foreground">配置消息处理和回复拆分，并观察消息如何合并成一次代理调用。</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void saveConfig()} disabled={isInvalid || isSaving}>
@@ -228,6 +274,141 @@ export function RuntimeSettingsPage() {
                 id="preprocess-group-media"
                 checked={settings.preprocessGroupMedia}
                 onCheckedChange={(checked) => setSettings({ ...settings, preprocessGroupMedia: checked })}
+              />
+            </Field>
+          </FieldGroup>
+        </CardContent>
+      </Card>
+
+      <Card size="sm">
+        <CardHeader className="border-b sm:flex sm:items-center sm:gap-3">
+          <CardTitle className="flex items-center gap-2">
+            <ScissorsIcon className="size-4" />
+            回复拆分
+          </CardTitle>
+          <CardDescription>控制回复文本的分段方式；保存后重启服务生效。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup className="grid gap-3 md:grid-cols-2">
+            <Field orientation="horizontal" className="rounded-lg border p-3 md:col-span-2">
+              <FieldContent>
+                <FieldLabel htmlFor="splitter-enable">启用回复拆分</FieldLabel>
+                <FieldDescription className="text-xs">关闭后不再分段，括号旁白清洗仍由独立开关控制。</FieldDescription>
+              </FieldContent>
+              <Switch
+                id="splitter-enable"
+                checked={settings.splitter.enable}
+                onCheckedChange={(checked) =>
+                  setSettings({ ...settings, splitter: { ...settings.splitter, enable: checked } })
+                }
+              />
+            </Field>
+
+            <Field
+              className="gap-1.5 sm:grid sm:grid-cols-[10rem_1fr] sm:items-center"
+              data-invalid={Boolean(maxLengthError)}
+            >
+              <FieldLabel htmlFor="splitter-max-length">分段长度基准</FieldLabel>
+              <InputGroup>
+                <InputGroupInput
+                  id="splitter-max-length"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step={1}
+                  aria-invalid={Boolean(maxLengthError)}
+                  value={settings.splitter.maxLength}
+                  onChange={(event) =>
+                    setSettings({ ...settings, splitter: { ...settings.splitter, maxLength: event.target.value } })
+                  }
+                />
+                <InputGroupAddon align="inline-end">字符</InputGroupAddon>
+              </InputGroup>
+              <FieldDescription className="text-xs sm:col-span-2">
+                主要为中文且总长度超过该值两倍时，返回默认短句。
+              </FieldDescription>
+              <FieldError className="sm:col-span-2">{maxLengthError}</FieldError>
+            </Field>
+
+            <Field
+              className="gap-1.5 sm:grid sm:grid-cols-[10rem_1fr] sm:items-center"
+              data-invalid={Boolean(maxSentenceNumError)}
+            >
+              <FieldLabel htmlFor="splitter-max-sentence-num">最多句数</FieldLabel>
+              <InputGroup>
+                <InputGroupInput
+                  id="splitter-max-sentence-num"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step={1}
+                  aria-invalid={Boolean(maxSentenceNumError)}
+                  value={settings.splitter.maxSentenceNum}
+                  onChange={(event) =>
+                    setSettings({ ...settings, splitter: { ...settings.splitter, maxSentenceNum: event.target.value } })
+                  }
+                />
+                <InputGroupAddon align="inline-end">句</InputGroupAddon>
+              </InputGroup>
+              <FieldDescription className="text-xs sm:col-span-2">超出此句数时按下方溢出策略处理。</FieldDescription>
+              <FieldError className="sm:col-span-2">{maxSentenceNumError}</FieldError>
+            </Field>
+
+            <Field
+              className="gap-1.5 sm:grid sm:grid-cols-[10rem_1fr] sm:items-center"
+              data-invalid={Boolean(maxSplitNumError)}
+            >
+              <FieldLabel htmlFor="splitter-max-split-num">最多拆分段数</FieldLabel>
+              <InputGroup>
+                <InputGroupInput
+                  id="splitter-max-split-num"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step={1}
+                  aria-invalid={Boolean(maxSplitNumError)}
+                  value={settings.splitter.maxSplitNum}
+                  onChange={(event) =>
+                    setSettings({ ...settings, splitter: { ...settings.splitter, maxSplitNum: event.target.value } })
+                  }
+                />
+                <InputGroupAddon align="inline-end">段</InputGroupAddon>
+              </InputGroup>
+              <FieldDescription className="text-xs sm:col-span-2">单 agent 和回复层共用的分段上限。</FieldDescription>
+              <FieldError className="sm:col-span-2">{maxSplitNumError}</FieldError>
+            </Field>
+
+            <Field orientation="horizontal" className="rounded-lg border p-3 md:col-span-2">
+              <FieldContent>
+                <FieldLabel htmlFor="splitter-remove-bracketed-narration">移除括号旁白</FieldLabel>
+                <FieldDescription className="text-xs">移除（中文旁白）和[中文旁白]；关闭后保留原文。</FieldDescription>
+              </FieldContent>
+              <Switch
+                id="splitter-remove-bracketed-narration"
+                checked={settings.splitter.remove_bracketed_narration}
+                onCheckedChange={(checked) =>
+                  setSettings({
+                    ...settings,
+                    splitter: { ...settings.splitter, remove_bracketed_narration: checked },
+                  })
+                }
+              />
+            </Field>
+
+            <Field orientation="horizontal" className="rounded-lg border p-3 md:col-span-2">
+              <FieldContent>
+                <FieldLabel htmlFor="splitter-overflow-return-all">句数超限时返回全文</FieldLabel>
+                <FieldDescription className="text-xs">关闭后，句数超限时改为返回默认短句。</FieldDescription>
+              </FieldContent>
+              <Switch
+                id="splitter-overflow-return-all"
+                checked={settings.splitter.enable_overflow_return_all}
+                onCheckedChange={(checked) =>
+                  setSettings({
+                    ...settings,
+                    splitter: { ...settings.splitter, enable_overflow_return_all: checked },
+                  })
+                }
               />
             </Field>
           </FieldGroup>

@@ -8,7 +8,6 @@ export interface SplitterConfig {
   maxLength: number;
   maxSentenceNum: number;
   maxSplitNum: number;
-  enableKaomojiProtection: boolean;
   enableOverflowReturnAll: boolean;
 }
 
@@ -17,7 +16,6 @@ const DEFAULT_CONFIG: SplitterConfig = {
   maxLength: 512,
   maxSentenceNum: 10,
   maxSplitNum: 3,
-  enableKaomojiProtection: false,
   enableOverflowReturnAll: true,
 };
 
@@ -55,9 +53,10 @@ const TRAILING_PUNCTUATION = /[。；，,\s]+$/;
 const NARRATION_PATTERN = /(?:（[^）]*?[\u4e00-\u9fff][^）]*?）|\[[^\]]*?[\u4e00-\u9fff][^\]]*?\])/g;
 
 /**
- * 移除回复中的旁白，同时保留用于历史记录和语音合成的完整标点。
+ * 按需移除回复中的括号旁白，同时保留用于历史记录和语音合成的完整标点。
  */
-export function cleanMessage(text: string): string {
+export function cleanMessage(text: string, removeBracketedNarration = true): string {
+  if (!removeBracketedNarration) return text;
   const cleanedText = text.replace(NARRATION_PATTERN, "");
   return cleanedText.trim() ? cleanedText : "呃呃";
 }
@@ -166,13 +165,7 @@ export function splitMessage(text: string, config: Partial<SplitterConfig> = {})
   const cfg = { ...DEFAULT_CONFIG, ...config };
   if (!cfg.enable) return [text];
 
-  let protectedText = text;
-  let kaomojiMapping = new Map<string, string>();
-  if (cfg.enableKaomojiProtection) {
-    const result = protectKaomoji(text);
-    protectedText = result.text;
-    kaomojiMapping = result.mapping;
-  }
+  const { text: protectedText, mapping: kaomojiMapping } = protectKaomoji(text);
 
   const maxLength = cfg.maxLength * 2;
   if (getWesternRatio(protectedText) < 0.1 && protectedText.length > maxLength) {
@@ -181,7 +174,7 @@ export function splitMessage(text: string, config: Partial<SplitterConfig> = {})
 
   const paragraphSentences = splitParagraphs(protectedText).map(splitIntoSentences);
   if (paragraphSentences.flat().length > cfg.maxSentenceNum) {
-    return cfg.enableOverflowReturnAll ? [protectedText] : [getRandomDefaultReply()];
+    return cfg.enableOverflowReturnAll ? [text] : [getRandomDefaultReply()];
   }
 
   const targetLength = Math.max(1, Math.floor(protectedText.length / cfg.maxSplitNum));
@@ -190,14 +183,10 @@ export function splitMessage(text: string, config: Partial<SplitterConfig> = {})
     .map((chunk) => ({ ...chunk, text: chunk.text.replace(TRAILING_PUNCTUATION, "") }))
     .filter((chunk) => Boolean(chunk.text));
 
-  if (chunks.length === 0) return [protectedText];
+  if (chunks.length === 0) return [text];
 
-  if (cfg.enableKaomojiProtection) {
-    return recoverKaomoji(
-      chunks.map((chunk) => chunk.text),
-      kaomojiMapping,
-    );
-  }
-
-  return chunks.map((chunk) => chunk.text);
+  return recoverKaomoji(
+    chunks.map((chunk) => chunk.text),
+    kaomojiMapping,
+  );
 }

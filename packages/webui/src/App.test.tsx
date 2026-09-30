@@ -299,6 +299,14 @@ describe("App", () => {
             max_queue: 10,
             debounce_ms: 1000,
             preprocess_group_media: true,
+            splitter: {
+              enable: true,
+              max_length: 512,
+              max_sentence_num: 10,
+              max_split_num: 3,
+              remove_bracketed_narration: true,
+              enable_overflow_return_all: true,
+            },
             napcat: { enabled: false },
           }),
           {
@@ -314,6 +322,12 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("消息队列上限"), { target: { value: "25" } });
     fireEvent.change(screen.getByLabelText("消息合并等待时间"), { target: { value: "2400" } });
     fireEvent.click(screen.getByRole("switch", { name: "群聊媒体即时预处理" }));
+    fireEvent.click(screen.getByRole("switch", { name: "启用回复拆分" }));
+    fireEvent.change(screen.getByLabelText("分段长度基准"), { target: { value: "256" } });
+    fireEvent.change(screen.getByLabelText("最多句数"), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText("最多拆分段数"), { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("switch", { name: "移除括号旁白" }));
+    fireEvent.click(screen.getByRole("switch", { name: "句数超限时返回全文" }));
     fireEvent.click(screen.getByRole("button", { name: "保存并重启" }));
 
     await waitFor(() => {
@@ -322,6 +336,14 @@ describe("App", () => {
         max_queue: 25,
         debounce_ms: 2400,
         preprocess_group_media: false,
+        splitter: {
+          enable: false,
+          max_length: 256,
+          max_sentence_num: 8,
+          max_split_num: 4,
+          remove_bracketed_narration: false,
+          enable_overflow_return_all: false,
+        },
         napcat: { enabled: false },
       });
       expect(fetchMock).toHaveBeenCalledWith("/api/runtime/restart", { method: "POST" });
@@ -379,6 +401,28 @@ describe("App", () => {
     fireEvent.change(await screen.findByLabelText("消息合并等待时间"), { target: { value: "500" } });
 
     expect(screen.getByText("不能小于 1000")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存并重启" })).toBeDisabled();
+  }, 10_000);
+
+  it("默认显示回复拆分配置，并阻止保存无效段数", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ max_queue: 10, debounce_ms: 1000 }), {
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    renderApp("/settings");
+
+    expect(await screen.findByLabelText("最多拆分段数")).toHaveValue(3);
+    expect(screen.getByLabelText("分段长度基准")).toHaveValue(512);
+    expect(screen.getByLabelText("最多句数")).toHaveValue(10);
+    expect(screen.getByRole("switch", { name: "移除括号旁白" })).toBeChecked();
+    fireEvent.change(screen.getByLabelText("最多拆分段数"), { target: { value: "0" } });
+
+    expect(screen.getByText("不能小于 1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存并重启" })).toBeDisabled();
   }, 10_000);
