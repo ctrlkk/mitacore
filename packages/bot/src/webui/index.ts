@@ -56,7 +56,7 @@ const MEDIA_KIND_BY_EXTENSION = new Map<string, MediaKind>([
   [".amr", "audio"],
   [".silk", "audio"],
 ]);
-const PERSONA_PATH = projectPath("prompts", "role.txt");
+const PERSONA_PATH = dataPath("prompts", "role.txt");
 const KNOWLEDGE_BASE_DIR = dataPath("workspace", "notepad");
 const MAX_TEXT_FILE_SIZE = 2 * 1024 * 1024;
 const WEB_UI_DIR = projectPath("webui");
@@ -334,7 +334,7 @@ export function createApp() {
   app.get("/api/persona", async (c) => {
     try {
       const content = await readFile(PERSONA_PATH, "utf8");
-      return c.json({ path: "prompts/role.txt", content });
+      return c.json({ path: "data/prompts/role.txt", content });
     } catch (error) {
       const response = errorResponse(error);
       return c.json(response.body, response.status);
@@ -346,7 +346,7 @@ export function createApp() {
       const { content } = textFileSchema.parse(await c.req.json());
       await mkdir(dirname(PERSONA_PATH), { recursive: true });
       await writeFile(PERSONA_PATH, content, "utf8");
-      return c.json({ saved: true, path: "prompts/role.txt" });
+      return c.json({ saved: true, path: "data/prompts/role.txt" });
     } catch (error) {
       const response = errorResponse(error);
       return c.json(response.body, response.status);

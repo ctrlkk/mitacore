@@ -3,7 +3,7 @@ import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { getModelForRole } from "@/agents/model";
 import { parseMarkdown, resolveMessageParts, type ParsedMessagePart, type ReplyOutput } from "@/message/parts";
 import { cleanMessage, splitMessage } from "@/message/splitter";
-import { dataPath, projectPath } from "@/utils/path";
+import { dataPath } from "@/utils/path";
 import { logUsage } from "@/utils/format";
 import { logger, type PinoLogger } from "@/logger";
 import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-history";
@@ -92,7 +92,7 @@ export async function runMain(
   const runtimeMessages: ChatHistory = [...records];
   const savedMessages: ChatHistory = [...records];
 
-  const replyPrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
+  const replyPrompt = await readFile(dataPath("prompts", "role.txt"), "utf8");
   const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt?raw");
   const { default: workspacePrompt } = await import("../workspace/memory.txt?raw");
 

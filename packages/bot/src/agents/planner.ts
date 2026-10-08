@@ -3,7 +3,7 @@ import { generateText, isStepCount, tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { getModelForRole } from "@/agents/model";
-import { dataPath, projectPath } from "@/utils/path";
+import { dataPath } from "@/utils/path";
 import { logger, type PinoLogger } from "@/logger";
 import { task } from "./tools/task";
 import { webfetch } from "./tools/web-fetch";
@@ -63,7 +63,7 @@ export async function runPlanner(
   const { default: planPrompt } = await import("../prompts/plan.txt?raw");
   const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt?raw");
   const { default: workspacePrompt } = await import("../workspace/memory.txt?raw");
-  const replyPrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
+  const replyPrompt = await readFile(dataPath("prompts", "role.txt"), "utf8");
 
   const system = [
     "<role>",

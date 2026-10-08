@@ -17,9 +17,9 @@ const exeExt = process.platform === "win32" ? ".exe" : "";
 
 /** 仅清理由本脚本管理的顶层产物，避免影响运行时数据。 */
 async function cleanBuildOutputs() {
+  // 旧版 prompts/role.txt 是用户数据，保留 prompts/ 供启动迁移及版本回退使用。
   const outputNames = [
     "bin",
-    "prompts",
     "references",
     "scripts",
     "webui",
@@ -190,7 +190,6 @@ async function copyBin() {
  */
 async function copyAssets() {
   const targets = [
-    { src: join(root, "prompts"), dest: join(outDir, "prompts"), label: "prompts/" },
     { src: join(root, ".env.example"), dest: join(outDir, ".env.example"), label: ".env.example" },
     {
       src: join(root, "scripts", "install.sh"),

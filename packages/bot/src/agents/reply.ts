@@ -4,7 +4,7 @@ import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { getModelForRole } from "@/agents/model";
 import { parseMarkdown, resolveMessageParts, type ParsedMessagePart, type ReplyOutput } from "@/message/parts";
 import { cleanMessage, splitMessage } from "@/message/splitter";
-import { dataPath, projectPath } from "@/utils/path";
+import { dataPath } from "@/utils/path";
 import { logger, type PinoLogger } from "@/logger";
 import { compactHistory } from "./compaction";
 import { config } from "@/config";
@@ -84,7 +84,7 @@ export async function createReplySession(
   const { records } = await injectSystemContext(historyMessages, userPrompt, log);
   historyMessages = [...historyMessages, ...records];
 
-  const prompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
+  const prompt = await readFile(dataPath("prompts", "role.txt"), "utf8");
   const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt?raw");
   const { default: replyGroupPrompt } = await import("../prompts/reply-group.txt?raw");
 
