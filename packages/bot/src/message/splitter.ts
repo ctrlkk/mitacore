@@ -97,56 +97,63 @@ function splitIntoSentences(text: string): string[] {
 
 interface MessageChunk {
   text: string;
-  /** 当前片段原本位于新段落开头；与前一个片段重组时需保留段落边界。 */
+  /** 当前句子位于新段落开头；与前面的句子拼接时需保留段落边界。 */
   startsNewParagraph: boolean;
 }
 
-function groupSentences(paragraphs: string[][], targetLength: number, maxLength: number): MessageChunk[] {
-  const chunks: MessageChunk[] = [];
-  let current = "";
-  let currentStartsNewParagraph = false;
+function groupSentences(paragraphs: string[][], maxCount: number): string[] {
+  const sentences: MessageChunk[] = paragraphs.flatMap((paragraph, paragraphIndex) =>
+    paragraph.map((text, sentenceIndex) => ({
+      text,
+      startsNewParagraph: paragraphIndex > 0 && sentenceIndex === 0,
+    })),
+  );
+  if (sentences.length <= maxCount) return sentences.map((sentence) => sentence.text);
 
-  for (const [paragraphIndex, sentences] of paragraphs.entries()) {
-    for (const [sentenceIndex, sentence] of sentences.entries()) {
-      const startsNewParagraph = paragraphIndex > 0 && sentenceIndex === 0;
-      const separator = startsNewParagraph && current ? " " : "";
-      const shouldSplit =
-        current && (current.length >= targetLength || current.length + separator.length + sentence.length > maxLength);
-      if (shouldSplit) {
-        chunks.push({ text: current, startsNewParagraph: currentStartsNewParagraph });
-        current = sentence;
-        currentStartsNewParagraph = startsNewParagraph;
-        continue;
+  const prefixLengths = [0];
+  for (const sentence of sentences) {
+    prefixLengths.push(
+      prefixLengths[prefixLengths.length - 1]! + sentence.text.length + Number(sentence.startsNewParagraph),
+    );
+  }
+
+  const targetLength = prefixLengths[sentences.length]! / maxCount;
+  const costs: number[][] = Array.from({ length: maxCount + 1 }, () =>
+    Array<number>(sentences.length + 1).fill(Infinity),
+  );
+  const splitPoints: number[][] = Array.from({ length: maxCount + 1 }, () =>
+    Array<number>(sentences.length + 1).fill(-1),
+  );
+  costs[0]![0] = 0;
+
+  // 从整体上最小化长度偏差，避免逐次合并相邻短句造成局部最优。
+  for (let groupCount = 1; groupCount <= maxCount; groupCount++) {
+    for (let end = groupCount; end <= sentences.length; end++) {
+      for (let start = groupCount - 1; start < end; start++) {
+        // 分组开头不需要段落分隔空格，只计算组内实际拼接长度。
+        const length = prefixLengths[end]! - prefixLengths[start]! - Number(sentences[start]!.startsNewParagraph);
+        const cost = costs[groupCount - 1]![start]! + (length - targetLength) ** 2;
+        if (cost < costs[groupCount]![end]!) {
+          costs[groupCount]![end] = cost;
+          splitPoints[groupCount]![end] = start;
+        }
       }
-      current += separator + sentence;
     }
   }
 
-  if (current) chunks.push({ text: current, startsNewParagraph: currentStartsNewParagraph });
+  const chunks: string[] = [];
+  let end = sentences.length;
+  for (let groupCount = maxCount; groupCount > 0; groupCount--) {
+    const start = splitPoints[groupCount]![end]!;
+    chunks.unshift(
+      sentences
+        .slice(start, end)
+        .map((sentence, index) => (index > 0 && sentence.startsNewParagraph ? " " : "") + sentence.text)
+        .join(""),
+    );
+    end = start;
+  }
   return chunks;
-}
-
-function mergeChunks(chunks: MessageChunk[], maxCount: number): MessageChunk[] {
-  if (chunks.length <= maxCount) return chunks;
-
-  const result = chunks.slice();
-  while (result.length > maxCount) {
-    let minIdx = 0;
-    let minLen = result[0]!.text.length + result[1]!.text.length + Number(result[1]!.startsNewParagraph);
-    for (let i = 1; i < result.length - 1; i++) {
-      const len = result[i]!.text.length + result[i + 1]!.text.length + Number(result[i + 1]!.startsNewParagraph);
-      if (len < minLen) {
-        minLen = len;
-        minIdx = i;
-      }
-    }
-    result[minIdx] = {
-      text: result[minIdx]!.text + (result[minIdx + 1]!.startsNewParagraph ? " " : "") + result[minIdx + 1]!.text,
-      startsNewParagraph: result[minIdx]!.startsNewParagraph,
-    };
-    result.splice(minIdx + 1, 1);
-  }
-  return result;
 }
 
 const DEFAULT_REPLIES = [
@@ -177,16 +184,11 @@ export function splitMessage(text: string, config: Partial<SplitterConfig> = {})
     return cfg.enableOverflowReturnAll ? [text] : [getRandomDefaultReply()];
   }
 
-  const targetLength = Math.max(1, Math.floor(protectedText.length / cfg.maxSplitNum));
-  let chunks = groupSentences(paragraphSentences, targetLength, maxLength);
-  chunks = mergeChunks(chunks, cfg.maxSplitNum)
-    .map((chunk) => ({ ...chunk, text: chunk.text.replace(TRAILING_PUNCTUATION, "") }))
-    .filter((chunk) => Boolean(chunk.text));
+  const chunks = groupSentences(paragraphSentences, cfg.maxSplitNum)
+    .map((chunk) => chunk.replace(TRAILING_PUNCTUATION, ""))
+    .filter(Boolean);
 
   if (chunks.length === 0) return [text];
 
-  return recoverKaomoji(
-    chunks.map((chunk) => chunk.text),
-    kaomojiMapping,
-  );
+  return recoverKaomoji(chunks, kaomojiMapping);
 }
