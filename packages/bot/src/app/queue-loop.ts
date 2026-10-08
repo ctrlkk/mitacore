@@ -249,8 +249,9 @@ function buildPrompt(batch: PendingMessage[], mediaMap: MediaMap) {
 
   for (const msg of batch) {
     const text = formatMessage(msg.unifiedMessages);
-    const fmt = dayjs(msg.date).isSame(today, "day") ? "HH:mm" : "MM-DD HH:mm";
-    const block = `<user_input user_id="${msg.userId}" date="${dayjs(msg.date).format(fmt)}" nickname="${msg.nickname}">\n${text}\n</user_input>`;
+    const date = dayjs(msg.date);
+    const fmt = date.isSame(today, "day") ? "A hh:mm" : "MM-DD A hh:mm";
+    const block = `<user_input user_id="${msg.userId}" date="${date.format(fmt)}" nickname="${msg.nickname}">\n${text}\n</user_input>`;
     promptParts.push(block);
   }
 
