@@ -32,7 +32,10 @@ function realToVirtualPath(filename: string): string {
   return posix.join(IMAGE_VIRTUAL_PREFIX, filename);
 }
 
-export async function downloadToCache(url: string, option: { limit?: number; fallbackExt?: string } = {}) {
+export async function downloadToCache(
+  url: string,
+  option: { limit?: number; fallbackExt?: string; headers?: HeadersInit; signal?: AbortSignal } = {},
+) {
   const result = await downloadCacheFile(url, { ...option, cacheDir: IMAGE_CACHE_DIR });
   return { virtualPath: realToVirtualPath(result.fileName), realPath: result.realPath };
 }

@@ -156,6 +156,8 @@ function detectExtByMagic(header: Uint8Array): string | undefined {
  * @param options.cacheDir 缓存目录
  * @param options.limit 下载大小限制
  * @param options.fallbackExt 回退文件扩展名
+ * @param options.headers 下载请求头
+ * @param options.signal 取消或超时信号
  * @returns 下载结果
  */
 export async function downloadToCache(
@@ -164,12 +166,14 @@ export async function downloadToCache(
     cacheDir: string;
     limit?: number;
     fallbackExt?: string;
+    headers?: HeadersInit;
+    signal?: AbortSignal;
   },
 ): Promise<{ realPath: string; fileName: string }> {
   const limit = options.limit ?? 20 * 1024 * 1024;
   const fallbackExt = options.fallbackExt ?? "jpg";
 
-  const response = await fetch(url);
+  const response = await fetch(url, { headers: options.headers, signal: options.signal });
   if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
   if (!response.body) throw new Error("空的响应体");
 
@@ -200,6 +204,7 @@ export async function downloadToCache(
       Readable.fromWeb(response.body as unknown as import("node:stream/web").ReadableStream<any>),
       transform,
       createWriteStream(tempPath),
+      { signal: options.signal },
     );
 
     const fileHandle = await open(tempPath, "r");
