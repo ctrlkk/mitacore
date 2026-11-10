@@ -27,7 +27,9 @@ function toUnifiedMessages(inbound: QQBotInboundMessage): UnifiedInboundMessage[
 }
 
 function toText(part: MessagePart) {
-  return typeof part === "string" ? part : part.raw;
+  if (typeof part === "string") return part;
+  if (part.type === "audio") throw new Error("QQ Bot 不支持发送音频消息");
+  return part.raw;
 }
 
 async function loginWithQr(): Promise<QQBotQrCredentials> {
@@ -62,7 +64,7 @@ export async function startQQBotChannel(getBot: (sessionId: string) => ReturnTyp
       ...config,
       qqbot: { ...config.qqbot, app_id: credentials.appId, app_secret: credentials.appSecret },
     });
-    logger.info({ appId: credentials.appId }, "QQ Bot 凭证已写入 config.toml");
+    logger.info({ appId: credentials.appId }, "QQ Bot 凭证已写入配置文件");
   }
 
   const client = new QQBotClient(credentials);

@@ -135,7 +135,7 @@ export function PersonaPage() {
             <h2 id="persona-editor-title" className="font-medium">
               角色核心提示词
             </h2>
-            <span className="truncate font-mono text-xs text-muted-foreground">prompts/role.txt</span>
+            <span className="truncate font-mono text-xs text-muted-foreground">data/prompts/role.txt</span>
           </div>
           <span className="text-xs text-muted-foreground">{isDirty ? "有未保存的修改" : "内容已同步"}</span>
         </div>

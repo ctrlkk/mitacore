@@ -1,4 +1,13 @@
-import { BrainCircuitIcon, FileText, HouseIcon, ImagesIcon, NetworkIcon, StickerIcon } from "lucide-react";
+import {
+  BrainCircuitIcon,
+  FileText,
+  HouseIcon,
+  MessagesSquareIcon,
+  ImagesIcon,
+  NetworkIcon,
+  Settings2Icon,
+  StickerIcon,
+} from "lucide-react";
 import { Link, useLocation } from "react-router";
 import {
   Sidebar,
@@ -60,10 +69,26 @@ export function AppSidebarContent() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={pathname === "/settings"}>
+                  <Link to="/settings" onClick={handleNavigation}>
+                    <Settings2Icon />
+                    <span>消息循环</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={pathname === "/persona"}>
                   <Link to="/persona" onClick={handleNavigation}>
                     <FileText />
                     <span>人设编辑器</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={pathname === "/history"}>
+                  <Link to="/history" onClick={handleNavigation}>
+                    <MessagesSquareIcon />
+                    <span>对话历史</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

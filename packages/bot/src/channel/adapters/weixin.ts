@@ -32,21 +32,28 @@ function toUnifiedSegments(segments: WeixinInboundSegment[], userId: string): Un
 
 function toWeixinMessage(part: MessagePart) {
   if (typeof part === "string") return part;
+  if (part.type === "audio") throw new Error("微信不支持发送音频消息");
   return { type: "image" as const, url: part.data.file || part.data.url };
+}
+
+function toLogFields(details: unknown): object {
+  if (details instanceof Error) return { err: details };
+  if (details !== null && typeof details === "object") return details;
+  return details === undefined ? {} : { details };
 }
 
 const clientLogger = {
   debug(message: string, details?: unknown) {
-    logger.debug({ details }, message);
+    logger.debug(toLogFields(details), message);
   },
   info(message: string, details?: unknown) {
-    logger.info({ details }, message);
+    logger.info(toLogFields(details), message);
   },
   warn(message: string, details?: unknown) {
-    logger.warn({ details }, message);
+    logger.warn(toLogFields(details), message);
   },
   error(message: string, details?: unknown) {
-    logger.error({ details }, message);
+    logger.error(toLogFields(details), message);
   },
 };
 
@@ -83,7 +90,7 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
           token: credentials.token,
         },
       });
-      logger.info({ accountId: credentials.accountId }, "微信凭证已写入 config.toml");
+      logger.info({ accountId: credentials.accountId }, "微信凭证已写入配置文件");
     } catch (error) {
       channelController.updateWeixin({
         status: "failed",
@@ -94,7 +101,6 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
   }
 
   channelController.updateWeixin({ status: "ready", qrcode_content: undefined, error: undefined });
-  ensureUserAlias("weixin", credentials.accountId, "微信 Bot");
   const userAlias = ensureUserAlias("weixin", WEIXIN_USER_KEY, WEIXIN_USER_NICKNAME);
   const userId = shortIdFor(userAlias.id);
 
@@ -138,5 +144,5 @@ export async function startWeixinChannel(getBot: (sessionId: string) => ReturnTy
       };
       getBot(`weixin:${WEIXIN_USER_KEY}`).enqueue(message, context);
     })
-    .catch((error) => logger.error({ error }, "微信渠道异常退出"));
+    .catch((error) => logger.error({ err: error }, "微信渠道异常退出"));
 }

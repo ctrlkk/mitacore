@@ -52,6 +52,7 @@ async function run() {
     while (!stopping) {
       const child = fork(appPath, process.argv.slice(2), {
         cwd: installRoot,
+        execArgv: [...process.execArgv, "--use-env-proxy"],
         env: { ...process.env, ...(webUiPort ? { WEBUI_PORT: String(webUiPort) } : {}) },
         stdio: ["inherit", "inherit", "inherit", "ipc"],
       });

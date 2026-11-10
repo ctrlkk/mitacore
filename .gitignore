@@ -10,6 +10,7 @@ dist
 # 测试覆盖率
 coverage
 *.lcov
+**/__tests__/output/
 
 # 日志
 logs
@@ -48,4 +49,7 @@ migration-tmp/
 src/database/.drizzle-out/
 
 /config.toml
+/config.jsonc
+/config.json
+/config.schema.json
 target/

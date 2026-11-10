@@ -32,7 +32,6 @@ export function task(log: PinoLogger = logger) {
           messages: [{ role: "user", content: prompt }],
           tools: { read: workspaceTools.read, grep: workspaceTools.grep, glob: workspaceTools.glob },
           stopWhen: isStepCount(20),
-          maxOutputTokens: 5024,
           abortSignal,
           async onLanguageModelCallEnd({ content, usage }) {
             const reasoningText = content
@@ -74,7 +73,6 @@ export function task(log: PinoLogger = logger) {
           messages: [{ role: "user", content: prompt }],
           tools: workspaceTools,
           stopWhen: isStepCount(20),
-          maxOutputTokens: 5024,
           abortSignal,
           async onLanguageModelCallEnd({ content, usage }) {
             const reasoningText = content

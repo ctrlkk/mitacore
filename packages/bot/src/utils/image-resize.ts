@@ -49,7 +49,7 @@ async function resizeGif(file: File): Promise<Blob> {
 
     return result.size < file.size ? result : file;
   } catch (error) {
-    logger.warn({ error }, "GIF处理失败");
+    logger.warn({ err: error }, "GIF处理失败");
     return file;
   }
 }
@@ -83,7 +83,7 @@ async function probeWebpCodec(file: Blob): Promise<"webp" | "webp_anim" | null> 
     logger.warn({ codecName }, "ffprobe 返回了未知的 WebP 编码类型");
     return null;
   } catch (error) {
-    logger.warn({ error }, "ffprobe 图片探测失败");
+    logger.warn({ err: error }, "ffprobe 图片探测失败");
     return null;
   }
 }
@@ -188,7 +188,7 @@ export async function compressImage(file: File): Promise<Blob> {
 
     return result.size < file.size ? result : file;
   } catch (error) {
-    logger.warn({ error }, "图片处理失败");
+    logger.warn({ err: error }, "图片处理失败");
     return file;
   }
 }

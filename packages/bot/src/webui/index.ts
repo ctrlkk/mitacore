@@ -21,6 +21,13 @@ import {
 import { streamStickerFormSuggestion } from "@/agents/stickers";
 import { z } from "zod";
 import { channelController } from "@/app/channel-controller";
+import { HistoryBusyError } from "@/app/history-access";
+import {
+  clearConversation,
+  getConversationHistory,
+  HistoryConflictError,
+  rollbackConversation,
+} from "@/app/history-management";
 
 const MEDIA_KIND_BY_EXTENSION = new Map<string, MediaKind>([
   [".jpg", "image"],
@@ -49,7 +56,7 @@ const MEDIA_KIND_BY_EXTENSION = new Map<string, MediaKind>([
   [".amr", "audio"],
   [".silk", "audio"],
 ]);
-const PERSONA_PATH = projectPath("prompts", "role.txt");
+const PERSONA_PATH = dataPath("prompts", "role.txt");
 const KNOWLEDGE_BASE_DIR = dataPath("workspace", "notepad");
 const MAX_TEXT_FILE_SIZE = 2 * 1024 * 1024;
 const WEB_UI_DIR = projectPath("webui");
@@ -159,7 +166,7 @@ function getSafeMediaPath(rawFilename: string) {
 }
 
 const modelRequestSchema = z.object({
-  type: z.enum(["anthropic", "openai-responses", "openai-compatible", "deepseek"]),
+  type: z.enum(["anthropic", "google", "openai-responses", "openai-compatible", "deepseek"]),
   base_url: z
     .url()
     .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "仅支持 HTTP 或 HTTPS 地址"),
@@ -170,10 +177,11 @@ function getModelHeaders(type: z.infer<typeof modelRequestSchema>["type"], apiKe
   if (type === "anthropic") {
     return new Headers({ "x-api-key": apiKey, "anthropic-version": "2023-06-01" });
   }
+  if (type === "google") return new Headers({ "x-goog-api-key": apiKey });
   return new Headers({ Authorization: `Bearer ${apiKey}` });
 }
 
-function getModelIds(payload: unknown): string[] {
+function getModelIds(payload: unknown, type: z.infer<typeof modelRequestSchema>["type"]): string[] {
   if (!payload || typeof payload !== "object") return [];
 
   const response = payload as { data?: unknown; models?: unknown };
@@ -183,7 +191,7 @@ function getModelIds(payload: unknown): string[] {
       if (!model || typeof model !== "object") return [];
       const { id, name } = model as { id?: unknown; name?: unknown };
       if (typeof id === "string" && id) return [id];
-      if (typeof name === "string" && name) return [name];
+      if (typeof name === "string" && name) return [type === "google" ? name.replace(/^models\//, "") : name];
       return [];
     });
   });
@@ -195,6 +203,9 @@ const verifyCodeSchema = z.object({
 });
 
 function errorResponse(error: unknown) {
+  if (error instanceof HistoryBusyError || error instanceof HistoryConflictError) {
+    return { status: 409 as const, body: { error: { message: error.message } } };
+  }
   if (error instanceof WebUiValidationError) {
     return { status: 400 as const, body: { error: { message: error.message } } };
   }
@@ -230,6 +241,38 @@ export function createApp() {
   const app = new Hono();
 
   app.get("/api/health", (c) => c.json({ status: "ok" }));
+
+  app.get("/api/conversation-history", async (c) => {
+    try {
+      c.header("cache-control", "no-store");
+      return c.json(await getConversationHistory());
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
+
+  app.post("/api/conversation-history/rollback", async (c) => {
+    try {
+      const { user_index, version } = z
+        .object({ user_index: z.number().int().min(0), version: z.string() })
+        .parse(await c.req.json());
+      return c.json(await rollbackConversation(user_index, version));
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
+
+  app.post("/api/conversation-history/clear", async (c) => {
+    try {
+      const { version } = z.object({ version: z.string() }).parse(await c.req.json());
+      return c.json(await clearConversation(version));
+    } catch (error) {
+      const response = errorResponse(error);
+      return c.json(response.body, response.status);
+    }
+  });
 
   app.get("/api/runtime", (c) => c.json(channelController.getSnapshot()));
 
@@ -291,7 +334,7 @@ export function createApp() {
   app.get("/api/persona", async (c) => {
     try {
       const content = await readFile(PERSONA_PATH, "utf8");
-      return c.json({ path: "prompts/role.txt", content });
+      return c.json({ path: "data/prompts/role.txt", content });
     } catch (error) {
       const response = errorResponse(error);
       return c.json(response.body, response.status);
@@ -303,7 +346,7 @@ export function createApp() {
       const { content } = textFileSchema.parse(await c.req.json());
       await mkdir(dirname(PERSONA_PATH), { recursive: true });
       await writeFile(PERSONA_PATH, content, "utf8");
-      return c.json({ saved: true, path: "prompts/role.txt" });
+      return c.json({ saved: true, path: "data/prompts/role.txt" });
     } catch (error) {
       const response = errorResponse(error);
       return c.json(response.body, response.status);
@@ -332,7 +375,7 @@ export function createApp() {
       });
       if (!response.ok) throw new Error(`供应商返回 HTTP ${response.status}，请检查 API 地址和密钥`);
 
-      return c.json({ models: getModelIds(await response.json()) });
+      return c.json({ models: getModelIds(await response.json(), request.type) });
     } catch (error) {
       if (error instanceof DOMException && error.name === "TimeoutError") {
         return c.json({ error: { message: "获取模型超时，请检查 API 地址和网络连接" } }, 504);
@@ -576,8 +619,8 @@ export function createApp() {
 
 export async function startWebUi(): Promise<number> {
   const app = createApp();
-  const portValue = process.env.WEBUI_PORT;
-  const port = portValue ? Number(portValue) : 0;
+  const portValue = process.env.WEBUI_PORT?.trim();
+  const port = portValue ? Number(portValue) : 14_251;
   if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new Error("WEBUI_PORT 必须是 0 到 65535 之间的整数");
 
   return await new Promise<number>((resolve, reject) => {

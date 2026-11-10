@@ -1,14 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import anthropicIcon from "@/assets/provider-icons/anthropic.svg";
 import bailianIcon from "@/assets/provider-icons/bailian.svg";
 import deepseekIcon from "@/assets/provider-icons/deepseek.svg";
+import googleIcon from "@/assets/provider-icons/google.svg";
 import mimoIcon from "@/assets/provider-icons/mimo.svg";
 import minimaxIcon from "@/assets/provider-icons/minimax.svg";
 import openaiIcon from "@/assets/provider-icons/openai.svg";
 import zhipuIcon from "@/assets/provider-icons/zhipu.svg";
 import {
   BrainCircuitIcon,
+  CheckIcon,
+  ChevronRightIcon,
   Clock3Icon,
+  EyeIcon,
+  EyeOffIcon,
   LoaderCircleIcon,
   PencilIcon,
   PlusIcon,
@@ -18,6 +23,8 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Collapsible } from "radix-ui";
+import { NumericFormat } from "react-number-format";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,8 +62,21 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@/components/ui/combobox";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
+import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 type ModelRole =
   | "plan"
@@ -68,13 +88,35 @@ type ModelRole =
   | "multimodal_video"
   | "multimodal_audio";
 
-type ProviderType = "anthropic" | "openai-responses" | "openai-compatible" | "deepseek";
+type ContextRole = "plan" | "reply" | "main";
+
+type ContextPolicy = {
+  max_tokens: number;
+};
+
+type ProviderType = "anthropic" | "google" | "openai-responses" | "openai-compatible" | "deepseek";
+
+type ReasoningLevel = "provider-default" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
+type ModelOptions = {
+  max_output_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+  top_k?: number;
+  presence_penalty?: number;
+  frequency_penalty?: number;
+  seed?: number;
+  reasoning?: ReasoningLevel;
+  provider_options?: Record<string, unknown>;
+};
+
+type ModelNumberOptionKey = Exclude<keyof ModelOptions, "reasoning" | "provider_options">;
 
 type ModelProvider = {
   name: string;
   type: ProviderType;
   options: { base_url: string; api_key: string };
-  models: Array<{ id: string; alias: string }>;
+  models: Array<{ id: string; alias: string; options?: ModelOptions }>;
 };
 
 type ScheduleRule = {
@@ -87,7 +129,10 @@ type BotConfig = Record<string, unknown> & {
   providers: ModelProvider[];
   models: Record<ModelRole, string>;
   model_schedule: { rules: ScheduleRule[] };
+  context: Record<ContextRole, ContextPolicy>;
 };
+
+type ValidationField = { path: string; message: string };
 
 const roleDefinitions: Array<{ key: ModelRole; label: string; description: string }> = [
   { key: "plan", label: "规划", description: "调用工具并制定回复策略" },
@@ -100,15 +145,95 @@ const roleDefinitions: Array<{ key: ModelRole; label: string; description: strin
   { key: "multimodal_audio", label: "音频理解", description: "转写并理解音频内容" },
 ];
 
+const coreRoleDefinitions = roleDefinitions.filter(({ key }) => key === "plan" || key === "reply" || key === "main");
+
+const specializedRoleGroups = [
+  {
+    label: "子代理",
+    description: "仅在主流程委派任务时使用。",
+    roles: roleDefinitions.filter(({ key }) => key === "task_explore" || key === "task_general"),
+  },
+  {
+    label: "多模态理解",
+    description: "收到对应类型的媒体时使用。",
+    roles: roleDefinitions.filter(({ key }) => key.startsWith("multimodal_")),
+  },
+];
+
+const contextDefinitions: Array<{ key: ContextRole; label: string; description: string }> = [
+  { key: "plan", label: "规划层", description: "planner.json 中保存的规划与工具调用历史" },
+  { key: "reply", label: "回复层", description: "chat.json 中保存的用户对话历史" },
+  { key: "main", label: "主代理", description: "history.json 中保存的单代理模式历史" },
+];
+
+const minContextWindowTokens = 32000;
+
+function getContextPolicyError(policy: ContextPolicy): string | undefined {
+  if (!Number.isSafeInteger(policy.max_tokens)) return "上下文窗口必须是有效整数";
+  if (policy.max_tokens < minContextWindowTokens) return "上下文窗口不能小于 32,000 Tokens";
+  return undefined;
+}
+
 const providerTypes: Array<{ value: ProviderType; label: string }> = [
   { value: "anthropic", label: "Anthropic" },
+  { value: "google", label: "Google Gemini" },
   { value: "openai-responses", label: "OpenAI Responses" },
   { value: "openai-compatible", label: "OpenAI Compatible" },
   { value: "deepseek", label: "DeepSeek" },
 ];
 
+const reasoningLevels: Array<{ value: ReasoningLevel; label: string }> = [
+  { value: "provider-default", label: "供应商默认" },
+  { value: "none", label: "关闭推理" },
+  { value: "minimal", label: "最低 (minimal)" },
+  { value: "low", label: "低 (low)" },
+  { value: "medium", label: "中 (medium)" },
+  { value: "high", label: "高 (high)" },
+  { value: "xhigh", label: "极高 (xhigh)" },
+];
+
+const modelNumberFields: Array<{
+  key: ModelNumberOptionKey;
+  label: string;
+  description: string;
+  step?: number | "any";
+  validate?: (value: number) => string | undefined;
+}> = [
+  {
+    key: "max_output_tokens",
+    label: "最大输出 Tokens",
+    description: "限制单次生成的最大输出长度。",
+    step: 1,
+    validate: (value) => (Number.isInteger(value) && value > 0 ? undefined : "请输入大于 0 的整数"),
+  },
+  { key: "temperature", label: "Temperature", description: "控制输出随机性，范围由供应商决定。" },
+  {
+    key: "top_p",
+    label: "Top P",
+    description: "Nucleus sampling 参数，取值 0 到 1。",
+    validate: (value) => (value >= 0 && value <= 1 ? undefined : "请输入 0 到 1 之间的数字"),
+  },
+  {
+    key: "top_k",
+    label: "Top K",
+    description: "每次采样参与候选的 token 数量。",
+    step: 1,
+    validate: (value) => (Number.isInteger(value) && value > 0 ? undefined : "请输入大于 0 的整数"),
+  },
+  { key: "presence_penalty", label: "Presence Penalty", description: "降低已出现内容再次出现的倾向。" },
+  { key: "frequency_penalty", label: "Frequency Penalty", description: "根据出现频率降低重复内容。" },
+  {
+    key: "seed",
+    label: "Seed",
+    description: "用于可复现采样的整数随机种子。",
+    step: 1,
+    validate: (value) => (Number.isInteger(value) ? undefined : "请输入整数"),
+  },
+];
+
 const providerIconPaths: Record<Exclude<ProviderType, "openai-responses" | "openai-compatible">, string> = {
   anthropic: anthropicIcon,
+  google: googleIcon,
   deepseek: deepseekIcon,
 };
 
@@ -206,8 +331,48 @@ function getErrorMessage(data: unknown, fallback: string) {
   return error.message;
 }
 
+function getErrorFields(data: unknown): ValidationField[] {
+  if (!data || typeof data !== "object" || !("error" in data)) return [];
+  const error = data.error;
+  if (!error || typeof error !== "object" || !("fields" in error) || !Array.isArray(error.fields)) return [];
+  return error.fields.filter(
+    (field): field is ValidationField =>
+      field !== null &&
+      typeof field === "object" &&
+      typeof field.path === "string" &&
+      typeof field.message === "string",
+  );
+}
+
 async function getResponseError(response: Response, fallback: string) {
   return getErrorMessage(await response.json().catch(() => undefined), fallback);
+}
+
+function getOptionalNumberError(input: string, validate?: (value: number) => string | undefined): string | undefined {
+  if (!input.trim()) return undefined;
+  const value = Number(input);
+  if (!Number.isFinite(value)) return "请输入有效数字";
+  return validate?.(value);
+}
+
+function parseProviderOptions(input: string): {
+  value?: Record<string, unknown>;
+  error?: string;
+} {
+  if (!input.trim()) return {};
+  try {
+    const value: unknown = JSON.parse(input);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { error: "请输入 JSON 对象" };
+    }
+    return { value: value as Record<string, unknown> };
+  } catch {
+    return { error: "JSON 格式不正确" };
+  }
+}
+
+function getModelOptionCount(options?: ModelOptions) {
+  return options ? Object.keys(options).length : 0;
 }
 
 function createProvider(): ModelProvider {
@@ -220,11 +385,7 @@ function createProvider(): ModelProvider {
 }
 
 function createProviderFromPreset(provider: ModelProvider): ModelProvider {
-  return {
-    ...provider,
-    options: { ...provider.options },
-    models: provider.models.map((model) => ({ ...model })),
-  };
+  return structuredClone(provider);
 }
 
 function getProviderEndpoint(baseUrl: string) {
@@ -236,13 +397,52 @@ function getProviderEndpoint(baseUrl: string) {
   }
 }
 
+function ContextTokenInput({
+  id,
+  value,
+  ariaLabel,
+  invalid,
+  onChange,
+}: {
+  id: string;
+  value: number;
+  ariaLabel: string;
+  invalid: boolean;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <InputGroup>
+      <NumericFormat
+        customInput={InputGroupInput}
+        id={id}
+        inputMode="numeric"
+        thousandSeparator=","
+        decimalScale={0}
+        allowNegative={false}
+        className="tabular-nums"
+        aria-label={ariaLabel}
+        aria-invalid={invalid}
+        value={Number.isFinite(value) ? value : ""}
+        onValueChange={({ floatValue }, { source }) => {
+          if (source === "event") onChange(floatValue ?? 0);
+        }}
+      />
+      <InputGroupAddon align="inline-end">Tokens</InputGroupAddon>
+    </InputGroup>
+  );
+}
+
 export function ModelConfigPage() {
   const [config, setConfig] = useState<BotConfig>();
+  const [savedConfig, setSavedConfig] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveValidationError, setSaveValidationError] = useState<{ message: string; fields: ValidationField[] }>();
   const [editor, setEditor] = useState<{ index: number | null; provider: ModelProvider }>();
   const [isPresetPickerOpen, setIsPresetPickerOpen] = useState(false);
+  const [areSpecializedRolesOpen, setAreSpecializedRolesOpen] = useState(false);
   const [providerToDelete, setProviderToDelete] = useState<{ index: number; name: string }>();
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -251,7 +451,9 @@ export function ModelConfigPage() {
       try {
         const response = await fetch("/api/config", { signal: controller.signal });
         if (!response.ok) throw new Error(await getResponseError(response, "无法加载配置"));
-        setConfig((await response.json()) as BotConfig);
+        const loadedConfig = (await response.json()) as BotConfig;
+        setConfig(loadedConfig);
+        setSavedConfig(JSON.stringify(loadedConfig));
       } catch (error) {
         if (!controller.signal.aborted) {
           toast.error(error instanceof Error ? error.message : "无法加载配置");
@@ -268,13 +470,29 @@ export function ModelConfigPage() {
   const modelAliases = [
     ...new Set(config?.providers.flatMap((provider) => provider.models.map((model) => model.alias)) ?? []),
   ].filter(Boolean);
+  const serializedConfig = config ? JSON.stringify(config) : undefined;
+  const hasUnsavedChanges = savedConfig !== undefined && serializedConfig !== savedConfig;
+  const hasContextErrors = contextDefinitions.some(({ key }) =>
+    config ? getContextPolicyError(config.context[key]) !== undefined : false,
+  );
 
   function updateConfig(update: (current: BotConfig) => BotConfig) {
+    setSaveValidationError(undefined);
     setConfig((current) => (current ? update(current) : current));
   }
 
   function updateModel(role: ModelRole, alias: string) {
     updateConfig((current) => ({ ...current, models: { ...current.models, [role]: alias } }));
+  }
+
+  function updateContext(role: ContextRole, key: keyof ContextPolicy, value: number) {
+    updateConfig((current) => ({
+      ...current,
+      context: {
+        ...current.context,
+        [role]: { ...current.context[role], [key]: value },
+      },
+    }));
   }
 
   function updateScheduleRule(index: number, update: (rule: ScheduleRule) => ScheduleRule) {
@@ -289,14 +507,23 @@ export function ModelConfigPage() {
 
   async function saveConfig() {
     if (!config) return;
+    const configToSave = JSON.stringify(config);
     setIsSaving(true);
+    setSaveValidationError(undefined);
     try {
       const response = await fetch("/api/config", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(config),
+        body: configToSave,
       });
-      if (!response.ok) throw new Error(await getResponseError(response, "保存配置失败"));
+      if (!response.ok) {
+        const data: unknown = await response.json().catch(() => undefined);
+        const message = getErrorMessage(data, "保存配置失败");
+        const fields = getErrorFields(data);
+        if (fields.length) setSaveValidationError({ message, fields });
+        throw new Error(fields.length ? `${message}，请查看下方错误详情` : message);
+      }
+      setSavedConfig(configToSave);
       toast.success("模型配置已保存");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "保存配置失败");
@@ -327,17 +554,54 @@ export function ModelConfigPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">模型配置</h1>
-          <p className="text-sm text-muted-foreground">为各职责、时段和供应商配置可用模型。</p>
+          <p className="text-sm text-muted-foreground">为各职责配置模型、上下文管理策略与时段覆盖。</p>
         </div>
-        <Button onClick={saveConfig} disabled={isSaving}>
-          {isSaving ? (
-            <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
-          ) : (
-            <SaveIcon data-icon="inline-start" />
-          )}
-          保存配置
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge
+            variant={hasUnsavedChanges ? "outline" : "secondary"}
+            className={
+              hasUnsavedChanges
+                ? "h-7 border-amber-500/50 bg-amber-500/10 px-2.5 text-amber-700 dark:text-amber-400"
+                : "h-7 px-2.5 text-muted-foreground"
+            }
+            role="status"
+            aria-live="polite"
+          >
+            {hasUnsavedChanges ? (
+              <span className="size-2 rounded-full bg-amber-500" />
+            ) : (
+              <CheckIcon data-icon="inline-start" />
+            )}
+            {hasUnsavedChanges ? "有未保存的更改" : "配置已保存"}
+          </Badge>
+          <Button
+            ref={saveButtonRef}
+            onClick={saveConfig}
+            disabled={isSaving || !hasUnsavedChanges || hasContextErrors}
+          >
+            {isSaving ? (
+              <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
+            ) : (
+              <SaveIcon data-icon="inline-start" />
+            )}
+            {isSaving ? "正在保存" : "保存配置"}
+          </Button>
+        </div>
       </div>
+
+      {saveValidationError ? (
+        <div role="alert" className="rounded-lg border border-destructive/50 bg-destructive/5 p-4 text-sm">
+          <p className="font-medium text-destructive">{saveValidationError.message}</p>
+          <ul className="mt-2 max-h-64 list-disc space-y-1 overflow-y-auto pl-5">
+            {saveValidationError.fields.map((field, index) => (
+              <li key={`${field.path}-${index}`} className="wrap-break-word">
+                {field.path ? <span className="font-medium">{field.path}：</span> : null}
+                {field.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <section aria-labelledby="model-roles-title" className="rounded-xl border bg-card">
         <div className="flex flex-col gap-1 border-b px-4 py-4 sm:px-5">
@@ -347,20 +611,105 @@ export function ModelConfigPage() {
               模型分工
             </h2>
           </div>
-          <p className="text-sm text-muted-foreground">设置每个系统职责默认使用的模型别名。</p>
+          <p className="text-sm text-muted-foreground">优先设置日常对话流程，按需展开专用能力。</p>
         </div>
-        <div className="grid divide-y sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
-          {roleDefinitions.map((role) => (
-            <label key={role.key} className="flex min-w-0 flex-col gap-1.5 p-3 sm:p-4">
-              <span className="text-sm font-medium">{role.label}</span>
-              <span className="text-xs leading-5 text-muted-foreground">{role.description}</span>
-              <ModelAliasCombobox
-                value={config.models[role.key]}
-                aliases={modelAliases}
-                onChange={(value) => updateModel(role.key, value)}
-              />
-            </label>
-          ))}
+        <div className="flex flex-col gap-5 p-4 sm:p-5">
+          <FieldSet>
+            <FieldLegend variant="label">核心流程</FieldLegend>
+            <FieldDescription>分别配置“规划 + 回复”双模型流程和单代理流程使用的模型。</FieldDescription>
+            <FieldGroup className="grid gap-4 md:grid-cols-3">
+              {coreRoleDefinitions.map((role) => (
+                <Field key={role.key} className="rounded-lg border p-3">
+                  <FieldLabel>{role.label}</FieldLabel>
+                  <FieldDescription className="text-xs">{role.description}</FieldDescription>
+                  <ModelAliasCombobox
+                    value={config.models[role.key]}
+                    aliases={modelAliases}
+                    ariaLabel={`${role.label}模型`}
+                    onChange={(value) => updateModel(role.key, value)}
+                  />
+                </Field>
+              ))}
+            </FieldGroup>
+          </FieldSet>
+          <Separator />
+          <Collapsible.Root open={areSpecializedRolesOpen} onOpenChange={setAreSpecializedRolesOpen}>
+            <Collapsible.Trigger asChild>
+              <Button variant="ghost" className="group h-auto w-full justify-start px-0 py-2">
+                <ChevronRightIcon
+                  data-icon="inline-start"
+                  className="transition-transform group-data-[state=open]:rotate-90"
+                />
+                专用模型
+                <span className="ml-auto">
+                  <Badge variant="secondary">按需配置</Badge>
+                </span>
+              </Button>
+            </Collapsible.Trigger>
+            <Collapsible.Content className="pt-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                {specializedRoleGroups.map((group) => (
+                  <FieldSet key={group.label} className="min-w-0 rounded-lg border p-4">
+                    <FieldLegend variant="label">{group.label}</FieldLegend>
+                    <FieldDescription className="text-xs">{group.description}</FieldDescription>
+                    <FieldGroup className="gap-4">
+                      {group.roles.map((role) => (
+                        <Field key={role.key}>
+                          <FieldLabel>{role.label}</FieldLabel>
+                          <FieldDescription className="text-xs">{role.description}</FieldDescription>
+                          <ModelAliasCombobox
+                            value={config.models[role.key]}
+                            aliases={modelAliases}
+                            ariaLabel={`${role.label}模型`}
+                            onChange={(value) => updateModel(role.key, value)}
+                          />
+                        </Field>
+                      ))}
+                    </FieldGroup>
+                  </FieldSet>
+                ))}
+              </div>
+            </Collapsible.Content>
+          </Collapsible.Root>
+        </div>
+      </section>
+
+      <section aria-labelledby="context-policy-title" className="rounded-xl border bg-card">
+        <div className="flex flex-col gap-1 border-b px-4 py-4 sm:px-5">
+          <div className="flex items-center gap-2">
+            <Settings2Icon className="size-4" />
+            <h2 id="context-policy-title" className="font-semibold">
+              上下文管理
+            </h2>
+          </div>
+          <p className="text-sm text-muted-foreground">按独立历史设置上下文压缩的触发窗口。</p>
+        </div>
+        <div className="grid divide-y lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+          {contextDefinitions.map((definition) => {
+            const policy = config.context[definition.key];
+            const error = getContextPolicyError(policy);
+            return (
+              <div key={definition.key} className="flex min-w-0 flex-col gap-4 p-4 sm:p-5">
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-sm font-medium">{definition.label}</h3>
+                  <p className="text-xs leading-5 text-muted-foreground">{definition.description}</p>
+                </div>
+                <FieldGroup>
+                  <Field data-invalid={error !== undefined}>
+                    <FieldLabel htmlFor={`context-${definition.key}-max-tokens`}>上下文窗口</FieldLabel>
+                    <ContextTokenInput
+                      id={`context-${definition.key}-max-tokens`}
+                      ariaLabel={`${definition.label}上下文窗口`}
+                      invalid={error !== undefined}
+                      value={policy.max_tokens}
+                      onChange={(value) => updateContext(definition.key, "max_tokens", value)}
+                    />
+                  </Field>
+                </FieldGroup>
+                {error ? <FieldError>{error}</FieldError> : null}
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -533,6 +882,25 @@ export function ModelConfigPage() {
           ) : null}
         </div>
       </section>
+      {hasUnsavedChanges ? (
+        <div className="pointer-events-none fixed right-4 bottom-4 z-40">
+          <Button
+            variant="outline"
+            className="pointer-events-auto border-amber-500/50 bg-background/95 text-amber-700 shadow-lg backdrop-blur hover:bg-amber-500/10 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+            aria-label="有未保存的更改，前往保存按钮"
+            onClick={() => saveButtonRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
+          >
+            {isSaving ? (
+              <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
+            ) : (
+              <span className="size-2 rounded-full bg-amber-500" />
+            )}
+            <span role="status" aria-live="polite">
+              {isSaving ? "正在保存" : "未保存"}
+            </span>
+          </Button>
+        </div>
+      ) : null}
       <ProviderPresetPicker
         open={isPresetPickerOpen}
         onClose={() => setIsPresetPickerOpen(false)}
@@ -662,7 +1030,9 @@ function ProviderEditor({
   onSave: () => void;
 }) {
   const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [isApiKeyVisible, setIsApiKeyVisible] = useState(false);
   const [fetchedModelIds, setFetchedModelIds] = useState<string[]>([]);
+  const [modelOptionsIndex, setModelOptionsIndex] = useState<number>();
   const dialogContentRef = useRef<HTMLDivElement>(null);
   const aliasCounts = new Map<string, number>();
   for (const alias of [...existingAliases, ...provider.models.map((model) => model.alias)]) {
@@ -714,25 +1084,29 @@ function ProviderEditor({
       <DialogContent
         ref={dialogContentRef}
         showCloseButton={false}
-        className="max-h-[calc(100svh-2rem)] max-w-3xl gap-0 overflow-visible p-0 sm:max-w-3xl"
+        className="flex max-h-[calc(100svh-2rem)] max-w-3xl flex-col gap-0 overflow-visible p-0 sm:max-w-3xl"
       >
         <DialogHeader className="border-b px-4 py-4 sm:px-5">
           <DialogTitle>{isNew ? "添加供应商" : "编辑供应商"}</DialogTitle>
           <DialogDescription>模型别名会用于模型分工和时段覆盖。</DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4 sm:p-5">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              供应商名称
-              <Input value={provider.name} onChange={(event) => onChange({ ...provider, name: event.target.value })} />
-            </label>
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              接口类型
+          <FieldGroup className="grid gap-4 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="provider-name">供应商名称</FieldLabel>
+              <Input
+                id="provider-name"
+                value={provider.name}
+                onChange={(event) => onChange({ ...provider, name: event.target.value })}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="provider-type">接口类型</FieldLabel>
               <Select
                 value={provider.type}
                 onValueChange={(value) => onChange({ ...provider, type: value as ProviderType })}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="provider-type" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -746,31 +1120,51 @@ function ProviderEditor({
                   </SelectGroup>
                 </SelectContent>
               </Select>
-            </label>
-            <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-2">
-              API 基础 URL
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="provider-base-url">API 基础 URL</FieldLabel>
               <Input
+                id="provider-base-url"
                 value={provider.options.base_url}
                 placeholder="https://api.example.com/v1"
                 onChange={(event) =>
                   onChange({ ...provider, options: { ...provider.options, base_url: event.target.value } })
                 }
               />
-            </label>
-            <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-2">
-              API Key
-              <Input
-                type="text"
-                name="api-key"
-                autoComplete="off"
-                className="[-webkit-text-security:disc]"
-                value={provider.options.api_key}
-                onChange={(event) =>
-                  onChange({ ...provider, options: { ...provider.options, api_key: event.target.value } })
-                }
-              />
-            </label>
-          </div>
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="provider-api-key">API Key</FieldLabel>
+              <InputGroup>
+                {/* 保持文本输入，避免密码框行为；使用拉丁字体，避免中文字体的遮罩圆点过小、间距过宽。 */}
+                <InputGroupInput
+                  id="provider-api-key"
+                  type="text"
+                  name="api-key"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder="输入 API Key"
+                  data-masked={!isApiKeyVisible}
+                  className="font-[Arial,sans-serif] data-[masked=true]:[-webkit-text-security:disc]"
+                  value={provider.options.api_key}
+                  onChange={(event) =>
+                    onChange({ ...provider, options: { ...provider.options, api_key: event.target.value } })
+                  }
+                />
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton
+                    size="icon-sm"
+                    aria-label={isApiKeyVisible ? "隐藏 API Key" : "显示 API Key"}
+                    aria-controls="provider-api-key"
+                    onClick={() => setIsApiKeyVisible((visible) => !visible)}
+                  >
+                    {isApiKeyVisible ? <EyeOffIcon /> : <EyeIcon />}
+                  </InputGroupButton>
+                </InputGroupAddon>
+              </InputGroup>
+            </Field>
+          </FieldGroup>
 
           <section className="flex flex-col gap-4 border-t pt-5" aria-labelledby="provider-models-title">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -827,7 +1221,16 @@ function ProviderEditor({
                       <span className="text-xs text-destructive">模型别名“{model.alias.trim()}”已被使用</span>
                     ) : null}
                   </label>
-                  <div className="flex items-end">
+                  <div className="flex items-end gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      aria-label={`配置模型参数 ${model.alias || model.id || index + 1}`}
+                      onClick={() => setModelOptionsIndex(index)}
+                    >
+                      <Settings2Icon data-icon="inline-start" />
+                      参数{getModelOptionCount(model.options) ? ` · ${getModelOptionCount(model.options)}` : ""}
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -855,6 +1258,238 @@ function ProviderEditor({
             </Button>
             <Button onClick={onSave} disabled={duplicateAliases.size > 0}>
               完成编辑
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+      {modelOptionsIndex !== undefined && provider.models[modelOptionsIndex] ? (
+        <ModelOptionsEditor
+          key={modelOptionsIndex}
+          model={provider.models[modelOptionsIndex]}
+          providerType={provider.type}
+          onClose={() => setModelOptionsIndex(undefined)}
+          onSave={(options) => {
+            updateModel(modelOptionsIndex, (model) => {
+              const updated = { ...model };
+              if (options) updated.options = options;
+              else delete updated.options;
+              return updated;
+            });
+            setModelOptionsIndex(undefined);
+          }}
+        />
+      ) : null}
+    </Dialog>
+  );
+}
+
+function ModelOptionsEditor({
+  model,
+  providerType,
+  onClose,
+  onSave,
+}: {
+  model: ModelProvider["models"][number];
+  providerType: ProviderType;
+  onClose: () => void;
+  onSave: (options: ModelOptions | undefined) => void;
+}) {
+  const fieldId = useId();
+  const [numberInputs, setNumberInputs] = useState<Record<ModelNumberOptionKey, string>>(
+    () =>
+      Object.fromEntries(modelNumberFields.map(({ key }) => [key, model.options?.[key]?.toString() ?? ""])) as Record<
+        ModelNumberOptionKey,
+        string
+      >,
+  );
+  const [reasoning, setReasoning] = useState<ReasoningLevel | "unset">(model.options?.reasoning ?? "unset");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [providerOptionsInput, setProviderOptionsInput] = useState(() =>
+    model.options?.provider_options ? JSON.stringify(model.options.provider_options, null, 2) : "",
+  );
+
+  const numberErrors = new Map(
+    modelNumberFields.map((field) => [field.key, getOptionalNumberError(numberInputs[field.key], field.validate)]),
+  );
+  const providerOptionsResult = parseProviderOptions(providerOptionsInput);
+  const hasErrors = [...numberErrors.values()].some(Boolean) || Boolean(providerOptionsResult.error);
+  const providerLabel = providerTypes.find(({ value }) => value === providerType)?.label ?? providerType;
+  const advancedFields = modelNumberFields.filter(({ key }) => key !== "max_output_tokens" && key !== "temperature");
+  const hasAdvancedErrors =
+    advancedFields.some(({ key }) => Boolean(numberErrors.get(key))) || Boolean(providerOptionsResult.error);
+  const advancedCount =
+    advancedFields.filter(({ key }) => numberInputs[key].trim()).length + Number(Boolean(providerOptionsInput.trim()));
+
+  function resetOptions() {
+    setNumberInputs(
+      Object.fromEntries(modelNumberFields.map(({ key }) => [key, ""])) as Record<ModelNumberOptionKey, string>,
+    );
+    setReasoning("unset");
+    setProviderOptionsInput("");
+    setAdvancedOpen(false);
+  }
+
+  function renderNumberField(field: (typeof modelNumberFields)[number]) {
+    const id = `${fieldId}-${field.key}`;
+    const error = numberErrors.get(field.key);
+    return (
+      <Field key={field.key} orientation="responsive" data-invalid={Boolean(error)} className="gap-3">
+        <FieldContent>
+          <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
+          <FieldDescription id={`${id}-description`}>{field.description}</FieldDescription>
+        </FieldContent>
+        <div className="flex flex-col gap-2 @md/field-group:w-44 @md/field-group:shrink-0">
+          <Input
+            id={id}
+            type="number"
+            step={field.step ?? "any"}
+            aria-invalid={Boolean(error)}
+            aria-describedby={`${id}-description${error ? ` ${id}-error` : ""}`}
+            value={numberInputs[field.key]}
+            placeholder="默认"
+            onChange={(event) => setNumberInputs((current) => ({ ...current, [field.key]: event.target.value }))}
+          />
+          {error ? <FieldError id={`${id}-error`}>{error}</FieldError> : null}
+        </div>
+      </Field>
+    );
+  }
+
+  function submitOptions() {
+    if (hasErrors) return;
+
+    const options: ModelOptions = {};
+    for (const { key } of modelNumberFields) {
+      const value = numberInputs[key].trim();
+      if (value) options[key] = Number(value);
+    }
+
+    if (reasoning !== "unset") options.reasoning = reasoning;
+    if (providerOptionsResult.value) options.provider_options = providerOptionsResult.value;
+
+    onSave(Object.keys(options).length ? options : undefined);
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="flex max-h-[calc(100svh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
+        <DialogHeader className="shrink-0 border-b p-4 pr-12 text-left sm:p-5 sm:pr-12">
+          <DialogTitle>模型参数</DialogTitle>
+          <DialogDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="min-w-0 break-all">{model.alias || model.id || "当前模型"}</span>
+            <span aria-hidden>·</span>
+            <span>{providerLabel}</span>
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-5">
+          <FieldGroup>
+            {modelNumberFields
+              .filter(({ key }) => key === "max_output_tokens" || key === "temperature")
+              .map(renderNumberField)}
+            <Field orientation="responsive" className="gap-3">
+              <FieldContent>
+                <FieldLabel htmlFor={`${fieldId}-reasoning`}>推理强度</FieldLabel>
+                <FieldDescription id={`${fieldId}-reasoning-description`}>实际支持程度由模型决定。</FieldDescription>
+              </FieldContent>
+              <Select value={reasoning} onValueChange={(value) => setReasoning(value as ReasoningLevel | "unset")}>
+                <SelectTrigger
+                  id={`${fieldId}-reasoning`}
+                  aria-describedby={`${fieldId}-reasoning-description`}
+                  className="w-full @md/field-group:w-44 @md/field-group:shrink-0"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="unset">默认</SelectItem>
+                    {reasoningLevels.map(({ value, label }) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          </FieldGroup>
+          <Separator />
+          <Collapsible.Root
+            open={advancedOpen || hasAdvancedErrors}
+            onOpenChange={(open) => setAdvancedOpen(open || hasAdvancedErrors)}
+          >
+            <Collapsible.Trigger asChild>
+              <Button variant="ghost" className="group h-auto w-full justify-start px-0 py-2">
+                <ChevronRightIcon
+                  data-icon="inline-start"
+                  className="transition-transform group-data-[state=open]:rotate-90"
+                />
+                高级参数
+                <span className="ml-auto">
+                  <Badge variant="secondary">{advancedCount ? `已设置 ${advancedCount} 项` : "可选"}</Badge>
+                </span>
+              </Button>
+            </Collapsible.Trigger>
+            <Collapsible.Content className="pt-5">
+              <FieldGroup className="gap-6">
+                <FieldSet>
+                  <FieldLegend variant="label">采样</FieldLegend>
+                  <FieldGroup>
+                    {advancedFields.filter(({ key }) => key === "top_p" || key === "top_k").map(renderNumberField)}
+                  </FieldGroup>
+                </FieldSet>
+                <Separator />
+                <FieldSet>
+                  <FieldLegend variant="label">重复控制</FieldLegend>
+                  <FieldGroup>
+                    {advancedFields
+                      .filter(({ key }) => key === "presence_penalty" || key === "frequency_penalty")
+                      .map(renderNumberField)}
+                  </FieldGroup>
+                </FieldSet>
+                <Separator />
+                <FieldSet>
+                  <FieldLegend variant="label">其他选项</FieldLegend>
+                  <FieldGroup>
+                    {advancedFields.filter(({ key }) => key === "seed").map(renderNumberField)}
+                    <Field data-invalid={Boolean(providerOptionsResult.error)}>
+                      <FieldLabel htmlFor={`${fieldId}-provider-options`}>供应商专属选项</FieldLabel>
+                      <Textarea
+                        id={`${fieldId}-provider-options`}
+                        rows={5}
+                        spellCheck={false}
+                        aria-invalid={Boolean(providerOptionsResult.error)}
+                        className="max-h-48 resize-y overflow-y-auto font-mono"
+                        value={providerOptionsInput}
+                        placeholder={'{\n  "选项名称": "值"\n}'}
+                        onChange={(event) => setProviderOptionsInput(event.target.value)}
+                      />
+                      {providerOptionsResult.error ? (
+                        <FieldError>{providerOptionsResult.error}</FieldError>
+                      ) : (
+                        <FieldDescription>
+                          填写传递给模型供应商的 JSON 对象，字段名保持供应商原始格式。
+                        </FieldDescription>
+                      )}
+                    </Field>
+                  </FieldGroup>
+                </FieldSet>
+              </FieldGroup>
+            </Collapsible.Content>
+          </Collapsible.Root>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            未设置的参数由模型或调用方决定，调用时传入的值优先。
+          </p>
+        </div>
+        <DialogFooter className="mx-0 mb-0 shrink-0 flex-col gap-3 px-4 py-4 sm:flex-col sm:px-5">
+          <div className="flex w-full flex-wrap items-center justify-end gap-2">
+            <Button variant="ghost" className="mr-auto" onClick={resetOptions}>
+              恢复默认
+            </Button>
+            <Button variant="outline" onClick={onClose}>
+              取消
+            </Button>
+            <Button onClick={submitOptions} disabled={hasErrors}>
+              应用参数
             </Button>
           </div>
         </DialogFooter>
@@ -940,11 +1575,13 @@ function ModelAliasCombobox({
   value,
   aliases,
   emptyLabel = "请选择模型",
+  ariaLabel = emptyLabel,
   onChange,
 }: {
   value: string;
   aliases: string[];
   emptyLabel?: string;
+  ariaLabel?: string;
   onChange: (value: string) => void;
 }) {
   const hasUnknownValue = Boolean(value) && !aliases.includes(value);
@@ -952,7 +1589,7 @@ function ModelAliasCombobox({
 
   return (
     <Combobox items={items} value={value || null} onValueChange={(nextValue) => onChange(nextValue ?? "")}>
-      <ComboboxInput aria-label={emptyLabel} placeholder={emptyLabel} className="w-full" showClear={Boolean(value)} />
+      <ComboboxInput aria-label={ariaLabel} placeholder={emptyLabel} className="w-full" showClear={Boolean(value)} />
       <ComboboxContent>
         <ComboboxEmpty>未找到匹配的模型</ComboboxEmpty>
         <ComboboxList>

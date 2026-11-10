@@ -1,20 +1,21 @@
 import { type ChatHistory, migrateHistory, toModelMessages } from "./chat-history";
-import { generateText, hasToolCall, isStepCount, tool, type ToolSet } from "ai";
+import { generateText, isStepCount, tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { getModelForRole } from "@/agents/model";
-import { dataPath, projectPath } from "@/utils/path";
+import { dataPath } from "@/utils/path";
 import { logger, type PinoLogger } from "@/logger";
 import { task } from "./tools/task";
 import { webfetch } from "./tools/web-fetch";
 import { websearch } from "./tools/web-search";
-import { compactHistory, isOverflow } from "./compaction";
+import { compactHistory } from "./compaction";
 import { injectSystemContext } from "./system-context";
 import { logUsage } from "@/utils/format";
 import { workspaceTools } from "@/workspace/tool";
 import { memoryReview } from "./background-review";
 import { createReplySession } from "./reply";
-import type { MessagePart } from "@/message/parts";
+import type { ReplyOutput } from "@/message/parts";
+import { config } from "@/config";
 
 const MEMORY_REVIEW_INTERVAL = 10;
 
@@ -32,20 +33,22 @@ async function saveHistory(history: ChatHistory, log: PinoLogger = logger) {
     await mkdir(dataPath(), { recursive: true });
     await writeFile(dataPath("planner.json"), JSON.stringify(history, null, 2));
   } catch (error) {
-    log.error({ error }, "保存规划层历史失败");
+    log.error({ err: error }, "保存规划层历史失败");
   }
 }
 
 /**
- * 运行规划层
+ * 运行允许 submit_plan 返回后继续工具循环的规划层。
  * @param userInputMessage 已用 <user_input> 标签包好的用户消息
  * @param onReply 实际发送消息的回调
+ * @param takeSteeringPrompt 在每个后续模型调用前提取工具循环期间新到达的用户消息
  * @returns 本轮是否通过 submit_plan 向用户发送过消息
  */
 export async function runPlanner(
   userInputMessage: string,
-  onReply: (segments: MessagePart[]) => Promise<void>,
+  onReply: (output: ReplyOutput) => Promise<void>,
   log: PinoLogger = logger,
+  takeSteeringPrompt?: () => Promise<string | undefined>,
 ): Promise<boolean> {
   const model = getModelForRole("plan");
   const historyMessages: ChatHistory = await loadHistory();
@@ -60,13 +63,13 @@ export async function runPlanner(
   const { default: planPrompt } = await import("../prompts/plan.txt?raw");
   const { default: capabilitiesPrompt } = await import("../prompts/capabilities.txt?raw");
   const { default: workspacePrompt } = await import("../workspace/memory.txt?raw");
-  const replyPrompt = await readFile(projectPath("prompts", "role.txt"), "utf8");
+  const replyPrompt = await readFile(dataPath("prompts", "role.txt"), "utf8");
 
   const system = [
     "<role>",
     planPrompt.trim(),
     "",
-    "`submit_plan` 会返回 `reply agent` 实际发送给用户的消息内容。调用它表示本轮规划已经完成；工具执行后程序会直接结束本轮，不再向你发起模型请求。",
+    "`submit_plan` 会返回 `reply agent` 实际发送给用户的消息内容。你可以据此判断消息是否准确表达了意图，以及是否需要采取后续行动。调用它不会结束本轮工具循环；你可以继续使用其他工具，并在确有必要时再次调用 `submit_plan` 发送后续消息。不要无意义地重复发送相同内容。任务完成后停止调用工具并结束。",
     "</role>",
     "",
     "<capabilities>",
@@ -85,7 +88,7 @@ export async function runPlanner(
 
   const submitPlanTool = tool({
     description:
-      "根据回复策略调用 reply agent 向用户发送一条消息。工具返回实际发送内容；调用后本轮规划结束，不会再进行模型请求。",
+      "根据回复策略调用 reply agent 向用户发送一条消息。工具返回实际发送内容，供你判断后续行动；调用后可以继续使用其他工具，必要时也可以再次发送。",
     inputSchema: z.object({
       plan: z.string().describe("回复策略与参考信息，需具体、准确并足以让 reply agent 独立完成消息"),
     }),
@@ -117,8 +120,21 @@ export async function runPlanner(
     instructions: system,
     messages: toModelMessages([...historyMessages, ...runtimeMessages]),
     tools,
-    stopWhen: [isStepCount(10), hasToolCall("submit_plan")],
-    maxOutputTokens: 4096,
+    stopWhen: isStepCount(10),
+    async prepareStep({ stepNumber }) {
+      if (stepNumber === 0) return;
+
+      const steeringPrompt = await takeSteeringPrompt?.();
+      if (steeringPrompt === undefined) return;
+
+      const { records: steeringRecords } = await injectSystemContext(
+        [...historyMessages, ...runtimeMessages],
+        steeringPrompt,
+        log,
+      );
+      runtimeMessages.push(...steeringRecords);
+      return { messages: toModelMessages([...historyMessages, ...runtimeMessages]) };
+    },
     async onLanguageModelCallEnd({ content, usage }) {
       const reasoningText = content
         .filter((part) => part.type === "reasoning")
@@ -147,20 +163,14 @@ export async function runPlanner(
     },
   });
 
-  if (replyCount > 0) {
-    runtimeMessages.push({
-      message: { role: "assistant", content: "[Done]" },
-      timestamp: Date.now(),
-    });
-  }
   let finalHistory: ChatHistory = [...historyMessages, ...runtimeMessages];
-  if (isOverflow(result.finalStep.usage)) {
+  if ((result.finalStep.usage.totalTokens ?? 0) >= config.context.plan.max_tokens) {
     log.info("检测到上下文溢出，开始执行压缩...");
     finalHistory = await compactHistory(model, system, finalHistory, undefined, log);
   }
   await saveHistory(finalHistory, log);
 
-  const userTurn = records.findLast((record) => record.user_turn !== undefined)?.user_turn;
+  const userTurn = runtimeMessages.findLast((record) => record.user_turn !== undefined)?.user_turn;
   if (replyCount > 0 && userTurn !== undefined && userTurn % MEMORY_REVIEW_INTERVAL === 0) {
     startMemoryReview(finalHistory);
   }

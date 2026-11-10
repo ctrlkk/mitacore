@@ -45,8 +45,8 @@ describe("startQQBotQrLogin", () => {
 
     expect(credentials).toEqual({ appId: "app-id", appSecret: "app-secret", userOpenid: "user-openid" });
     expect(qrUrls).toEqual([
-      "https://q.qq.com/qqbot/openclaw/connect.html?task_id=task-1&source=agents-bot&_wv=2",
-      "https://q.qq.com/qqbot/openclaw/connect.html?task_id=task-2&source=agents-bot&_wv=2",
+      "https://q.qq.com/qqbot/openclaw/connect.html?task_id=task-1&source=openclaw&_wv=2",
+      "https://q.qq.com/qqbot/openclaw/connect.html?task_id=task-2&source=openclaw&_wv=2",
     ]);
   });
 

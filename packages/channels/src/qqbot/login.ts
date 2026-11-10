@@ -61,7 +61,7 @@ async function runQrLogin(events: QQBotQrLoginEvents, options: QQBotQrLoginOptio
 
   while (!options.signal?.aborted) {
     const task = await createBindTask(fetcher, requestTimeoutMs, options.signal);
-    events.onQrUrl(createQrUrl(task.taskId, options.source ?? "agents-bot"));
+    events.onQrUrl(createQrUrl(task.taskId, options.source ?? "openclaw"));
 
     while (!options.signal?.aborted) {
       let result: PollResult;

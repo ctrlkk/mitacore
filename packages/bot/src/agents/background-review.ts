@@ -23,7 +23,7 @@ export function memoryReview(
   return (history: ChatHistory): void => {
     const snapshot = [...history];
     reviewQueue = reviewQueue
-      .catch((error) => log.error({ error }, "上一轮后台记忆复盘失败"))
+      .catch((error) => log.error({ err: error }, "上一轮后台记忆复盘失败"))
       .then(async () => {
         const { default: template } = await import("../prompts/memory-review.txt?raw");
         const branchInput = `<system_reminder>\n${template.trim()}\n</system_reminder>`;
@@ -41,7 +41,6 @@ export function memoryReview(
           tools: branchTools,
           stopWhen: isStepCount(20),
           runtimeContext: { inSubagent: true },
-          maxOutputTokens: 4096,
           onToolExecutionStart({ toolCall }) {
             log.info(
               { toolCallId: toolCall.toolCallId, toolName: toolCall.toolName, input: toolCall.input },
@@ -56,6 +55,6 @@ export function memoryReview(
         logUsage(log, result.usage);
         log.info({ text: result.text, reasoningText: result.reasoningText }, "后台记忆复盘完成");
       })
-      .catch((error) => log.error({ error }, "后台记忆复盘失败"));
+      .catch((error) => log.error({ err: error }, "后台记忆复盘失败"));
   };
 }

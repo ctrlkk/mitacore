@@ -6,6 +6,21 @@ import { dataPath, projectPath } from "@/utils/path";
 
 const VERSION_MARKER = ".default-data-version";
 
+async function migrateLegacyRole() {
+  const sourcePath = projectPath("prompts", "role.txt");
+  const targetPath = dataPath("prompts", "role.txt");
+  if (existsSync(targetPath)) return;
+
+  mkdirSync(dirname(targetPath), { recursive: true });
+  try {
+    // 保留旧文件供回退版本使用；排他复制也避免并发启动覆盖已创建的用户角色。
+    await copyFile(sourcePath, targetPath, constants.COPYFILE_EXCL);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT" && code !== "EEXIST") throw error;
+  }
+}
+
 function getArchivePath() {
   return projectPath("references", "default-data.zip");
 }
@@ -109,6 +124,9 @@ async function copyMissingFiles(sourceDir: string, targetDir: string) {
  * 因而不会覆盖用户文件，解压失败也不会留下半成品默认数据。
  */
 export async function initializeDefaultData() {
+  // 必须先迁移用户角色，避免默认模板占用目标路径；迁移不依赖默认数据包或版本标记。
+  await migrateLegacyRole();
+
   const archivePath = getArchivePath();
   if (!existsSync(archivePath)) return;
 

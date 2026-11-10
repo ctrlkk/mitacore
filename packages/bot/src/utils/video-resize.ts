@@ -72,7 +72,7 @@ async function transcodeVideo(file: File): Promise<Blob> {
 
     return result.size < file.size ? result : file;
   } catch (error) {
-    logger.warn({ error }, "视频处理失败");
+    logger.warn({ err: error }, "视频处理失败");
     return file;
   }
 }

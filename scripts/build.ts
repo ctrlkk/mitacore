@@ -15,6 +15,25 @@ const outDir = join(root, "dist");
 
 const exeExt = process.platform === "win32" ? ".exe" : "";
 
+/** 仅清理由本脚本管理的顶层产物，避免影响运行时数据。 */
+async function cleanBuildOutputs() {
+  // 旧版 prompts/role.txt 是用户数据，保留 prompts/ 供启动迁移及版本回退使用。
+  const outputNames = [
+    "bin",
+    "references",
+    "scripts",
+    "webui",
+    ".env.example",
+    "app",
+    "app.exe",
+    "app.mjs",
+    "config.example.jsonc",
+    "config.schema.json",
+    "main.mjs",
+  ];
+  await Promise.all(outputNames.map((name) => rm(join(outDir, name), { recursive: true, force: true })));
+}
+
 /**
  * 执行子进程，如果退出码非 0 则抛出异常
  */
@@ -62,23 +81,7 @@ async function findExecutable(name: string) {
  * 构建应用主程序
  */
 async function buildApp() {
-  const appBundle = "app.mjs";
   const botDir = join(root, "packages", "bot");
-
-  // 清理旧产物 (force: true 确保路径不存在时不报错，省去 existsSync 判断)
-  await rm(join(outDir, appBundle), { force: true });
-  await rm(join(outDir, "main.cjs"), { force: true });
-  await rm(join(outDir, "main.mjs"), { force: true });
-  await rm(join(outDir, "cleanup.mjs"), { force: true });
-  await rm(join(outDir, "supervisor.cjs"), { force: true });
-  await rm(join(outDir, "supervisor.mjs"), { force: true });
-  await rm(join(outDir, "default-data.zip"), { force: true });
-  await rm(join(outDir, "default-data.manifest.json"), { force: true });
-  await rm(join(outDir, "sidecar"), { recursive: true, force: true });
-  await rm(join(outDir, "app-chunks"), { recursive: true, force: true });
-  await rm(join(outDir, "app.cjs"), { force: true });
-  await rm(join(root, "build"), { recursive: true, force: true });
-  await rm(join(root, "pyrpc.spec"), { force: true });
 
   await runCmd([packageManager, "--dir", botDir, "run", "build"], root);
   await runCmd([packageManager, "run", "package:default-data", join(outDir, "references", "default-data.zip")], root);
@@ -86,6 +89,11 @@ async function buildApp() {
   await mkdir(manifestOutputDir, { recursive: true });
   await copyFile(join(root, "references", "default-data", "manifest.json"), join(manifestOutputDir, "manifest.json"));
   await copyFile(join(root, "scripts", "main.mjs"), join(outDir, "main.mjs"));
+}
+
+/** 从运行时配置定义生成随应用发布的编辑器 Schema；失败时中止构建。 */
+async function buildConfigSchema() {
+  await runCmd([packageManager, "--filter", "bot", "run", "config:schema", join(outDir, "config.schema.json")], root);
 }
 
 /** 构建负责约束 NapCat 进程树生命周期的原生 supervisor。 */
@@ -130,7 +138,6 @@ async function buildWebUi() {
   const webUiDir = join(root, "packages", "webui");
   const outputDir = join(outDir, "webui");
   await runCmd([packageManager, "run", "build"], webUiDir);
-  await rm(outputDir, { recursive: true, force: true });
   await cp(join(webUiDir, "dist"), outputDir, { recursive: true });
 }
 
@@ -179,21 +186,38 @@ async function copyBin() {
 }
 
 /**
- * 复制运行时资源：prompts 目录、config.example.toml
+ * 复制运行时资源。
  */
 async function copyAssets() {
-  const targets: Array<{ src: string; dest: string; label: string }> = [
-    { src: join(root, "prompts"), dest: join(outDir, "prompts"), label: "prompts/" },
-    { src: join(root, "config.example.toml"), dest: join(outDir, "config.example.toml"), label: "config.example.toml" },
+  const targets = [
+    { src: join(root, ".env.example"), dest: join(outDir, ".env.example"), label: ".env.example" },
+    {
+      src: join(root, "scripts", "install.sh"),
+      dest: join(outDir, "scripts", "install.sh"),
+      label: "scripts/install.sh",
+      executable: true,
+    },
+    {
+      src: join(root, "scripts", "build-linux-injector.sh"),
+      dest: join(outDir, "scripts", "build-linux-injector.sh"),
+      label: "scripts/build-linux-injector.sh",
+      executable: true,
+    },
+    {
+      src: join(root, "native", "napcat-linux-launcher", "launcher.c"),
+      dest: join(outDir, "scripts", "launcher.c"),
+      label: "scripts/launcher.c",
+    },
   ];
 
-  for (const { src, dest, label } of targets) {
+  for (const { src, dest, label, executable } of targets) {
     try {
       const stats = await stat(src);
       // 确保目标父目录存在
       await mkdir(join(dest, ".."), { recursive: true });
       // node:fs/promises 的 cp 方法原生支持递归目录拷贝和文件拷贝，无需分类讨论
       await cp(src, dest, { recursive: stats.isDirectory() });
+      if (executable && process.platform !== "win32") await chmod(dest, 0o755);
       console.log(`复制 ${label} → ${dest}`);
     } catch {
       console.warn(`跳过：${label}（源不存在 ${src}）`);
@@ -203,9 +227,11 @@ async function copyAssets() {
 
 console.log("==> 开始并行构建...\n");
 await mkdir(outDir, { recursive: true });
+await cleanBuildOutputs();
 
 await Promise.all([
   buildApp(),
+  buildConfigSchema(),
   buildSupervisor(),
   buildLinuxInjector(),
   buildLauncher(),

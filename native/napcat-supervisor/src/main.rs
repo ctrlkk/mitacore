@@ -58,16 +58,48 @@ fn main() -> ExitCode {
 
 #[cfg(unix)]
 mod platform {
+    use std::collections::HashMap;
     use std::ffi::OsString;
-    use std::io::{self, Read};
+    use std::fs;
+    use std::io::{self, Read, Write};
+    use std::mem::zeroed;
     use std::os::unix::process::{CommandExt, ExitStatusExt};
-    use std::process::{Command, Stdio};
-    use std::sync::Arc;
+    use std::process::{Command, ExitStatus, Stdio};
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc;
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
+
+    const POLL_INTERVAL: Duration = Duration::from_millis(50);
+    const TERMINATE_TIMEOUT: Duration = Duration::from_secs(5);
+    static TERMINATE_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+    extern "C" fn request_termination(_signal: libc::c_int) {
+        TERMINATE_REQUESTED.store(true, Ordering::Relaxed);
+    }
+
+    fn install_signal_handlers() -> io::Result<()> {
+        let mut action: libc::sigaction = unsafe { zeroed() };
+        action.sa_sigaction = request_termination as *const () as usize;
+        if unsafe { libc::sigemptyset(&mut action.sa_mask) } == -1 {
+            return Err(io::Error::last_os_error());
+        }
+        for signal in [libc::SIGINT, libc::SIGTERM] {
+            if unsafe { libc::sigaction(signal, &action, std::ptr::null_mut()) } == -1 {
+                return Err(io::Error::last_os_error());
+            }
+        }
+        Ok(())
+    }
 
     pub fn run(command: OsString, args: Vec<OsString>) -> io::Result<i32> {
+        install_signal_handlers()?;
+
+        #[cfg(target_os = "linux")]
+        if unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) } == -1 {
+            return Err(io::Error::last_os_error());
+        }
+
         let mut child = unsafe {
             Command::new(command)
                 .args(args)
@@ -83,10 +115,11 @@ mod platform {
                 .spawn()?
         };
         let process_group = child.id() as i32;
-        let shutting_down = Arc::new(AtomicBool::new(false));
-        let cancel_delayed_kill = Arc::new(AtomicBool::new(false));
-        let monitor_shutting_down = Arc::clone(&shutting_down);
-        let monitor_cancel_delayed_kill = Arc::clone(&cancel_delayed_kill);
+        let supervisor_pid = std::process::id() as i32;
+        let (shutdown_tx, shutdown_rx) = mpsc::channel();
+
+        println!("Main Process ID:{}", child.id());
+        io::stdout().flush()?;
 
         thread::spawn(move || {
             let mut buffer = [0_u8; 64];
@@ -95,36 +128,117 @@ mod platform {
                     break;
                 }
             }
-
-            monitor_shutting_down.store(true, Ordering::Release);
-            unsafe {
-                libc::kill(-process_group, libc::SIGTERM);
-            }
-            thread::sleep(Duration::from_secs(5));
-            if !monitor_cancel_delayed_kill.load(Ordering::Acquire) {
-                unsafe {
-                    libc::kill(-process_group, libc::SIGKILL);
-                }
-            }
+            let _ = shutdown_tx.send(());
         });
 
-        let status = child.wait()?;
-        if shutting_down.load(Ordering::Acquire) {
-            cancel_delayed_kill.store(true, Ordering::Release);
-            // leader 已退出时立即清理剩余成员，避免延迟期间 PGID 被复用。
-            unsafe {
-                libc::kill(-process_group, libc::SIGKILL);
+        let mut status: Option<ExitStatus> = None;
+        let mut terminate_deadline: Option<Instant> = None;
+        let mut force_kill = false;
+
+        loop {
+            if terminate_deadline.is_none()
+                && (shutdown_rx.try_recv().is_ok()
+                    || TERMINATE_REQUESTED.swap(false, Ordering::Relaxed))
+            {
+                signal_tree(supervisor_pid, process_group, libc::SIGTERM);
+                terminate_deadline = Some(Instant::now() + TERMINATE_TIMEOUT);
             }
-        } else {
-            // launcher 自行退出后仍可能留下 Electron 子进程。
-            unsafe {
-                libc::kill(-process_group, libc::SIGKILL);
+
+            if status.is_none()
+                && let Some(child_status) = child.try_wait()?
+            {
+                status = Some(child_status);
+                // 启动器自行退出时不能留下已脱离原进程组的 Electron 后代。
+                if terminate_deadline.is_none() {
+                    force_kill = true;
+                }
             }
+
+            if !force_kill && terminate_deadline.is_some_and(|deadline| Instant::now() >= deadline)
+            {
+                force_kill = true;
+            }
+            if force_kill {
+                signal_tree(supervisor_pid, process_group, libc::SIGKILL);
+            }
+
+            if status.is_some() {
+                reap_adopted_children();
+                if descendant_pids(supervisor_pid).is_empty() {
+                    break;
+                }
+            }
+
+            thread::sleep(POLL_INTERVAL);
         }
 
+        let status = status.expect("子进程退出后才能结束 supervisor");
         Ok(status
             .code()
             .unwrap_or_else(|| 128 + status.signal().unwrap_or(1)))
+    }
+
+    fn signal_tree(supervisor_pid: i32, process_group: i32, signal: i32) {
+        unsafe {
+            libc::kill(-process_group, signal);
+        }
+        for pid in descendant_pids(supervisor_pid) {
+            unsafe {
+                libc::kill(pid, signal);
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn descendant_pids(root: i32) -> Vec<i32> {
+        let mut children: HashMap<i32, Vec<i32>> = HashMap::new();
+        let Ok(entries) = fs::read_dir("/proc") else {
+            return Vec::new();
+        };
+
+        for entry in entries.flatten() {
+            let Some(pid) = entry
+                .file_name()
+                .to_str()
+                .and_then(|name| name.parse::<i32>().ok())
+            else {
+                continue;
+            };
+            let Ok(status) = fs::read_to_string(entry.path().join("status")) else {
+                continue;
+            };
+            let Some(parent) = status.lines().find_map(|line| {
+                line.strip_prefix("PPid:")
+                    .and_then(|value| value.trim().parse::<i32>().ok())
+            }) else {
+                continue;
+            };
+            children.entry(parent).or_default().push(pid);
+        }
+
+        let mut descendants = Vec::new();
+        let mut pending = vec![root];
+        while let Some(parent) = pending.pop() {
+            if let Some(pids) = children.get(&parent) {
+                descendants.extend(pids.iter().copied());
+                pending.extend(pids.iter().copied());
+            }
+        }
+        descendants
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn descendant_pids(_root: i32) -> Vec<i32> {
+        Vec::new()
+    }
+
+    fn reap_adopted_children() {
+        loop {
+            let result = unsafe { libc::waitpid(-1, std::ptr::null_mut(), libc::WNOHANG) };
+            if result <= 0 {
+                break;
+            }
+        }
     }
 }
 

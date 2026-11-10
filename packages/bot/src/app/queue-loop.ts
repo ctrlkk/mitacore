@@ -2,18 +2,19 @@ import { APICallError, RetryError } from "ai";
 import XMLBuilder from "fast-xml-builder";
 import dayjs, { sleep } from "shared/time";
 import type { ChannelReplyContext } from "@/channel/types";
-import type { MessagePart } from "@/message/parts";
 import type { MediaKind, MediaMap, PendingMessage, UnifiedInboundMessage } from "@/message/types";
 import { audioToText, imageToText, videoToText } from "@/agents/multimedia";
-import { runPlanner as runContinuousPlanner } from "@/agents/planner-continuous";
+import { runPlanner } from "@/agents/planner";
 import { config } from "@/config";
 import { get_media_description, set_media_description } from "@/database/media-cache";
-import { listMentionableUserAliases } from "@/database/user-alias";
 import { logger } from "@/logger";
 import { createFsFile } from "@/utils/fs-file";
 import { downloadToCache } from "@/utils/image-cache";
 import { compressImage } from "@/utils/image-resize";
 import { compressVideo } from "@/utils/video-resize";
+import { runMain } from "@/agents/agent";
+import { deliverReply, getLatestUserText } from "./reply-delivery";
+import { withHistoryRun } from "./history-access";
 
 type MediaResource = {
   url: string;
@@ -61,7 +62,7 @@ function createMediaProcessor() {
               return await downloadToCache(url, { limit: 5 * 1024 * 1024 });
             }
           } catch (error) {
-            logger.error({ url, kind, error }, "下载失败");
+            logger.error({ url, kind, err: error }, "下载失败");
             return null;
           }
         }).then((res) => (res ? { url, kind, ...res } : null)),
@@ -152,6 +153,39 @@ function createMediaProcessor() {
 
 const processMediaAssets = createMediaProcessor();
 
+function prepareMessageResources(message: PendingMessage): Promise<MediaMap> {
+  if (message.resourcesPromise) return message.resourcesPromise;
+
+  const resources = new Map<string, MediaResource>();
+
+  const extractResources = (segments: UnifiedInboundMessage[]) => {
+    for (const seg of segments) {
+      if (seg.type === "image") {
+        resources.set(`image:${seg.data.url}`, {
+          url: seg.data.url,
+          kind: "image",
+        });
+      } else if (seg.type === "video") {
+        resources.set(`video:${seg.data.url}`, {
+          url: seg.data.url,
+          kind: "video",
+        });
+      } else if (seg.type === "audio") {
+        resources.set(`audio:${seg.data.url}`, {
+          url: seg.data.url,
+          kind: "audio",
+        });
+      } else if (seg.type === "reply") {
+        extractResources(seg.data.segments);
+      }
+    }
+  };
+
+  extractResources(message.unifiedMessages);
+  message.resourcesPromise = processMediaAssets(Array.from(resources.values()));
+  return message.resourcesPromise;
+}
+
 function withoutRequestBodyValues(error: unknown): unknown {
   if (APICallError.isInstance(error)) {
     const { requestBodyValues: _, ...details } = error;
@@ -190,9 +224,10 @@ function buildPrompt(batch: PendingMessage[], mediaMap: MediaMap) {
         const inner = formatMessage(seg.data.segments);
         if (inner.length === 0) return [];
 
+        const identity = "userId" in seg.data ? ` user_id="${seg.data.userId}" nickname="${seg.data.nickname}"` : "";
         return [
           {
-            content: `<reply user_id="${seg.data.userId}" nickname="${seg.data.nickname}">${inner}</reply>`,
+            content: `<reply${identity}>${inner}</reply>`,
             standalone: true,
           },
         ];
@@ -214,8 +249,9 @@ function buildPrompt(batch: PendingMessage[], mediaMap: MediaMap) {
 
   for (const msg of batch) {
     const text = formatMessage(msg.unifiedMessages);
-    const fmt = dayjs(msg.date).isSame(today, "day") ? "HH:mm" : "MM-DD HH:mm";
-    const block = `<user_input user_id="${msg.userId}" date="${dayjs(msg.date).format(fmt)}" nickname="${msg.nickname}">\n${text}\n</user_input>`;
+    const date = dayjs(msg.date);
+    const fmt = date.isSame(today, "day") ? "A hh:mm" : "MM-DD A hh:mm";
+    const block = `<user_input user_id="${msg.userId}" date="${date.format(fmt)}" nickname="${msg.nickname}">\n${text}\n</user_input>`;
     promptParts.push(block);
   }
 
@@ -262,6 +298,18 @@ function buildPrompt(batch: PendingMessage[], mediaMap: MediaMap) {
   return finalPrompt;
 }
 
+async function preparePrompt(batch: PendingMessage[]) {
+  // 普通批次与中途插入批次必须经过同一套媒体处理，避免 steering 消息丢失附件上下文。
+  const mediaMaps = await Promise.all(batch.map(prepareMessageResources));
+  const mediaMap: MediaMap = new Map();
+  for (const map of mediaMaps) {
+    for (const [url, info] of map) {
+      mediaMap.set(url, info);
+    }
+  }
+  return buildPrompt(batch, mediaMap).trim();
+}
+
 /**
  * 创建一个任务调度器。
  * 只关心三件事：收集任务、收到 arm 信号时执行、对外提供队列快照。
@@ -289,20 +337,28 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, o
         });
       }
 
-      const batch = queue.splice(0);
-      const ctx = currentCtx;
-
-      armed = false;
-      currentCtx = null;
-
-      if (batch.length === 0 || !ctx) continue;
+      const next = takeArmed();
+      if (!next) continue;
 
       try {
-        await process(batch, ctx);
+        await process(next.batch, next.ctx);
       } catch (error) {
         logger.error({ error: withoutRequestBodyValues(error) }, "处理批次出错");
       }
     }
+  }
+
+  function takeArmed() {
+    if (!armed) return;
+
+    // 原子取走当前已触发批次，保证 scheduler 主循环和运行中的 agent 不会重复消费同一批消息。
+    const batch = queue.splice(0);
+    const ctx = currentCtx;
+    armed = false;
+    currentCtx = null;
+
+    if (batch.length === 0 || !ctx) return;
+    return { batch, ctx };
   }
 
   function enqueue(item: T, ctx: C) {
@@ -331,7 +387,7 @@ function createScheduler<T, C>(process: (batch: T[], ctx: C) => Promise<void>, o
     return [...queue];
   }
 
-  return { enqueue, arm, snapshot, run };
+  return { enqueue, arm, snapshot, takeArmed, run };
 }
 
 /**
@@ -353,36 +409,32 @@ export function createBot(sessionId: string) {
   async function processBatch(batch: PendingMessage[], ctx: ChannelReplyContext) {
     processing = true;
     try {
-      const mediaMaps = await Promise.all(batch.map((m) => m.resourcesPromise!));
-      const mediaMap: MediaMap = new Map();
-      for (const map of mediaMaps) {
-        for (const [url, info] of map) {
-          mediaMap.set(url, info);
-        }
-      }
-      const prompt = buildPrompt(batch, mediaMap).trim();
+      const prompt = await preparePrompt(batch);
+      let speechContextText = getLatestUserText(batch);
       log.info({ prompt }, "用户输入");
 
       const cancelTyping = await ctx.setTyping();
       try {
-        const onReply = async (segments: MessagePart[]) => {
-          const mentionableUsers = (() => {
-            if (ctx.platform !== "onebot" || ctx.conversationType !== "group") return [];
-            if (segments.some((segment) => typeof segment === "string" && segment.includes("@"))) {
-              return listMentionableUserAliases("onebot").filter((user) => user.platformId !== ctx.selfId);
-            }
-            return [];
-          })();
-
-          for (const seg of segments) {
-            await ctx.reply(seg, mentionableUsers);
-            await sleep(500);
-          }
+        const onReply = (output: Parameters<typeof deliverReply>[0]) => {
+          return deliverReply(output, ctx, speechContextText, log);
         };
-        const replied = await runContinuousPlanner(prompt, onReply, log);
-        if (!replied) {
-          log.info("规划层未调用 submit_plan，跳过回复");
-        }
+        const takeSteeringPrompt = async () => {
+          const next = scheduler.takeArmed();
+          if (!next) return;
+          speechContextText = getLatestUserText(next.batch);
+          const steeringPrompt = await preparePrompt(next.batch);
+          log.info({ prompt: steeringPrompt }, "工具循环中插入用户输入");
+          return steeringPrompt;
+        };
+        // 单AGENT模式目前只用来开发，暂时用env控制
+        await withHistoryRun(async () => {
+          if (!process.env.AGENT) {
+            const replied = await runPlanner(prompt, onReply, log, takeSteeringPrompt);
+            if (!replied) log.info("规划层未调用 submit_plan，跳过回复");
+          } else {
+            await runMain(prompt, onReply, log, takeSteeringPrompt);
+          }
+        });
       } finally {
         await cancelTyping();
       }
@@ -392,7 +444,7 @@ export function createBot(sessionId: string) {
   }
 
   const scheduler = createScheduler(processBatch, { maxQueue: config.max_queue });
-  scheduler.run().catch((error) => log.error({ error }, "scheduler 运行失败"));
+  scheduler.run().catch((error) => log.error({ err: error }, "scheduler 运行失败"));
 
   const debounceMs = config.debounce_ms;
   let lastMsgAt = Date.now();
@@ -445,17 +497,18 @@ export function createBot(sessionId: string) {
         // 从而在等待结束后能正确检测到新消息。
         dirty = false;
 
-        // 等待异步资源处理完成
-        // 无论是哪种模式，只要决定处理，就等待所有相关资源的下载/转述。
-        // 如果在此期间有新消息（dirty 变动），则放弃本次触发，重新开始循环，
-        // 以便将新消息纳入处理范围（实现图片处理期间的防抖合并）。
-        log.info(`开始处理 ${unprocessed.length} 条消息的资源...`);
-        const resolvedMediaMaps = await Promise.all(unprocessed.map((m) => m.resourcesPromise!));
+        // 开启群聊预处理时保持原行为；关闭后，只有硬触发才为整个待处理队列准备资源。
+        // 硬触发必须包含已评估但仍积压的消息，否则这些消息的延迟媒体会被遗漏。
+        if (config.preprocess_group_media || hasForceTrigger) {
+          const resourceBatch = hasForceTrigger ? queueSnapshot : unprocessed;
+          log.info(`开始处理 ${resourceBatch.length} 条消息的资源...`);
+          await Promise.all(resourceBatch.map(prepareMessageResources));
 
-        if (dirty) {
-          log.info("资源等待期间收到新消息，重新开始评估循环");
-          dirty = false;
-          continue;
+          if (dirty) {
+            log.info("资源等待期间收到新消息，重新开始评估循环");
+            dirty = false;
+            continue;
+          }
         }
 
         // 标记已评估
@@ -485,7 +538,7 @@ export function createBot(sessionId: string) {
         break;
       }
     } catch (err) {
-      log.error({ error: err }, "触发判定失败");
+      log.error({ err }, "触发判定失败");
     } finally {
       evaluating = false;
     }
@@ -496,37 +549,10 @@ export function createBot(sessionId: string) {
       return processing;
     },
     enqueue: (message: PendingMessage, ctx: ChannelReplyContext) => {
-      // 启动资源预处理（不阻塞入队）
-      message.resourcesPromise = (async () => {
-        const resources = new Map<string, MediaResource>();
-
-        const extractResources = (segments: UnifiedInboundMessage[]) => {
-          for (const seg of segments) {
-            if (seg.type === "image") {
-              resources.set(`image:${seg.data.url}`, {
-                url: seg.data.url,
-                kind: "image",
-              });
-            } else if (seg.type === "video") {
-              resources.set(`video:${seg.data.url}`, {
-                url: seg.data.url,
-                kind: "video",
-              });
-            } else if (seg.type === "audio") {
-              resources.set(`audio:${seg.data.url}`, {
-                url: seg.data.url,
-                kind: "audio",
-              });
-            } else if (seg.type === "reply") {
-              extractResources(seg.data.segments);
-            }
-          }
-        };
-
-        extractResources(message.unifiedMessages);
-
-        return await processMediaAssets(Array.from(resources.values()));
-      })();
+      // 私聊始终立即准备资源；群聊可延迟到消息实际触发回复时再处理，以节省媒体理解成本。
+      if (ctx.conversationType === "private" || config.preprocess_group_media) {
+        void prepareMessageResources(message);
+      }
 
       message.evaluated = false;
       scheduler.enqueue(message, ctx);
@@ -535,7 +561,7 @@ export function createBot(sessionId: string) {
       lastMsgAt = Date.now();
       dirty = true;
 
-      evaluationLoop(ctx).catch((err) => log.error({ error: err }, "dispatch 失败"));
+      evaluationLoop(ctx).catch((err) => log.error({ err }, "dispatch 失败"));
     },
   };
 }

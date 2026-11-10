@@ -2,6 +2,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@xyflow/react/dist/style.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -129,5 +130,37 @@
 
   html {
     @apply font-sans;
+  }
+}
+
+.queue-loop-flow .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.queue-loop-flow .react-flow__controls-button {
+  color: var(--foreground);
+  background: color-mix(in oklab, var(--background) 92%, transparent);
+  border-color: var(--border);
+}
+
+.queue-loop-flow .react-flow__controls-button:hover {
+  background: var(--muted);
+}
+
+.queue-loop-flow .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.queue-loop-flow .react-flow__node:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queue-loop-flow-packet {
+    display: none;
   }
 }

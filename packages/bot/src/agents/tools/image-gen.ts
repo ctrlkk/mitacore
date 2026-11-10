@@ -78,7 +78,6 @@ export function imageGen(
         tools: branchTools,
         abortSignal,
         runtimeContext: { inSubagent: true },
-        maxOutputTokens: 4096,
       });
       logUsage(log, usage);
       log.debug({ reasoningText: finalStep.reasoningText, text }, "图像生成分支输出");
@@ -125,7 +124,7 @@ export function imageGen(
         // return { status: "success", results };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        log.error({ error, prompt, images }, "图像生成失败");
+        log.error({ err: error, prompt, images }, "图像生成失败");
         return { status: "failed", error: message };
       }
     },

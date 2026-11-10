@@ -1,7 +1,7 @@
 import { marked, type Token } from "marked";
 import { sanitizeImagePath, virtualToRealPath } from "../utils/image-cache";
 import { blobToDataURL, download } from "../utils/blob";
-import { pathToFileURL } from "node:url";
+import { createFsFile } from "../utils/fs-file";
 import { resolveSticker } from "./stickers";
 
 export interface ImagePart {
@@ -17,7 +17,19 @@ export interface ImagePart {
   };
 }
 
-export type MessagePart = string | ImagePart;
+export interface AudioPart {
+  type: "audio";
+  blob: Blob;
+}
+
+export type MessagePart = string | ImagePart | AudioPart;
+
+export interface ReplyOutput {
+  /** 用于按聊天节奏逐条发送的消息片段。 */
+  segments: MessagePart[];
+  /** 清理旁白后、保留完整标点的可朗读文本。 */
+  speechText: string;
+}
 
 type MediaReference =
   | {
@@ -127,8 +139,7 @@ async function resolveImage(href: string, alt?: string): Promise<ImagePart | nul
     return null;
   } else {
     const virtualPath = sanitizeImagePath(href);
-    const url = await fetch(pathToFileURL(virtualToRealPath(virtualPath)))
-      .then((r) => r.blob())
+    const url = await createFsFile(virtualToRealPath(virtualPath))
       .then(blobToDataURL)
       .catch(() => null);
     if (url) {
