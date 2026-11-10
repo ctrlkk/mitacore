@@ -1,6 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "agents-bot",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "private": true,
   "packageManager": "pnpm@11.16.0",
